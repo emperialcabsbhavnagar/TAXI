@@ -1,19 +1,19 @@
 # Empire Cab Platform Repository Synchronization Guide
 
 > [!IMPORTANT]
-> **PRIMARY REPOSITORY**: `https://github.com/emperialcabs/taxii.git`
+> **PRIMARY REPOSITORY**: `https://github.com/emperialcabsbhavnagar/TAXI.git`
 > **PRODUCTION BRANCH**: `main`
 
 ## Git Remote Configuration
-The primary production repository for this codebase is permanently set to:
-`https://github.com/emperialcabs/taxii.git`
+The primary production repository for this codebase is set to:
+`https://github.com/emperialcabsbhavnagar/TAXI.git`
 
 ### Command to Verify Remote:
 ```bash
 git remote -v
 # Output should be:
-# origin  https://github.com/emperialcabs/taxii.git (fetch)
-# origin  https://github.com/emperialcabs/taxii.git (push)
+# origin  https://github.com/emperialcabsbhavnagar/TAXI.git (fetch)
+# origin  https://github.com/emperialcabsbhavnagar/TAXI.git (push)
 ```
 
 ### Command to Save & Push Changes:
