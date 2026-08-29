@@ -2,10 +2,7 @@
   "appId": "com.emperialcabs.booking",
   "appName": "EMPERIAL CABS",
   "webDir": "dist",
-  "server": {
-    "url": "https://android-two-rouge.vercel.app/",
-    "cleartext": true
-  },
+
   "plugins": {
     "GoogleAuth": {
       "scopes": ["profile", "email"],
