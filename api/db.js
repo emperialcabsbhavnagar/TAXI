@@ -2,10 +2,10 @@ import mysql from 'mysql2/promise';
 
 // Hostinger Remote MySQL Database Connection Pool Configuration
 const poolConfig = {
-  host: process.env.MYSQL_HOST || 'srv1671.hstgr.io',
-  user: process.env.MYSQL_USER || 'u889282535_taxi',
-  password: process.env.MYSQL_PASSWORD || 'Mahadev909099',
-  database: process.env.MYSQL_DATABASE || 'u889282535_taxi',
+  host: process.env.MYSQL_HOST || 'srv2213.hstgr.io',
+  user: process.env.MYSQL_USER || 'u217835086_TAXI',
+  password: process.env.MYSQL_PASSWORD || 'Mahadev@0963',
+  database: process.env.MYSQL_DATABASE || 'u217835086_TAXI',
   port: Number(process.env.MYSQL_PORT) || 3306,
   waitForConnections: true,
   connectionLimit: 2, // Strictly capped to 2 to prevent hitting Hostinger max_user_connections
