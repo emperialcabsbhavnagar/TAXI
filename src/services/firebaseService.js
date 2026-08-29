@@ -19,15 +19,15 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 
-// Firebase Credentials for Project: taxi-c2ef8 (Verified from Project Settings)
+// Firebase Credentials for Project: taxibhavnagar
 export const firebaseConfig = {
-  apiKey: "AIzaSyC0cdfnTx4EZvPLZQPLdpwEbr_DkDKgvl4",
-  authDomain: "taxi-c2ef8.firebaseapp.com",
-  projectId: "taxi-c2ef8",
-  storageBucket: "taxi-c2ef8.firebasestorage.app",
-  messagingSenderId: "256291841083",
-  appId: "1:256291841083:web:c518df88b67dd86172a81e",
-  measurementId: "G-9LR4KLNPNY"
+  apiKey: "AIzaSyDSfsRGsL5UfO6VpYKUSBpDeLLRPSDjvD0",
+  authDomain: "taxibhavnagar.firebaseapp.com",
+  projectId: "taxibhavnagar",
+  storageBucket: "taxibhavnagar.firebasestorage.app",
+  messagingSenderId: "555496247847",
+  appId: "1:555496247847:web:7c73e1a0ccb579fab8b402",
+  measurementId: "G-9GEY1LG188"
 };
 
 // Initialize Firebase App & Auth Services
