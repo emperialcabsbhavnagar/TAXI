@@ -264,7 +264,11 @@ export default function BookRide() {
               </div>
               <div className="detail-item fare-item">
                 <span>Total Calculated Fare:</span>
-                <strong className="text-green text-xl">₹{Number(bookingSuccess.fare).toFixed(2)}</strong>
+                <strong className="text-green text-xl">
+                  {bookingSuccess.isCustom 
+                    ? `₹${bookingSuccess.fare}/KM (As per Car)` 
+                    : `₹${Number(bookingSuccess.fare).toFixed(2)}`}
+                </strong>
               </div>
             </div>
 
@@ -660,7 +664,7 @@ export default function BookRide() {
                       <strong>{currentVehicle.name}</strong>
                     </div>
 
-                    {tripType === 'one-way' && (
+                    {(tripType === 'one-way' || tripType === 'custom-trip') && (
                       <div className="summary-row">
                         <span>Rate:</span>
                         <strong style={{ color: '#B45309' }}>₹{currentVehicle.rate} / km</strong>
@@ -669,12 +673,16 @@ export default function BookRide() {
                   </div>
 
                   <div className="fare-big-box mt-3">
-                    <div className="fare-label">Estimated Total Fare</div>
-                    <div className="fare-price">₹{calculatedFare}</div>
+                    <div className="fare-label">
+                      {tripType === 'custom-trip' ? 'Total Fare Rate' : 'Estimated Total Fare'}
+                    </div>
+                    <div className="fare-price">
+                      {tripType === 'custom-trip' ? `₹${currentVehicle.rate} / KM` : `₹${calculatedFare}`}
+                    </div>
                     <small className="fare-note">
                       {tripType === 'round-trip' 
                         ? 'Includes Return Journey (2× Distance)' 
-                        : (tripType === 'custom-trip' ? `Custom ${noOfDays} Day Rental Package` : 'Fixed transparent pricing based on KM')
+                        : (tripType === 'custom-trip' ? `According to Car Rate (Min 300 KM/Day @ ₹${currentVehicle.rate}/km)` : 'Fixed transparent pricing based on KM')
                       }
                     </small>
                   </div>
