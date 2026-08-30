@@ -679,12 +679,14 @@ export default function BookRide() {
                     <div className="fare-price">
                       {tripType === 'custom-trip' ? `₹${currentVehicle.rate} / KM` : `₹${calculatedFare}`}
                     </div>
-                    <small className="fare-note">
-                      {tripType === 'round-trip' 
-                        ? 'Includes Return Journey (2× Distance)' 
-                        : (tripType === 'custom-trip' ? `According to Car Rate (Min 300 KM/Day @ ₹${currentVehicle.rate}/km)` : 'Fixed transparent pricing based on KM')
-                      }
-                    </small>
+                    {tripType !== 'custom-trip' && (
+                      <small className="fare-note">
+                        {tripType === 'round-trip' 
+                          ? 'Includes Return Journey (2× Distance)' 
+                          : 'Fixed transparent pricing based on KM'
+                        }
+                      </small>
+                    )}
                   </div>
 
                   <div className="trust-badge mt-3">
