@@ -1312,16 +1312,29 @@ export default function AdminPortal() {
   };
 
   const handlePurgeAllDatabaseData = async () => {
-    if (window.confirm("⚠️ DANGER: Are you sure you want to PERMANENTLY PURGE ALL inquiries and customer profiles from Hostinger Remote MySQL database? This will clear all booking data.")) {
+    if (window.confirm("⚠️ Reset System Inquiries & Messages?\n\nThis will purge all booking inquiries, contact messages, notifications, and customer logs.\n\nNOTE: Vehicles, Drivers, Destinations, and KM distance matrix will NOT be deleted.")) {
       try {
-        await purgeAllDataFromMySQL();
+        await purgeAllDataFromMySQL().catch(() => {});
         localStorage.removeItem('cabsy_inquiries');
+        localStorage.removeItem('emperial_cabs_inquiries');
         localStorage.removeItem('cabsy_customers');
+        localStorage.removeItem('emperial_cabs_customers');
+        localStorage.removeItem('emperial_cabs_contact_messages');
+        localStorage.removeItem('cabsy_contact_messages');
+        localStorage.removeItem('emperial_cabs_notifications');
+        localStorage.removeItem('cabsy_notifications');
+
         setInquiries([]);
         setCustomers([]);
-        alert("All inquiries and customer directory records have been completely purged from Hostinger Remote MySQL Database.");
+        setContactMessages([]);
+        setNotifications([]);
+        
+        // Dispatch event for multi-window sync
+        window.dispatchEvent(new Event('storage'));
+        
+        alert("✅ System data successfully reset!\n\nAll ride inquiries, customer logs, contact messages, and notifications have been cleared.\n\nFleet Vehicles, Drivers, Destinations, and KM Distance Matrix remain completely safe and intact.");
       } catch (err) {
-        alert("Failed to purge database data: " + err.message);
+        alert("Failed to reset system data: " + err.message);
       }
     }
   };
@@ -3713,14 +3726,17 @@ export default function AdminPortal() {
 
               <div className="purge-section mt-5 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
                 <h3 style={{ color: '#ef4444' }}>System & Database Maintenance</h3>
-                <p className="text-muted text-sm mb-3">Purge demo records or completely reset all inquiries and customer data stored in Hostinger Remote MySQL Database.</p>
-                <div className="flex gap-3 flex-wrap">
+                <p className="text-muted text-sm mb-3">Purge demo records or completely reset all inquiries, messages, and customer data stored in Hostinger Remote MySQL Database & local storage.</p>
+                <div className="flex gap-3 flex-wrap align-center">
                   <button type="button" className="btn btn-outline" onClick={handlePurgeDemoDatabaseData}>
                     <RefreshCw size={16} /> Purge Demo & Test Records
                   </button>
                   <button type="button" className="btn btn-danger" style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none' }} onClick={handlePurgeAllDatabaseData}>
-                    <Trash2 size={16} /> Wipe All System Data
+                    <Trash2 size={16} /> Reset System Data
                   </button>
+                </div>
+                <div style={{ marginTop: '12px', background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '10px 14px', borderRadius: '10px', fontSize: '12px', color: '#475569', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>🛡️ <strong>Protected Master Data:</strong> Vehicles list, Driver roster, Locations, and KM Distance matrix are safe and will NOT be deleted during reset.</span>
                 </div>
               </div>
             </form>
