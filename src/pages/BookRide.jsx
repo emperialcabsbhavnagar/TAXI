@@ -292,7 +292,7 @@ export default function BookRide() {
                 {/* STEP 1: TRIP TYPE SELECTION */}
                 <div className="form-section">
                   <label className="section-title">
-                    <Sparkles size={16} color="#E3B10F" /> 1. Select Trip Type
+                    <Sparkles size={16} color="#0f172a" /> 1. Select Trip Type
                   </label>
                   
                   <div className="trip-type-selector-grid mt-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
@@ -302,9 +302,9 @@ export default function BookRide() {
                       style={{
                         padding: '12px 10px',
                         borderRadius: '14px',
-                        border: tripType === 'one-way' ? '2px solid #E3B10F' : '1.5px solid #cbd5e1',
-                        background: tripType === 'one-way' ? '#FEFCE8' : '#ffffff',
-                        color: tripType === 'one-way' ? '#0f172a' : '#475569',
+                        border: tripType === 'one-way' ? '2px solid #E3B10F' : '1px solid #e2e8f0',
+                        background: tripType === 'one-way' ? '#ffffff' : '#f8fafc',
+                        color: tripType === 'one-way' ? '#0f172a' : '#64748b',
                         fontWeight: '800',
                         fontSize: '0.92rem',
                         cursor: 'pointer',
@@ -317,7 +317,7 @@ export default function BookRide() {
                       }}
                     >
                       <span>Point to Point</span>
-                      <span style={{ fontSize: '0.75rem', color: '#B45309', fontWeight: '700' }}>One-Way</span>
+                      <span style={{ fontSize: '0.75rem', color: tripType === 'one-way' ? '#0f172a' : '#64748b', fontWeight: '600' }}>One-Way</span>
                     </button>
 
                     <button
@@ -326,9 +326,9 @@ export default function BookRide() {
                       style={{
                         padding: '12px 10px',
                         borderRadius: '14px',
-                        border: tripType === 'round-trip' ? '2px solid #E3B10F' : '1.5px solid #cbd5e1',
-                        background: tripType === 'round-trip' ? '#FEFCE8' : '#ffffff',
-                        color: tripType === 'round-trip' ? '#0f172a' : '#475569',
+                        border: tripType === 'round-trip' ? '2px solid #E3B10F' : '1px solid #e2e8f0',
+                        background: tripType === 'round-trip' ? '#ffffff' : '#f8fafc',
+                        color: tripType === 'round-trip' ? '#0f172a' : '#64748b',
                         fontWeight: '800',
                         fontSize: '0.92rem',
                         cursor: 'pointer',
@@ -341,7 +341,7 @@ export default function BookRide() {
                       }}
                     >
                       <span>Round Trip</span>
-                      <span style={{ fontSize: '0.75rem', color: '#B45309', fontWeight: '700' }}>Return Journey</span>
+                      <span style={{ fontSize: '0.75rem', color: tripType === 'round-trip' ? '#0f172a' : '#64748b', fontWeight: '600' }}>Return Journey</span>
                     </button>
 
                     <button
@@ -350,9 +350,9 @@ export default function BookRide() {
                       style={{
                         padding: '12px 10px',
                         borderRadius: '14px',
-                        border: tripType === 'custom-trip' ? '2px solid #E3B10F' : '1.5px solid #cbd5e1',
-                        background: tripType === 'custom-trip' ? '#FEFCE8' : '#ffffff',
-                        color: tripType === 'custom-trip' ? '#0f172a' : '#475569',
+                        border: tripType === 'custom-trip' ? '2px solid #E3B10F' : '1px solid #e2e8f0',
+                        background: tripType === 'custom-trip' ? '#ffffff' : '#f8fafc',
+                        color: tripType === 'custom-trip' ? '#0f172a' : '#64748b',
                         fontWeight: '800',
                         fontSize: '0.92rem',
                         cursor: 'pointer',
@@ -365,7 +365,7 @@ export default function BookRide() {
                       }}
                     >
                       <span>Custom Outstation</span>
-                      <span style={{ fontSize: '0.75rem', color: '#B45309', fontWeight: '700' }}>Multi-Day Rental</span>
+                      <span style={{ fontSize: '0.75rem', color: tripType === 'custom-trip' ? '#0f172a' : '#64748b', fontWeight: '600' }}>Multi-Day Rental</span>
                     </button>
                   </div>
                 </div>
@@ -373,7 +373,7 @@ export default function BookRide() {
                 {/* STEP 2: ROUTE PICKER */}
                 <div className="form-section mt-3">
                   <label className="section-title">
-                    <MapPin size={16} color="#E3B10F" /> 2. Select Route Locations
+                    <MapPin size={16} color="#0f172a" /> 2. Select Route Locations
                   </label>
                   
                   {/* Shared datalist for city & village autocomplete */}
@@ -385,10 +385,10 @@ export default function BookRide() {
 
                   {tripType === 'custom-trip' ? (
                     /* CUSTOM OUTSTATION & MULTI-CITY INPUTS */
-                    <div style={{ background: '#FEFCE8', border: '1.5px solid #FDE047', borderRadius: '16px', padding: '16px', marginTop: '10px' }}>
+                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px', marginTop: '10px' }}>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '10px', alignItems: 'center', marginBottom: '12px' }}>
                         <div className="field-group">
-                          <span className="field-label" style={{ fontWeight: '800', color: '#B45309' }}>PICKUP CITY / VILLAGE</span>
+                          <span className="field-label" style={{ fontWeight: '700', color: '#475569' }}>PICKUP CITY / VILLAGE</span>
                           <input 
                             type="text"
                             list="cities-village-list"
@@ -412,7 +412,7 @@ export default function BookRide() {
                         </button>
 
                         <div className="field-group">
-                          <span className="field-label" style={{ fontWeight: '800', color: '#ef4444' }}>DROPOFF CITY / VILLAGE</span>
+                          <span className="field-label" style={{ fontWeight: '700', color: '#475569' }}>DROPOFF CITY / VILLAGE</span>
                           <input 
                             type="text"
                             list="cities-village-list"
@@ -503,7 +503,7 @@ export default function BookRide() {
                 {/* STEP 3: VEHICLE CHOICE */}
                 <div className="form-section mt-3">
                   <label className="section-title">
-                    <Car size={16} color="#E3B10F" /> 3. Choose Vehicle Class
+                    <Car size={16} color="#0f172a" /> 3. Choose Vehicle Class
                   </label>
 
                   <div className="vehicle-light-grid mt-2">
@@ -527,7 +527,7 @@ export default function BookRide() {
                 {/* STEP 4: CONTACT & SCHEDULE */}
                 <div className="form-section mt-3">
                   <label className="section-title">
-                    <User size={16} color="#E3B10F" /> 4. Contact & Schedule
+                    <User size={16} color="#0f172a" /> 4. Contact & Schedule
                   </label>
 
                   <div className="form-row-4col mt-2">
@@ -647,7 +647,7 @@ export default function BookRide() {
                   <div className="summary-list mt-3">
                     <div className="summary-row">
                       <span>Trip Type:</span>
-                      <strong style={{ color: '#B45309' }}>
+                      <strong style={{ color: '#0f172a' }}>
                         {tripType === 'custom-trip' ? `Custom Outstation (${noOfDays} Day Rental)` : (tripType === 'round-trip' ? 'Round Trip' : 'Point to Point (One-Way)')}
                       </strong>
                     </div>
@@ -667,7 +667,7 @@ export default function BookRide() {
                     {(tripType === 'one-way' || tripType === 'custom-trip') && (
                       <div className="summary-row">
                         <span>Rate:</span>
-                        <strong style={{ color: '#B45309' }}>₹{currentVehicle.rate} / km</strong>
+                        <strong style={{ color: '#0f172a' }}>₹{currentVehicle.rate} / km</strong>
                       </div>
                     )}
                   </div>
@@ -688,7 +688,7 @@ export default function BookRide() {
                   </div>
 
                   <div className="trust-badge mt-3">
-                    <ShieldCheck size={18} color="#E3B10F" style={{ flexShrink: 0, display: 'block' }} />
+                    <ShieldCheck size={18} color="#64748b" style={{ flexShrink: 0, display: 'block' }} />
                     <span style={{ fontSize: '13px', fontWeight: '600', color: '#475569', lineHeight: '1.2' }}>
                       Instant confirmation & driver dispatch.
                     </span>
