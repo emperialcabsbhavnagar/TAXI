@@ -2777,6 +2777,13 @@
   }
 }
 
+@media (max-width: 992px) {
+  .light-booking-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1.5rem !important;
+  }
+}
+
 @media (max-width: 768px) {
   .hero-section {
     padding: 0.25rem 0 1rem 0 !important;
@@ -2823,16 +2830,152 @@
     height: auto !important;
     max-height: 380px !important;
   }
+
+  /* Book Ride & Route Selector Mobile Responsiveness */
+  .light-booking-container {
+    padding: 1rem 0.5rem !important;
+  }
+
+  .light-booking-header {
+    margin-bottom: 1.25rem !important;
+  }
+
+  .light-booking-header h2 {
+    font-size: 1.75rem !important;
+  }
+
+  .light-form-card, .light-summary-card {
+    padding: 1.25rem 1rem !important;
+    border-radius: 20px !important;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05) !important;
+  }
+
+  .route-picker-row {
+    grid-template-columns: 1fr !important;
+    gap: 0.6rem !important;
+    align-items: stretch !important;
+  }
+
+  .light-btn-swap {
+    width: 44px !important;
+    height: 44px !important;
+    align-self: center !important;
+    margin: 0.2rem 0 !important;
+    border-radius: 50% !important;
+    transform: rotate(90deg) !important;
+  }
+
+  .light-btn-swap:hover {
+    transform: rotate(270deg) !important;
+  }
+
+  .vehicle-light-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+
+  .vehicle-light-card {
+    padding: 0.75rem 0.9rem !important;
+    gap: 0.85rem !important;
+    min-width: 0 !important;
+  }
+
+  .vehicle-thumb {
+    width: 58px !important;
+    height: 42px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .vehicle-info {
+    min-width: 0 !important;
+    flex: 1 !important;
+  }
+
+  .vehicle-info h4 {
+    font-size: 0.95rem !important;
+    word-break: break-word !important;
+    white-space: normal !important;
+  }
+
+  .vehicle-price {
+    font-size: 0.85rem !important;
+    padding: 0.25rem 0.55rem !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  .form-row-4col {
+    grid-template-columns: 1fr !important;
+    gap: 0.65rem !important;
+  }
+
+  .light-select, .light-input {
+    height: 48px !important;
+    font-size: 0.95rem !important;
+    padding: 0 0.85rem !important;
+    border-radius: 12px !important;
+  }
+
+  .light-submit-btn {
+    height: 52px !important;
+    font-size: 1.05rem !important;
+    border-radius: 14px !important;
+  }
+
+  .summary-title {
+    font-size: 1.2rem !important;
+  }
+
+  .fare-big-box {
+    padding: 1.1rem !important;
+  }
+
+  .fare-price {
+    font-size: 2.1rem !important;
+  }
+
+  .section {
+    padding: 1.75rem 0 !important;
+  }
+
+  .section-header h2 {
+    font-size: 1.7rem !important;
+  }
+
+  .section-header p {
+    font-size: 0.95rem !important;
+  }
+
+  .step-card {
+    padding: 1rem !important;
+    gap: 0.85rem !important;
+  }
 }
 
 @media (max-width: 480px) {
   .hero-title {
-    font-size: 1.85rem !important;
+    font-size: 1.75rem !important;
+    line-height: 1.2 !important;
+  }
+
+  .hero-subtitle {
+    font-size: 0.95rem !important;
+    line-height: 1.5 !important;
   }
 
   .ios-phone-frame {
-    width: 260px !important;
-    height: 440px !important;
+    width: 100% !important;
+    max-width: 290px !important;
+    height: 470px !important;
+    margin: 0 auto !important;
+  }
+
+  .light-booking-header h2 {
+    font-size: 1.5rem !important;
+  }
+
+  .vehicle-light-card {
+    padding: 0.65rem 0.75rem !important;
   }
 }
 
