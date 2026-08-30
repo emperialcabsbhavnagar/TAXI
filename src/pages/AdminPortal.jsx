@@ -2770,6 +2770,52 @@ export default function AdminPortal() {
                   </tbody>
                 </table>
               </div>
+
+              {/* HOSTINGER ALIGNED MOBILE CARDS FOR ARCHIVED CUSTOM TRIPS */}
+              <div className="admin-mobile-card-list">
+                {sortedInquiries.filter(i => 
+                  (i.isCustom || i.tripType === 'Custom Trip' || i.tripType === 'custom-trip') && 
+                  (i.status === 'Completed' || i.status === 'Rejected' || i.status === 'Cancelled')
+                ).map((inq) => (
+                  <div key={inq.id} className="hostinger-admin-card" style={{ opacity: 0.9 }}>
+                    <div className="hostinger-card-top">
+                      <div className="hostinger-card-id-group">
+                        <span className="hostinger-card-id">{inq.id}</span>
+                        <span className="hostinger-card-date">• {inq.noOfDays || 1} Day(s)</span>
+                      </div>
+                      {inq.status === 'Completed' && <span className="status-tag status-confirmed">Completed</span>}
+                      {(inq.status === 'Rejected' || inq.status === 'Cancelled') && <span className="status-tag status-pending" style={{ background: '#FEE2E2', color: '#DC2626' }}>{inq.status}</span>}
+                    </div>
+                    <div className="hostinger-card-customer">
+                      <span className="hostinger-cust-name">{resolveCustomerName(inq)}</span>
+                      <span className="hostinger-cust-phone">📞 {inq.customerPhone}</span>
+                    </div>
+                    <div className="hostinger-card-route">
+                      <div className="hostinger-route-item">
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981', flexShrink: 0 }}></span>
+                        <span>{inq.pickupCity || inq.pickup}</span>
+                      </div>
+                      <div className="hostinger-route-item">
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EF4444', flexShrink: 0 }}></span>
+                        <span>{inq.dropoffCity || inq.dropoff}</span>
+                      </div>
+                    </div>
+                    <div className="hostinger-card-footer">
+                      <span className="hostinger-vehicle-badge">{inq.vehicle || 'Selected Car'}</span>
+                      <span className="hostinger-fare-tag">₹{Number(inq.fare || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="hostinger-card-actions">
+                      <button
+                        className="btn-action-view"
+                        onClick={() => setReceiptModal({ open: true, inquiry: inq })}
+                        style={{ padding: '6px 12px', borderRadius: '8px', background: '#F1F5F9', color: '#0F172A', fontWeight: '800', fontSize: '0.8rem', border: 'none', cursor: 'pointer' }}
+                      >
+                        <Eye size={14} /> View Details
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -2955,6 +3001,54 @@ export default function AdminPortal() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* HOSTINGER ALIGNED MOBILE CARDS FOR DESTINATIONS & KM MATRIX */}
+              <div className="admin-mobile-card-list">
+                {destinations.map(dest => (
+                  <div key={dest.id} className="hostinger-admin-card">
+                    <div className="hostinger-card-top">
+                      <div className="hostinger-card-id-group">
+                        <span className="hostinger-card-id">{dest.id}</span>
+                        <span className="hostinger-card-date">• {dest.distanceKm} KM</span>
+                      </div>
+                      <span className="pill-badge-sm font-bold" style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #93C5FD' }}>
+                        ⏱️ {dest.duration || 'Dynamic Route'}
+                      </span>
+                    </div>
+                    <div className="hostinger-card-route">
+                      <div className="hostinger-route-item">
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981', flexShrink: 0 }}></span>
+                        <span>From: {dest.pickup}</span>
+                      </div>
+                      <div className="hostinger-route-item">
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EF4444', flexShrink: 0 }}></span>
+                        <span>To: {dest.dropoff}</span>
+                      </div>
+                    </div>
+                    <div className="hostinger-card-footer">
+                      <span className="hostinger-vehicle-badge">₹15.00 / km</span>
+                      <span className="hostinger-fare-tag">₹{(dest.distanceKm * 15).toFixed(2)}</span>
+                    </div>
+                    <div className="hostinger-card-actions">
+                      <button 
+                        className="btn btn-outline btn-sm flex align-center justify-center gap-1"
+                        style={{ padding: '6px 12px', borderRadius: '8px', fontSize: '13px', fontWeight: '800' }}
+                        onClick={() => setEditDestModal({ open: true, destination: { ...dest } })}
+                      >
+                        <Edit size={14} /> Edit KM Distance
+                      </button>
+                      <button 
+                        className="btn-icon btn-icon-danger"
+                        title="Delete Route"
+                        onClick={() => handleDeleteDest(dest.id)}
+                        style={{ padding: '6px 10px', borderRadius: '8px' }}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>

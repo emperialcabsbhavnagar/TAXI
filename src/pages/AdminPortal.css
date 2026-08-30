@@ -2219,5 +2219,30 @@
     padding: 4px 6px !important;
     font-size: 10.5px !important;
   }
+
+  /* STRICT MOBILE DISPLAY: CARDS ONLY, NO TABLES ON SMARTPHONES */
+  .table-responsive {
+    display: none !important;
+  }
+
+  .admin-mobile-card-list {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
 }
+
+/* DESKTOP DISPLAY: TABLES ONLY, HIDE CARDS */
+@media (min-width: 769px) {
+  .admin-mobile-card-list {
+    display: none !important;
+  }
+
+  .table-responsive {
+    display: block !important;
+  }
+}
+
 
