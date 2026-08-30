@@ -64,7 +64,7 @@ const isNativeApp = () => {
  * Falls through to in-app fallback modal if native fails.
  */
 export const signInWithGoogle = async () => {
-  // ── 1. Native Android/iOS: Native system account picker bottom sheet (Inside App Only) ──
+  // ── 1. Native Android/iOS: Native system account picker bottom sheet ──
   if (isNativeApp()) {
     try {
       try {
@@ -96,16 +96,16 @@ export const signInWithGoogle = async () => {
         const photoURL = googleUser.imageUrl || googleUser.photoUrl || null;
         const uid = googleUser.id || googleUser.userId || 'goog_' + Date.now();
 
-        return { name, email: email || '', photoURL, uid };
+        if (email) {
+          return { name, email, photoURL, uid };
+        }
       }
     } catch (nativeErr) {
-      console.warn('[GoogleAuth] Native sign-in fallback triggered:', nativeErr?.message || nativeErr);
+      console.warn('[GoogleAuth] Native sign-in error:', nativeErr?.message || nativeErr);
     }
-    // Return null cleanly so LetsYouInScreen handles in-app account selection modal
-    return null;
   }
 
-  // ── 2. Web Browser Only: Firebase Web OAuth Popup ──
+  // ── 2. Firebase OAuth Web Provider Fallback (Web browser or native fallback) ──
   try {
     const result = await signInWithPopup(auth, googleProvider);
     if (result && result.user) {
@@ -118,10 +118,9 @@ export const signInWithGoogle = async () => {
       };
     }
   } catch (webAuthErr) {
-    console.warn('[GoogleAuth] Web popup sign-in note:', webAuthErr?.message || webAuthErr);
+    console.warn('[GoogleAuth] Popup sign-in error:', webAuthErr?.message || webAuthErr);
   }
 
-  // ── 3. Return null: LetsYouInScreen will show the in-app account picker modal ──
   return null;
 };
 
