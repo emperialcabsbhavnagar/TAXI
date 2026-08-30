@@ -99,9 +99,9 @@ export const signInWithGoogle = async () => {
         return { name, email: email || '', photoURL, uid };
       }
     } catch (nativeErr) {
-      console.warn('[GoogleAuth] Native sign-in note:', nativeErr?.message || nativeErr);
+      console.warn('[GoogleAuth] Native sign-in fallback triggered:', nativeErr?.message || nativeErr);
     }
-    // On native mobile app, NEVER open external Chrome popup; return null for in-app fallback
+    // Return null cleanly so LetsYouInScreen handles in-app account selection modal
     return null;
   }
 
