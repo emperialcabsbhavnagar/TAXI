@@ -72,7 +72,7 @@ export const signInWithGoogle = async () => {
           clientId: '256291841083-ueibs1i67ue9dbpjas60ak2vbn37ubc2.apps.googleusercontent.com',
           serverClientId: '256291841083-ueibs1i67ue9dbpjas60ak2vbn37ubc2.apps.googleusercontent.com',
           scopes: ['profile', 'email'],
-          grantOfflineAccess: true,
+          grantOfflineAccess: false,
         });
       } catch (initErr) {
         console.log('[GoogleAuth] init note:', initErr?.message || initErr);
