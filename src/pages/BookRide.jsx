@@ -10,7 +10,8 @@ import {
   CheckCircle2, 
   ArrowRightLeft, 
   ShieldCheck, 
-  ChevronRight
+  ChevronRight,
+  Sparkles
 } from 'lucide-react';
 import { INITIAL_VEHICLES, INITIAL_PLACES, INITIAL_DESTINATIONS } from './AdminPortal';
 import './Pages.css';
@@ -27,6 +28,11 @@ export default function BookRide() {
   const [destinations, setDestinations] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   
+  // Trip Type State: 'one-way' (Point to Point) | 'round-trip' | 'custom-trip'
+  const [tripType, setTripType] = useState('one-way');
+  const [noOfDays, setNoOfDays] = useState(1);
+  const [returnDate, setReturnDate] = useState('');
+
   const [pickupLocation, setPickupLocation] = useState('');
   const [dropoffDestination, setDropoffDestination] = useState('');
   const [distanceKm, setDistanceKm] = useState(18);
@@ -44,7 +50,6 @@ export default function BookRide() {
   // Load places, destinations, and vehicles from Admin Portal storage
   useEffect(() => {
     const loadDynamicData = () => {
-      // 1. Fetch places & destinations added by Admin in Admin Panel
       const savedPlaces = localStorage.getItem('cabsy_places');
       const parsedPlaces = savedPlaces ? JSON.parse(savedPlaces) : INITIAL_PLACES;
       
@@ -52,7 +57,6 @@ export default function BookRide() {
       const parsedDest = savedDest ? JSON.parse(savedDest) : INITIAL_DESTINATIONS;
       setDestinations(parsedDest);
 
-      // Combine all unique admin places, routes & default locations
       const combinedPlaces = Array.from(new Set([
         ...(Array.isArray(parsedPlaces) ? parsedPlaces : []),
         ...(Array.isArray(parsedDest) ? parsedDest.flatMap(d => [d.pickup, d.dropoff]) : []),
@@ -131,7 +135,13 @@ export default function BookRide() {
 
   const currentVehicle = vehicles.find(v => v.id === selectedVehicleId) || vehicles[0] || FALLBACK_VEHICLES[0];
   const ratePerKm = parseFloat(currentVehicle?.rate || 15);
-  const calculatedFare = (distanceKm * ratePerKm).toFixed(2);
+
+  // Calculate effective distance & fare based on trip type
+  const effectiveDistanceKm = tripType === 'round-trip' 
+    ? distanceKm * 2 
+    : (tripType === 'custom-trip' ? Math.max(distanceKm, 300 * noOfDays) : distanceKm);
+
+  const calculatedFare = (effectiveDistanceKm * ratePerKm).toFixed(2);
 
   const handleSubmitBooking = (e) => {
     e.preventDefault();
@@ -146,6 +156,7 @@ export default function BookRide() {
     }
 
     const newInquiryId = `INQ-${Math.floor(1000 + Math.random() * 9000)}`;
+    const tripTypeLabel = tripType === 'custom-trip' ? 'Custom Outstation' : (tripType === 'round-trip' ? 'Round Trip (Return)' : 'Point to Point (One-Way)');
     const newInquiry = {
       id: newInquiryId,
       customerName,
@@ -154,9 +165,13 @@ export default function BookRide() {
       dropoff: dropoffDestination,
       vehicle: currentVehicle.name,
       fare: parseFloat(calculatedFare),
+      tripType: tripTypeLabel,
+      isCustom: tripType === 'custom-trip',
+      noOfDays: tripType === 'custom-trip' ? noOfDays : 1,
+      totalDistanceKm: effectiveDistanceKm,
       status: 'Pending',
       driver: 'Unassigned',
-      date: `${pickupDate} ${pickupTime}`
+      date: `${pickupDate} ${pickupTime}` + (tripType === 'round-trip' && returnDate ? ` (Return: ${returnDate})` : '')
     };
 
     db.saveInquiry(newInquiry);
@@ -222,10 +237,91 @@ export default function BookRide() {
             <div className="light-form-card" style={{ width: '100%' }}>
               <form onSubmit={handleSubmitBooking}>
                 
-                {/* STEP 1: ROUTE PICKER */}
+                {/* STEP 1: TRIP TYPE SELECTION */}
                 <div className="form-section">
                   <label className="section-title">
-                    <MapPin size={16} className="text-green" /> 1. Select Route Locations
+                    <Sparkles size={16} className="text-green" /> 1. Select Trip Type
+                  </label>
+                  
+                  <div className="trip-type-selector-grid mt-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setTripType('one-way')}
+                      style={{
+                        padding: '12px 10px',
+                        borderRadius: '14px',
+                        border: tripType === 'one-way' ? '2px solid #00b87c' : '1.5px solid #cbd5e1',
+                        background: tripType === 'one-way' ? '#f0fdf4' : '#ffffff',
+                        color: tripType === 'one-way' ? '#0f172a' : '#475569',
+                        fontWeight: '800',
+                        fontSize: '0.92rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '2px',
+                        boxShadow: tripType === 'one-way' ? '0 4px 14px rgba(0, 184, 124, 0.15)' : 'none',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <span>Point to Point</span>
+                      <span style={{ fontSize: '0.75rem', color: '#00b87c', fontWeight: '700' }}>One-Way</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTripType('round-trip')}
+                      style={{
+                        padding: '12px 10px',
+                        borderRadius: '14px',
+                        border: tripType === 'round-trip' ? '2px solid #00b87c' : '1.5px solid #cbd5e1',
+                        background: tripType === 'round-trip' ? '#f0fdf4' : '#ffffff',
+                        color: tripType === 'round-trip' ? '#0f172a' : '#475569',
+                        fontWeight: '800',
+                        fontSize: '0.92rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '2px',
+                        boxShadow: tripType === 'round-trip' ? '0 4px 14px rgba(0, 184, 124, 0.15)' : 'none',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <span>Round Trip</span>
+                      <span style={{ fontSize: '0.75rem', color: '#00b87c', fontWeight: '700' }}>Return Journey</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTripType('custom-trip')}
+                      style={{
+                        padding: '12px 10px',
+                        borderRadius: '14px',
+                        border: tripType === 'custom-trip' ? '2px solid #00b87c' : '1.5px solid #cbd5e1',
+                        background: tripType === 'custom-trip' ? '#f0fdf4' : '#ffffff',
+                        color: tripType === 'custom-trip' ? '#0f172a' : '#475569',
+                        fontWeight: '800',
+                        fontSize: '0.92rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '2px',
+                        boxShadow: tripType === 'custom-trip' ? '0 4px 14px rgba(0, 184, 124, 0.15)' : 'none',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <span>Custom Outstation</span>
+                      <span style={{ fontSize: '0.75rem', color: '#00b87c', fontWeight: '700' }}>Multi-Day Rental</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* STEP 2: ROUTE PICKER */}
+                <div className="form-section mt-3">
+                  <label className="section-title">
+                    <MapPin size={16} className="text-green" /> 2. Select Route Locations
                   </label>
                   
                   <div className="route-picker-row mt-2">
@@ -269,14 +365,22 @@ export default function BookRide() {
                   
                   <div className="route-distance-chip mt-2">
                     <span className="dot green"></span>
-                    <span>Configured Distance: <strong>{distanceKm} KM</strong></span>
+                    <span>
+                      {tripType === 'round-trip' 
+                        ? `Round Trip Distance: ${effectiveDistanceKm} KM (${distanceKm} KM × 2)` 
+                        : (tripType === 'custom-trip' 
+                            ? `Custom Outstation Est. Distance: ${effectiveDistanceKm} KM`
+                            : `Distance: ${distanceKm} KM`
+                          )
+                      }
+                    </span>
                   </div>
                 </div>
 
-                {/* STEP 2: VEHICLE CHOICE */}
+                {/* STEP 3: VEHICLE CHOICE */}
                 <div className="form-section mt-3">
                   <label className="section-title">
-                    <Car size={16} className="text-green" /> 2. Choose Vehicle Class
+                    <Car size={16} className="text-green" /> 3. Choose Vehicle Class
                   </label>
 
                   <div className="vehicle-light-grid mt-2">
@@ -297,10 +401,10 @@ export default function BookRide() {
                   </div>
                 </div>
 
-                {/* STEP 3: CONTACT & SCHEDULE */}
+                {/* STEP 4: CONTACT & SCHEDULE */}
                 <div className="form-section mt-3">
                   <label className="section-title">
-                    <User size={16} className="text-green" /> 3. Contact & Schedule
+                    <User size={16} className="text-green" /> 4. Contact & Schedule
                   </label>
 
                   <div className="form-row-4col mt-2">
@@ -329,7 +433,7 @@ export default function BookRide() {
                     </div>
 
                     <div className="field-group">
-                      <span className="field-label">Date</span>
+                      <span className="field-label">Pickup Date</span>
                       <input 
                         type="date" 
                         className="light-input"
@@ -349,6 +453,37 @@ export default function BookRide() {
                         required
                       />
                     </div>
+
+                    {/* Conditional Return Date for Round Trip */}
+                    {tripType === 'round-trip' && (
+                      <div className="field-group">
+                        <span className="field-label">Return Date</span>
+                        <input 
+                          type="date" 
+                          className="light-input"
+                          value={returnDate}
+                          onChange={e => setReturnDate(e.target.value)}
+                        />
+                      </div>
+                    )}
+
+                    {/* Conditional Days Selector for Custom Outstation */}
+                    {tripType === 'custom-trip' && (
+                      <div className="field-group">
+                        <span className="field-label">Rental Duration</span>
+                        <select 
+                          className="light-select"
+                          value={noOfDays}
+                          onChange={e => setNoOfDays(Number(e.target.value))}
+                        >
+                          <option value={1}>1 Day</option>
+                          <option value={2}>2 Days</option>
+                          <option value={3}>3 Days</option>
+                          <option value={4}>4 Days</option>
+                          <option value={5}>5+ Days</option>
+                        </select>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -378,11 +513,17 @@ export default function BookRide() {
 
                   <div className="summary-list mt-3">
                     <div className="summary-row">
-                      <span>Distance:</span>
-                      <strong>{distanceKm} KM</strong>
+                      <span>Trip Type:</span>
+                      <strong className="text-green">
+                        {tripType === 'custom-trip' ? 'Custom Outstation' : (tripType === 'round-trip' ? 'Round Trip' : 'Point to Point (One-Way)')}
+                      </strong>
                     </div>
                     <div className="summary-row">
-                      <span>Vehicle:</span>
+                      <span>Total Distance:</span>
+                      <strong>{effectiveDistanceKm} KM {tripType === 'round-trip' ? '(Round Trip)' : ''}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Vehicle Class:</span>
                       <strong>{currentVehicle.name}</strong>
                     </div>
                     <div className="summary-row">
@@ -394,7 +535,12 @@ export default function BookRide() {
                   <div className="fare-big-box mt-3">
                     <div className="fare-label">Estimated Total Fare</div>
                     <div className="fare-price">₹{calculatedFare}</div>
-                    <small className="fare-note">Fixed transparent pricing based on KM</small>
+                    <small className="fare-note">
+                      {tripType === 'round-trip' 
+                        ? 'Includes Return Journey (2× Distance)' 
+                        : (tripType === 'custom-trip' ? `Custom ${noOfDays} Day Rental Package` : 'Fixed transparent pricing based on KM')
+                      }
+                    </small>
                   </div>
 
                   <div className="trust-badge mt-3">
