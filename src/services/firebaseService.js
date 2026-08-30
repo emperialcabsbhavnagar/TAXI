@@ -19,14 +19,14 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 
-// Firebase Credentials for Project: taxibhavnagar
+// Firebase Credentials matching android/app/google-services.json (Project: taxi-c2ef8)
 export const firebaseConfig = {
-  apiKey: "AIzaSyDSfsRGsL5UfO6VpYKUSBpDeLLRPSDjvD0",
-  authDomain: "taxibhavnagar.firebaseapp.com",
-  projectId: "taxibhavnagar",
-  storageBucket: "taxibhavnagar.firebasestorage.app",
-  messagingSenderId: "555496247847",
-  appId: "1:555496247847:web:7c73e1a0ccb579fab8b402",
+  apiKey: "AIzaSyCeZfwrDSwQokxyRejA3EtJYE_AYfRriFo",
+  authDomain: "taxi-c2ef8.firebaseapp.com",
+  projectId: "taxi-c2ef8",
+  storageBucket: "taxi-c2ef8.firebasestorage.app",
+  messagingSenderId: "256291841083",
+  appId: "1:256291841083:web:7c73e1a0ccb579fab8b402",
   measurementId: "G-9GEY1LG188"
 };
 
@@ -64,13 +64,13 @@ const isNativeApp = () => {
  * Falls through to in-app fallback modal if native fails.
  */
 export const signInWithGoogle = async () => {
-  // ── Native Android/iOS: Real device account picker ──
+  // ── 1. Native Android/iOS: Real device account picker ──
   if (isNativeApp()) {
     try {
-      // Initialize the native plugin (safe to call multiple times)
       try {
         GoogleAuth.initialize({
           clientId: '256291841083-ueibs1i67ue9dbpjas60ak2vbn37ubc2.apps.googleusercontent.com',
+          serverClientId: '256291841083-ueibs1i67ue9dbpjas60ak2vbn37ubc2.apps.googleusercontent.com',
           scopes: ['profile', 'email'],
           grantOfflineAccess: true,
         });
@@ -78,9 +78,6 @@ export const signInWithGoogle = async () => {
         console.log('[GoogleAuth] init note:', initErr?.message || initErr);
       }
 
-      // This triggers the native Android system bottom-sheet account picker
-      // showing all real Google accounts logged into the phone.
-      // Requires SHA-1 registered in Firebase Console to work natively.
       const googleUser = await GoogleAuth.signIn();
 
       if (googleUser) {
@@ -101,12 +98,27 @@ export const signInWithGoogle = async () => {
         return { name, email: email || '', photoURL, uid };
       }
     } catch (nativeErr) {
-      // User cancelled the picker, or SHA-1 not registered (will fall through)
-      console.warn('[GoogleAuth] Native sign-in failed:', nativeErr?.message || nativeErr);
+      console.warn('[GoogleAuth] Native sign-in note:', nativeErr?.message || nativeErr);
     }
   }
 
-  // ── Return null: LetsYouInScreen will show the in-app fallback picker ──
+  // ── 2. Firebase Web OAuth Popup Fallback (Web browser or fallback on native) ──
+  try {
+    const result = await signInWithPopup(auth, googleProvider);
+    if (result && result.user) {
+      const user = result.user;
+      return {
+        name: user.displayName || (user.email ? user.email.split('@')[0] : 'Google User'),
+        email: user.email || '',
+        photoURL: user.photoURL || null,
+        uid: user.uid || ('goog_' + Date.now())
+      };
+    }
+  } catch (webAuthErr) {
+    console.warn('[GoogleAuth] Web popup sign-in note:', webAuthErr?.message || webAuthErr);
+  }
+
+  // ── 3. Return null: LetsYouInScreen will show the in-app account picker modal ──
   return null;
 };
 
