@@ -622,12 +622,26 @@
   display: block;
 }
 
-/* METRICS GRID */
-/* METRICS GRID */
+/* METRICS & DASHBOARD GRID */
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 1.25rem;
+}
+
+.dashboard-columns-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 992px) {
+  .dashboard-columns-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 .metric-card {
