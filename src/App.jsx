@@ -18,6 +18,34 @@ function ScrollToTop() {
   const { pathname } = useLocation();
   React.useEffect(() => {
     window.scrollTo(0, 0);
+
+    // Dynamic SEO Title & Meta Description Engine per Route
+    let title = "EMPERIAL CABS — #1 Taxi Service & Outstation Cab Booking in Bhavnagar & Gujarat";
+    let desc = "Book 24/7 premium taxi & outstation cab service with EMPERIAL CABS in Bhavnagar, Ahmedabad Airport, Vadodara, Surat & all over Gujarat.";
+
+    if (pathname === '/book-ride') {
+      title = "Book Taxi Online | EMPERIAL CABS Bhavnagar — Instant Fare Calculation";
+      desc = "Calculate fare instantly and book your outstation cab or one-way taxi from Bhavnagar to Ahmedabad, Vadodara, Surat & Mumbai.";
+    } else if (pathname === '/services') {
+      title = "Fleet Vehicles & Taxi Rates | EMPERIAL CABS — Sedans, SUVs & Luxury Cabs";
+      desc = "Explore our premium fleet of AC sedans, XL SUVs, Eco EVs, and luxury executive cabs at the best per-KM rates in Gujarat.";
+    } else if (pathname === '/about') {
+      title = "About EMPERIAL CABS | #1 Outstation Taxi & Cab Service in Bhavnagar";
+      desc = "Learn about EMPERIAL CABS — Gujarat's trusted cab operator providing safe, punctual, and affordable rides with verified drivers.";
+    } else if (pathname === '/contact') {
+      title = "Contact EMPERIAL CABS | 24/7 Taxi Booking Helpline Bhavnagar";
+      desc = "Get in touch with EMPERIAL CABS. Call, email, or send a message for corporate cab bookings, driver partnerships & support.";
+    } else if (pathname === '/faq') {
+      title = "Frequently Asked Questions (FAQ) | EMPERIAL CABS Bhavnagar";
+      desc = "Find answers to top questions about EMPERIAL CABS rates, cancellation policies, outstation tolls, and driver assignment.";
+    } else if (pathname.startsWith('/admin')) {
+      title = "Dispatcher Admin Portal | EMPERIAL CABS";
+      desc = "Internal Admin Dispatcher Operations Management System.";
+    }
+
+    document.title = title;
+    const metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) metaDesc.setAttribute('content', desc);
   }, [pathname]);
   return null;
 }
