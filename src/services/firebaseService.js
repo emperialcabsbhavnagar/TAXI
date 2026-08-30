@@ -64,7 +64,7 @@ const isNativeApp = () => {
  * Falls through to in-app fallback modal if native fails.
  */
 export const signInWithGoogle = async () => {
-  // ── 1. Native Android/iOS: Real device account picker ──
+  // ── 1. Native Android/iOS: Native system account picker bottom sheet (Inside App Only) ──
   if (isNativeApp()) {
     try {
       try {
@@ -78,6 +78,7 @@ export const signInWithGoogle = async () => {
         console.log('[GoogleAuth] init note:', initErr?.message || initErr);
       }
 
+      // Triggers native Android Google Account bottom sheet picker (all phone accounts)
       const googleUser = await GoogleAuth.signIn();
 
       if (googleUser) {
@@ -100,9 +101,11 @@ export const signInWithGoogle = async () => {
     } catch (nativeErr) {
       console.warn('[GoogleAuth] Native sign-in note:', nativeErr?.message || nativeErr);
     }
+    // On native mobile app, NEVER open external Chrome popup; return null for in-app fallback
+    return null;
   }
 
-  // ── 2. Firebase Web OAuth Popup Fallback (Web browser or fallback on native) ──
+  // ── 2. Web Browser Only: Firebase Web OAuth Popup ──
   try {
     const result = await signInWithPopup(auth, googleProvider);
     if (result && result.user) {

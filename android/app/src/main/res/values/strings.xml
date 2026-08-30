@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">EMPERIAL CABS</string>
     <string name="title_activity_main">EMPERIAL CABS</string>
-    <string name="package_name">com.cabsy.ridebooking</string>
-    <string name="custom_url_scheme">com.cabsy.ridebooking</string>
+    <string name="package_name">com.emperialcabs.booking</string>
+    <string name="custom_url_scheme">com.emperialcabs.booking</string>
     <string name="server_client_id">256291841083-ueibs1i67ue9dbpjas60ak2vbn37ubc2.apps.googleusercontent.com</string>
 </resources>
