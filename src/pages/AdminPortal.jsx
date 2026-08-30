@@ -1796,8 +1796,8 @@ export default function AdminPortal() {
                             {inq.status}
                           </span>
                         </td>
-                        <td data-label="Actions" style={{ whiteSpace: 'nowrap', paddingRight: '12px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '3px', flexWrap: 'nowrap', justifyContent: 'flex-start' }}>
+                        <td data-label="Actions" style={{ paddingRight: '6px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', justifyContent: 'flex-start' }}>
                             <button 
                               className="btn-action-view"
                               title="View Detailed Trip Receipt & Coupon Info"
