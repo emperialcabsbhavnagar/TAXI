@@ -1661,19 +1661,19 @@ export default function AdminPortal() {
                     <tbody>
                       {sortedInquiries.slice(0, 5).map(inq => (
                         <tr key={inq.id}>
-                          <td><strong>{inq.id}</strong></td>
-                          <td>{resolveCustomerName(inq)}<br /><small className="text-muted">{inq.customerPhone}</small></td>
-                          <td className="route-cell">
+                          <td data-label="ID"><strong>{inq.id}</strong></td>
+                          <td data-label="Customer">{resolveCustomerName(inq)}<br /><small className="text-muted">{inq.customerPhone}</small></td>
+                          <td data-label="Route" className="route-cell">
                             <span className="text-green">●</span> {inq.pickup}<br />
                             <span className="text-red">●</span> {inq.dropoff}
                           </td>
-                          <td><strong>₹{Number(inq.fare).toFixed(2)}</strong></td>
-                          <td>
+                          <td data-label="Fare"><strong>₹{Number(inq.fare).toFixed(2)}</strong></td>
+                          <td data-label="Status">
                             <span className={`status-tag status-${inq.status.toLowerCase()}`}>
                               {inq.status}
                             </span>
                           </td>
-                          <td>
+                          <td data-label="Action">
                             {inq.status === 'Pending' ? (
                               <button 
                                 className="btn btn-sm btn-primary-green"
@@ -1759,24 +1759,24 @@ export default function AdminPortal() {
                   <tbody>
                     {sortedInquiries.filter(i => !i.isCustom && i.tripType !== 'Custom Trip' && i.tripType !== 'custom-trip').map(inq => (
                       <tr key={inq.id}>
-                        <td>
+                        <td data-label="Inquiry ID">
                           <strong style={{ color: '#0F172A' }}>{inq.id}</strong>
                           <div className="text-muted text-xs" style={{ marginTop: '2px' }}>{inq.date}</div>
                         </td>
-                        <td>
+                        <td data-label="Customer">
                           <strong style={{ color: '#0F172A' }}>{resolveCustomerName(inq)}</strong>
                           <div className="text-muted text-xs" style={{ marginTop: '2px' }}>📞 {inq.customerPhone}</div>
                         </td>
-                        <td style={{ maxWidth: '140px', wordBreak: 'break-word', whiteSpace: 'normal' }}>
+                        <td data-label="Pick-up" style={{ maxWidth: '140px', wordBreak: 'break-word', whiteSpace: 'normal' }}>
                           <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#10B981', marginRight: '6px' }}></span>
                           {inq.pickup}
                         </td>
-                        <td style={{ maxWidth: '140px', wordBreak: 'break-word', whiteSpace: 'normal' }}>
+                        <td data-label="Dropoff" style={{ maxWidth: '140px', wordBreak: 'break-word', whiteSpace: 'normal' }}>
                           <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#EF4444', marginRight: '6px' }}></span>
                           {inq.dropoff}
                         </td>
-                        <td><span className="pill-badge-sm" style={{ whiteSpace: 'nowrap', fontWeight: '700' }}>{inq.vehicle}</span></td>
-                        <td>
+                        <td data-label="Vehicle"><span className="pill-badge-sm" style={{ whiteSpace: 'nowrap', fontWeight: '700' }}>{inq.vehicle}</span></td>
+                        <td data-label="Fare">
                           <strong className="text-green" style={{ fontSize: '0.95rem' }}>₹{Number(inq.fare).toFixed(2)}</strong>
                           {inq.walletDiscountUsed > 0 && (
                             <div style={{ fontSize: '11px', color: '#059669', fontWeight: '700', marginTop: '2px' }}>
@@ -1784,19 +1784,19 @@ export default function AdminPortal() {
                             </div>
                           )}
                         </td>
-                        <td>
+                        <td data-label="Driver">
                           {inq.driver && inq.driver !== '-' ? (
                             <span className="font-bold flex align-center gap-1" style={{ color: '#059669' }}><UserCheck size={14} /> {inq.driver}</span>
                           ) : (
                             <span className="text-muted italic">Unassigned</span>
                           )}
                         </td>
-                        <td>
+                        <td data-label="Status">
                           <span className={`status-tag status-${inq.status.toLowerCase()}`}>
                             {inq.status}
                           </span>
                         </td>
-                        <td style={{ whiteSpace: 'nowrap', paddingRight: '12px' }}>
+                        <td data-label="Actions" style={{ whiteSpace: 'nowrap', paddingRight: '12px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '3px', flexWrap: 'nowrap', justifyContent: 'flex-start' }}>
                             <button 
                               className="btn-action-view"
