@@ -488,18 +488,12 @@ export default function BookRide() {
                     </div>
                   )}
                   
-                  <div className="route-distance-chip mt-2">
-                    <span className="dot green"></span>
-                    <span>
-                      {tripType === 'round-trip' 
-                        ? `Round Trip Distance: ${effectiveDistanceKm} KM (${distanceKm} KM × 2)` 
-                        : (tripType === 'custom-trip' 
-                            ? `Custom Outstation Est. Package: ${effectiveDistanceKm} KM (${noOfDays} Day${noOfDays > 1 ? 's' : ''})`
-                            : `Distance: ${distanceKm} KM`
-                          )
-                      }
-                    </span>
-                  </div>
+                  {tripType === 'one-way' && (
+                    <div className="route-distance-chip mt-2">
+                      <span className="dot green"></span>
+                      <span>Distance: {distanceKm} KM</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* STEP 3: VEHICLE CHOICE */}
@@ -653,18 +647,25 @@ export default function BookRide() {
                         {tripType === 'custom-trip' ? `Custom Outstation (${noOfDays} Day Rental)` : (tripType === 'round-trip' ? 'Round Trip' : 'Point to Point (One-Way)')}
                       </strong>
                     </div>
-                    <div className="summary-row">
-                      <span>Total Distance:</span>
-                      <strong>{effectiveDistanceKm} KM {tripType === 'round-trip' ? '(Round Trip)' : (tripType === 'custom-trip' ? `(${noOfDays} Day Package)` : '')}</strong>
-                    </div>
+
+                    {tripType === 'one-way' && (
+                      <div className="summary-row">
+                        <span>Total Distance:</span>
+                        <strong>{effectiveDistanceKm} KM</strong>
+                      </div>
+                    )}
+
                     <div className="summary-row">
                       <span>Vehicle Class:</span>
                       <strong>{currentVehicle.name}</strong>
                     </div>
-                    <div className="summary-row">
-                      <span>Rate:</span>
-                      <strong className="text-green">₹{currentVehicle.rate} / km</strong>
-                    </div>
+
+                    {tripType === 'one-way' && (
+                      <div className="summary-row">
+                        <span>Rate:</span>
+                        <strong className="text-green">₹{currentVehicle.rate} / km</strong>
+                      </div>
+                    )}
                   </div>
 
                   <div className="fare-big-box mt-3">
