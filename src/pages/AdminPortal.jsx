@@ -248,27 +248,27 @@ export default function AdminPortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
-  // State — initialize with localStorage or fallback demo records
+  // State — initialize with localStorage or empty array (no hardcoded fallback)
   const [inquiries, setInquiries] = useState(() => {
-    const saved = localStorage.getItem('cabsy_inquiries');
-    if (saved) {
+    const saved = localStorage.getItem('cabsy_inquiries') || localStorage.getItem('emperial_cabs_inquiries');
+    if (saved !== null) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       } catch (e) {}
     }
-    return INITIAL_INQUIRIES;
+    return [];
   });
   const [firestoreLoading, setFirestoreLoading] = useState(true);
   const [customers, setCustomers] = useState(() => {
-    const saved = localStorage.getItem('cabsy_customers');
-    if (saved) {
+    const saved = localStorage.getItem('cabsy_customers') || localStorage.getItem('emperial_cabs_customers');
+    if (saved !== null) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       } catch (e) {}
     }
-    return INITIAL_CUSTOMERS;
+    return [];
   });
 
   // Always sort inquiries by newest first (Latest date/timestamp at the top across all 3 tabs)
@@ -347,34 +347,14 @@ export default function AdminPortal() {
   const [newPlaceInput, setNewPlaceInput] = useState('');
 
   const [contactMessages, setContactMessages] = useState(() => {
-    const saved = localStorage.getItem('cabsy_contact_messages');
-    if (saved) {
-      try { return JSON.parse(saved); } catch(e){}
+    const saved = localStorage.getItem('cabsy_contact_messages') || localStorage.getItem('cabsy_messages');
+    if (saved !== null) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      } catch(e){}
     }
-    return [
-      {
-        id: 'MSG-1001',
-        name: 'Amit Sharma',
-        email: 'amit.sharma@gmail.com',
-        phone: '+91 98112 34567',
-        subject: 'Corporate Account',
-        message: 'Hello Emperial Cabs team, we are looking for monthly executive sedan cab services for our office staff in Connaught Place, New Delhi. Please send rate card.',
-        timestamp: new Date().toISOString(),
-        date: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-        status: 'Unread'
-      },
-      {
-        id: 'MSG-1002',
-        name: 'Priya Patel',
-        email: 'priya.patel@techcorp.in',
-        phone: '+91 99099 88776',
-        subject: 'Taxi Booking Inquiry',
-        message: 'Do you offer round trips from Bhavnagar to Ahmedabad Airport with luggage space for 4 adults? What is the estimated total price?',
-        timestamp: new Date().toISOString(),
-        date: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-        status: 'Read'
-      }
-    ];
+    return [];
   });
 
   const [settings, setSettings] = useState(() => {
@@ -512,11 +492,8 @@ export default function AdminPortal() {
   // Notification System State
   const [notifications, setNotifications] = useState(() => {
     const list = getAdminNotifications();
-    if (list && list.length > 0) return list;
-    return [
-      { id: 1, type: 'inquiry', title: 'New Ride Inquiry INQ-9012', desc: 'Downtown Terminal to Airport T3 (₹65.00)', time: '2 mins ago', read: false },
-      { id: 2, type: 'driver', title: 'Fleet Driver Active', desc: 'Alex Morgan status changed to On Duty', time: '12 mins ago', read: false }
-    ];
+    if (list !== null && Array.isArray(list)) return list;
+    return [];
   });
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
 
@@ -1315,14 +1292,17 @@ export default function AdminPortal() {
     if (window.confirm("⚠️ Reset System Inquiries & Messages?\n\nThis will purge all booking inquiries, contact messages, notifications, and customer logs.\n\nNOTE: Vehicles, Drivers, Destinations, and KM distance matrix will NOT be deleted.")) {
       try {
         await purgeAllDataFromMySQL().catch(() => {});
-        localStorage.removeItem('cabsy_inquiries');
-        localStorage.removeItem('emperial_cabs_inquiries');
-        localStorage.removeItem('cabsy_customers');
-        localStorage.removeItem('emperial_cabs_customers');
-        localStorage.removeItem('emperial_cabs_contact_messages');
-        localStorage.removeItem('cabsy_contact_messages');
-        localStorage.removeItem('emperial_cabs_notifications');
-        localStorage.removeItem('cabsy_notifications');
+        localStorage.setItem('cabsy_inquiries', '[]');
+        localStorage.setItem('emperial_cabs_inquiries', '[]');
+        localStorage.setItem('cabsy_customers', '[]');
+        localStorage.setItem('emperial_cabs_customers', '[]');
+        localStorage.setItem('emperial_cabs_contact_messages', '[]');
+        localStorage.setItem('cabsy_contact_messages', '[]');
+        localStorage.setItem('cabsy_messages', '[]');
+        localStorage.setItem('emperial_cabs_notifications', '[]');
+        localStorage.setItem('cabsy_notifications', '[]');
+        localStorage.setItem('cabsy_admin_notifications', '[]');
+        localStorage.setItem('cabsy_customer_notifications', '[]');
 
         setInquiries([]);
         setCustomers([]);
