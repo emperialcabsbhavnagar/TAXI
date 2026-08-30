@@ -1793,9 +1793,9 @@
 
 .light-select:focus,
 .light-input:focus {
-  border-color: #00b87c;
+  border-color: #FDC511;
   background: #ffffff;
-  box-shadow: 0 0 0 4px rgba(0, 184, 124, 0.15);
+  box-shadow: 0 0 0 4px rgba(253, 197, 17, 0.25);
 }
 
 .light-btn-swap {
@@ -1803,7 +1803,7 @@
   width: 52px;
   background: #f1f5f9;
   border: 1.5px solid #cbd5e1;
-  color: #00b87c;
+  color: #0f172a;
   border-radius: 14px;
   cursor: pointer;
   display: flex;
@@ -1813,9 +1813,9 @@
 }
 
 .light-btn-swap:hover {
-  background: #00b87c;
-  color: #ffffff;
-  border-color: #00b87c;
+  background: #FDC511;
+  color: #0f172a;
+  border-color: #FDC511;
   transform: rotate(180deg);
 }
 
@@ -1851,14 +1851,14 @@
 }
 
 .vehicle-light-card:hover {
-  border-color: #00b87c;
-  background: #f0fdf4;
+  border-color: #FDC511;
+  background: #FFFBE6;
 }
 
 .vehicle-light-card.active {
-  border-color: #00b87c;
-  background: #f0fdf4;
-  box-shadow: 0 6px 20px rgba(0, 184, 124, 0.18);
+  border-color: #FDC511;
+  background: #FFFBE6;
+  box-shadow: 0 6px 20px rgba(253, 197, 17, 0.25);
 }
 
 .vehicle-thumb {
@@ -1879,8 +1879,8 @@
 .vehicle-price {
   font-size: 0.9rem;
   font-weight: 800;
-  color: #00b87c;
-  background: #e6f7f2;
+  color: #0f172a;
+  background: #FDC511;
   padding: 0.3rem 0.65rem;
   border-radius: 8px;
 }
@@ -1894,26 +1894,27 @@
 .light-submit-btn {
   width: 100%;
   height: 58px;
-  background: #00b87c;
-  color: #ffffff;
+  background: linear-gradient(135deg, #FDC511 0%, #F59E0B 100%);
+  color: #0f172a;
   border: none;
   border-radius: 16px;
   font-size: 1.15rem;
-  font-weight: 800;
+  font-weight: 900;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.6rem;
   cursor: pointer;
-  box-shadow: 0 6px 20px rgba(0, 184, 124, 0.35);
+  box-shadow: 0 6px 20px rgba(253, 197, 17, 0.4);
   transition: all 0.2s ease;
   letter-spacing: 0.02em;
 }
 
 .light-submit-btn:hover {
-  background: #059669;
+  background: #E0AC0E;
+  color: #0f172a;
   transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 184, 124, 0.45);
+  box-shadow: 0 8px 25px rgba(253, 197, 17, 0.55);
 }
 
 /* RIGHT SUMMARY CARD (BIG & PROMINENT) */
@@ -1969,7 +1970,7 @@
   flex-shrink: 0;
 }
 
-.timeline-dot.green { background: #00b87c; box-shadow: 0 0 8px rgba(0, 184, 124, 0.4); }
+.timeline-dot.green { background: #FDC511; box-shadow: 0 0 8px rgba(253, 197, 17, 0.6); }
 .timeline-dot.red { background: #ef4444; box-shadow: 0 0 8px rgba(239, 68, 68, 0.4); }
 
 .timeline-line {
@@ -1993,8 +1994,8 @@
 }
 
 .fare-big-box {
-  background: #f0fdf4;
-  border: 2px solid #bbf7d0;
+  background: #FFFBE6;
+  border: 2px solid #FDE68A;
   border-radius: 18px;
   padding: 1.25rem;
   text-align: center;
@@ -2003,20 +2004,20 @@
 .fare-label {
   font-size: 0.9rem;
   font-weight: 800;
-  color: #166534;
+  color: #92400E;
 }
 
 .fare-price {
   font-size: 2.8rem;
   font-weight: 900;
-  color: #00b87c;
+  color: #0F172A;
   margin: 0.2rem 0;
   line-height: 1;
 }
 
 .fare-note {
   font-size: 0.78rem;
-  color: #15803d;
+  color: #B45309;
   font-weight: 600;
 }
 
@@ -2042,8 +2043,8 @@
 .success-icon-badge {
   width: 84px;
   height: 84px;
-  background: #e6f7f2;
-  color: #00b87c;
+  background: #FFFBE6;
+  color: #F59E0B;
   border-radius: 50%;
   display: flex;
   align-items: center;
