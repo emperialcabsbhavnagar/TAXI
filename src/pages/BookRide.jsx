@@ -218,8 +218,8 @@ export default function BookRide() {
           /* SINGLE-SCREEN LIGHT FORM GRID */
           <div className="light-booking-grid">
             
-            {/* LEFT FORM COLUMN */}
-            <div className="light-form-card">
+            {/* SINGLE COLUMN FLUID FORM WITH TRIP SUMMARY FIRST AND SUBMIT BUTTON AT THE VERY BOTTOM */}
+            <div className="light-form-card" style={{ width: '100%' }}>
               <form onSubmit={handleSubmitBooking}>
                 
                 {/* STEP 1: ROUTE PICKER */}
@@ -352,63 +352,64 @@ export default function BookRide() {
                   </div>
                 </div>
 
+                {/* TRIP SUMMARY (DISPLAYED ABOVE SUBMIT BUTTON) */}
+                <div className="light-summary-card mt-3">
+                  <h3 className="summary-title">Trip Summary</h3>
+
+                  <div className="route-timeline mt-2">
+                    <div className="timeline-item">
+                      <span className="timeline-dot green"></span>
+                      <div>
+                        <small>PICK-UP LOCATION</small>
+                        <strong>{pickupLocation}</strong>
+                      </div>
+                    </div>
+
+                    <div className="timeline-line"></div>
+
+                    <div className="timeline-item">
+                      <span className="timeline-dot red"></span>
+                      <div>
+                        <small>DROP-OFF DESTINATION</small>
+                        <strong>{dropoffDestination}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="summary-list mt-3">
+                    <div className="summary-row">
+                      <span>Distance:</span>
+                      <strong>{distanceKm} KM</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Vehicle:</span>
+                      <strong>{currentVehicle.name}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Rate:</span>
+                      <strong className="text-green">₹{currentVehicle.rate} / km</strong>
+                    </div>
+                  </div>
+
+                  <div className="fare-big-box mt-3">
+                    <div className="fare-label">Estimated Total Fare</div>
+                    <div className="fare-price">₹{calculatedFare}</div>
+                    <small className="fare-note">Fixed transparent pricing based on KM</small>
+                  </div>
+
+                  <div className="trust-badge mt-3">
+                    <ShieldCheck size={18} className="text-green" style={{ flexShrink: 0, display: 'block' }} />
+                    <span style={{ fontSize: '13px', fontWeight: '600', color: '#475569', lineHeight: '1.2' }}>
+                      Instant confirmation & driver dispatch.
+                    </span>
+                  </div>
+                </div>
+
+                {/* FINAL ACTION BUTTON (VERY LAST AT THE BOTTOM) */}
                 <button type="submit" className="light-submit-btn mt-3">
                   Book Ride Now <ChevronRight size={18} />
                 </button>
               </form>
-            </div>
-
-            {/* RIGHT FARE SUMMARY CARD */}
-            <div className="light-summary-card">
-              <h3 className="summary-title">Trip Summary</h3>
-
-              <div className="route-timeline mt-3">
-                <div className="timeline-item">
-                  <span className="timeline-dot green"></span>
-                  <div>
-                    <small>PICK-UP LOCATION</small>
-                    <strong>{pickupLocation}</strong>
-                  </div>
-                </div>
-
-                <div className="timeline-line"></div>
-
-                <div className="timeline-item">
-                  <span className="timeline-dot red"></span>
-                  <div>
-                    <small>DROP-OFF DESTINATION</small>
-                    <strong>{dropoffDestination}</strong>
-                  </div>
-                </div>
-              </div>
-
-              <div className="summary-list mt-3">
-                <div className="summary-row">
-                  <span>Distance:</span>
-                  <strong>{distanceKm} KM</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Vehicle:</span>
-                  <strong>{currentVehicle.name}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Rate:</span>
-                  <strong className="text-green">₹{currentVehicle.rate} / km</strong>
-                </div>
-              </div>
-
-              <div className="fare-big-box mt-3">
-                <div className="fare-label">Estimated Total Fare</div>
-                <div className="fare-price">₹{calculatedFare}</div>
-                <small className="fare-note">Fixed transparent pricing based on KM</small>
-              </div>
-
-              <div className="trust-badge mt-3">
-                <ShieldCheck size={18} className="text-green" style={{ flexShrink: 0, display: 'block' }} />
-                <span style={{ fontSize: '13px', fontWeight: '600', color: '#475569', lineHeight: '1.2' }}>
-                  Instant confirmation & driver dispatch.
-                </span>
-              </div>
             </div>
 
           </div>
