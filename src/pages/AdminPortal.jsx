@@ -2230,6 +2230,82 @@ export default function AdminPortal() {
                   </tbody>
                 </table>
               </div>
+
+              {/* HOSTINGER ALIGNED MOBILE CARDS FOR FINAL TRIPS */}
+              <div className="admin-mobile-card-list">
+                {sortedInquiries.filter(i => 
+                  !i.isCustom && i.tripType !== 'Custom Trip' && i.tripType !== 'custom-trip' &&
+                  (i.status === 'Confirmed' || 
+                  i.status === 'In Progress' || 
+                  i.status === 'On Ride')
+                ).map((inq) => {
+                  const isConfirmed = inq.status === 'Confirmed';
+                  const isInProgress = inq.status === 'In Progress' || inq.status === 'On Ride';
+
+                  return (
+                    <div key={inq.id} className="hostinger-admin-card" style={{ background: isInProgress ? '#ECFDF5' : '#FFFFFF' }}>
+                      <div className="hostinger-card-top">
+                        <div className="hostinger-card-id-group">
+                          <span className="hostinger-card-id">{inq.id}</span>
+                          <span className="hostinger-card-date">• {inq.date}</span>
+                        </div>
+                        {isConfirmed && <span className="status-tag status-confirmed">Confirmed</span>}
+                        {isInProgress && <span className="status-tag status-on-ride">● In Progress</span>}
+                      </div>
+                      <div className="hostinger-card-customer">
+                        <span className="hostinger-cust-name">{resolveCustomerName(inq)}</span>
+                        <span className="hostinger-cust-phone">📞 {inq.customerPhone}</span>
+                      </div>
+                      <div className="hostinger-card-route">
+                        <div className="hostinger-route-item">
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981', flexShrink: 0 }}></span>
+                          <span>{inq.pickup}</span>
+                        </div>
+                        <div className="hostinger-route-item">
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EF4444', flexShrink: 0 }}></span>
+                          <span>{inq.dropoff}</span>
+                        </div>
+                      </div>
+                      <div className="hostinger-card-footer">
+                        <span className="hostinger-vehicle-badge">{inq.vehicle || 'Taxi'}</span>
+                        <span className="hostinger-fare-tag">₹{Number(inq.fare || 0).toFixed(2)}</span>
+                      </div>
+                      <div className="hostinger-driver-line">
+                        <UserCheck size={13} color="#059669" /> Driver: <strong>{inq.driver || 'Assigned Driver'}</strong>
+                      </div>
+                      <div className="hostinger-card-actions">
+                        {isConfirmed && (
+                          <button 
+                            className="btn-action-start"
+                            disabled={actionLoadingId === 'start_' + inq.id}
+                            onClick={() => handleStartTrip(inq.id)}
+                            style={{ padding: '7px 14px', borderRadius: '10px', fontWeight: '800', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                          >
+                            <Play size={14} /> {actionLoadingId === 'start_' + inq.id ? 'Starting...' : 'Start Trip'}
+                          </button>
+                        )}
+                        {isInProgress && (
+                          <button 
+                            className="btn-action-complete"
+                            disabled={actionLoadingId === 'complete_' + inq.id}
+                            onClick={() => handleCompleteTrip(inq.id)}
+                            style={{ padding: '7px 14px', borderRadius: '10px', fontWeight: '800', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                          >
+                            <CheckCircle size={14} /> {actionLoadingId === 'complete_' + inq.id ? 'Completing...' : 'Complete Trip'}
+                          </button>
+                        )}
+                        <button 
+                          className="btn-action-view"
+                          onClick={() => setReceiptModal({ open: true, inquiry: inq })}
+                          style={{ padding: '7px 12px', borderRadius: '10px', fontWeight: '800', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          <Eye size={14} /> View
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
@@ -2308,6 +2384,53 @@ export default function AdminPortal() {
                     )}
                   </tbody>
                 </table>
+              </div>
+
+              {/* HOSTINGER ALIGNED MOBILE CARDS FOR SUCCESS TRIPS */}
+              <div className="admin-mobile-card-list">
+                {sortedInquiries.filter(i => !i.isCustom && i.tripType !== 'Custom Trip' && i.tripType !== 'custom-trip' && i.status === 'Completed').map((inq) => (
+                  <div key={inq.id} className="hostinger-admin-card" style={{ background: '#ECFDF5' }}>
+                    <div className="hostinger-card-top">
+                      <div className="hostinger-card-id-group">
+                        <span className="hostinger-card-id">{inq.id}</span>
+                        <span className="hostinger-card-date">• {inq.date}</span>
+                      </div>
+                      <span className="status-tag status-active">✓ Completed</span>
+                    </div>
+                    <div className="hostinger-card-customer">
+                      <span className="hostinger-cust-name">{resolveCustomerName(inq)}</span>
+                      <span className="hostinger-cust-phone">📞 {inq.customerPhone}</span>
+                    </div>
+                    <div className="hostinger-card-route">
+                      <div className="hostinger-route-item">
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981', flexShrink: 0 }}></span>
+                        <span>{inq.pickup}</span>
+                      </div>
+                      <div className="hostinger-route-item">
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EF4444', flexShrink: 0 }}></span>
+                        <span>{inq.dropoff}</span>
+                      </div>
+                    </div>
+                    <div className="hostinger-card-footer">
+                      <span className="hostinger-vehicle-badge">{inq.driver || 'Fulfilled'}</span>
+                      <span className="hostinger-fare-tag">₹{Number(inq.fare || 0).toFixed(2)}</span>
+                    </div>
+                    {inq.rewardIssued && Number(inq.rewardAmount) > 0 && (
+                      <div style={{ fontSize: '11px', color: '#059669', fontWeight: '800', background: '#D1FAE5', padding: '4px 8px', borderRadius: '6px', width: 'fit-content' }}>
+                        🎁 ₹{inq.rewardAmount} Reward Credited
+                      </div>
+                    )}
+                    <div className="hostinger-card-actions">
+                      <button 
+                        className="btn-action-view"
+                        onClick={() => setReceiptModal({ open: true, inquiry: inq })}
+                        style={{ padding: '6px 12px', borderRadius: '8px', fontWeight: '800', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <Eye size={13} /> View Details & Receipt
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -2468,6 +2591,107 @@ export default function AdminPortal() {
                     )}
                   </tbody>
                 </table>
+              </div>
+
+              {/* HOSTINGER ALIGNED MOBILE CARDS FOR CUSTOM INQUIRIES */}
+              <div className="admin-mobile-card-list">
+                {sortedInquiries.filter(i => 
+                  (i.isCustom || i.tripType === 'Custom Trip' || i.tripType === 'custom-trip') && 
+                  (i.status === 'Pending' || i.status === 'Confirmed' || i.status === 'In Progress')
+                ).map(inq => {
+                  const isPending = inq.status === 'Pending';
+                  const isConfirmed = inq.status === 'Confirmed' || inq.status === 'In Progress';
+
+                  return (
+                    <div key={inq.id} className="hostinger-admin-card" style={{ background: isPending ? '#FFFBEB' : '#F0FDF4' }}>
+                      <div className="hostinger-card-top">
+                        <div className="hostinger-card-id-group">
+                          <span className="hostinger-card-id">{inq.id}</span>
+                          <span className="hostinger-card-date">• {inq.noOfDays || 1} Day(s)</span>
+                        </div>
+                        <span className={`status-tag status-${inq.status.toLowerCase()}`}>
+                          {inq.status}
+                        </span>
+                      </div>
+                      <div className="hostinger-card-customer">
+                        <span className="hostinger-cust-name">{resolveCustomerName(inq)}</span>
+                        <span className="hostinger-cust-phone">📞 {inq.customerPhone}</span>
+                      </div>
+                      <div className="hostinger-card-route">
+                        <div className="hostinger-route-item">
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981', flexShrink: 0 }}></span>
+                          <span>Pickup: {inq.pickup}</span>
+                        </div>
+                        <div className="hostinger-route-item">
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EF4444', flexShrink: 0 }}></span>
+                          <span>Dropoff: {inq.dropoff}</span>
+                        </div>
+                      </div>
+                      <div className="hostinger-card-footer">
+                        <span className="hostinger-vehicle-badge">{inq.vehicle || 'Selected Car'}</span>
+                        <span className="hostinger-fare-tag">₹{Number(inq.fare || 0).toFixed(2)}</span>
+                      </div>
+                      <div className="hostinger-card-actions">
+                        {isPending && (
+                          <>
+                            <button
+                              className="btn-action-confirm"
+                              disabled={!!actionLoadingId}
+                              onClick={() => {
+                                setActionLoadingId('confirm_' + inq.id);
+                                updateInquiryStatusInMySQL(inq.id, 'Confirmed').catch(() => {});
+                                setInquiries(prev => prev.map(item => item.id === inq.id ? { ...item, status: 'Confirmed' } : item));
+                                notifyCustomer({
+                                  type: 'confirmed',
+                                  title: '✅ Custom Trip Confirmed!',
+                                  body: `Your custom trip inquiry for ${inq.pickupCity || inq.pickup} → ${inq.dropoffCity || inq.dropoff} has been confirmed by EMPERIAL CABS!`,
+                                  customerPhone: inq.customerPhone,
+                                  customerEmail: inq.customerEmail
+                                });
+                                window.dispatchEvent(new Event('storage'));
+                                setTimeout(() => setActionLoadingId(null), 300);
+                              }}
+                              style={{ padding: '6px 12px', borderRadius: '8px', background: '#10B981', color: '#FFF', fontWeight: '800', fontSize: '0.8rem', border: 'none', cursor: 'pointer' }}
+                            >
+                              Confirm
+                            </button>
+                            <button
+                              className="btn-action-cancel"
+                              disabled={!!actionLoadingId}
+                              onClick={() => {
+                                setActionLoadingId('cancel_' + inq.id);
+                                updateInquiryStatusInMySQL(inq.id, 'Rejected').catch(() => {});
+                                setInquiries(prev => prev.map(item => item.id === inq.id ? { ...item, status: 'Rejected' } : item));
+                                window.dispatchEvent(new Event('storage'));
+                                setTimeout(() => setActionLoadingId(null), 300);
+                              }}
+                              style={{ padding: '6px 12px', borderRadius: '8px', background: '#EF4444', color: '#FFF', fontWeight: '800', fontSize: '0.8rem', border: 'none', cursor: 'pointer' }}
+                            >
+                              Reject
+                            </button>
+                          </>
+                        )}
+                        {isConfirmed && (
+                          <button
+                            className="btn-action-complete"
+                            disabled={!!actionLoadingId}
+                            onClick={() => triggerCompleteTrip(inq)}
+                            style={{ padding: '6px 12px', borderRadius: '8px', background: '#059669', color: '#FFF', fontWeight: '800', fontSize: '0.8rem', border: 'none', cursor: 'pointer' }}
+                          >
+                            Complete Trip
+                          </button>
+                        )}
+                        <button
+                          className="btn-action-view"
+                          onClick={() => setReceiptModal({ open: true, inquiry: inq })}
+                          style={{ padding: '6px 10px', borderRadius: '8px', background: '#F1F5F9', color: '#0F172A', fontWeight: '800', fontSize: '0.8rem', border: 'none', cursor: 'pointer' }}
+                        >
+                          <Eye size={14} /> View
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -2900,6 +3124,64 @@ export default function AdminPortal() {
                   </tbody>
                 </table>
               </div>
+
+              {/* HOSTINGER ALIGNED MOBILE CARDS FOR CUSTOMERS */}
+              <div className="admin-mobile-card-list">
+                {customers.map(cust => (
+                  <div key={cust.id} className="hostinger-admin-card">
+                    <div className="hostinger-card-top">
+                      <div className="hostinger-card-id-group">
+                        <span className="hostinger-card-id">{cust.id}</span>
+                        <span className="hostinger-card-date">• {cust.joined}</span>
+                      </div>
+                      <span className="pill-badge-sm" style={{ background: '#ECFDF5', color: '#059669', fontWeight: '800' }}>
+                        {cust.totalRides} Rides
+                      </span>
+                    </div>
+                    <div className="hostinger-card-customer">
+                      <span className="hostinger-cust-name">{cust.name}</span>
+                      <span className="hostinger-cust-phone">📞 {cust.phone}</span>
+                    </div>
+                    <div style={{ fontSize: '0.82rem', color: '#475569', background: '#F8FAFC', padding: '8px 12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>✉️ {cust.email}</span>
+                      <strong style={{ color: '#059669', fontSize: '0.95rem' }}>₹{Number(cust.totalSpent).toFixed(2)}</strong>
+                    </div>
+                    <div className="hostinger-card-actions">
+                      <button 
+                        className="btn btn-sm flex align-center gap-1"
+                        style={{ backgroundColor: '#10b981', color: '#ffffff', border: 'none', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800', fontSize: '12px' }}
+                        onClick={() => {
+                          setSendNotifModal({
+                            open: true,
+                            customer: cust,
+                            title: `🎉 Special Offer for ${cust.name}!`,
+                            body: `Hello ${cust.name}, enjoy 15% discount on your next ride with EMPERIAL CABS!`,
+                            type: 'reward'
+                          });
+                        }}
+                      >
+                        <Bell size={13} /> Send Notif
+                      </button>
+
+                      <button 
+                        className="btn btn-sm btn-outline flex align-center gap-1"
+                        style={{ padding: '6px 10px', fontSize: '12px', borderRadius: '8px' }}
+                        onClick={() => setCustomerDetailModal({ open: true, customer: cust })}
+                      >
+                        <Eye size={13} /> Profile
+                      </button>
+
+                      <button 
+                        className="btn btn-sm flex align-center gap-1"
+                        style={{ backgroundColor: '#ef4444', color: '#ffffff', border: 'none', padding: '6px 10px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}
+                        onClick={() => handleDeleteCustomer(cust.id || cust.email)}
+                      >
+                        <Trash2 size={13} /> Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -3078,6 +3360,93 @@ export default function AdminPortal() {
                     })()}
                   </tbody>
                 </table>
+              </div>
+
+              {/* HOSTINGER ALIGNED MOBILE CARDS FOR MESSAGES */}
+              <div className="admin-mobile-card-list">
+                {(() => {
+                  const filtered = contactMessages.filter(m => {
+                    const matchesCat = messageCategoryFilter === 'All' || m.category === messageCategoryFilter;
+                    const query = messageSearchQuery.toLowerCase();
+                    const matchesSearch = !query || 
+                      m.name?.toLowerCase().includes(query) || 
+                      m.email?.toLowerCase().includes(query) || 
+                      m.message?.toLowerCase().includes(query) ||
+                      m.id?.toLowerCase().includes(query);
+                    return matchesCat && matchesSearch;
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="card text-center p-4 text-muted">
+                        No contact messages found.
+                      </div>
+                    );
+                  }
+
+                  return filtered.map(msg => (
+                    <div key={msg.id} className="hostinger-admin-card" style={{ background: msg.status === 'Unread' ? '#FFF5F5' : '#FFFFFF' }}>
+                      <div className="hostinger-card-top">
+                        <div className="hostinger-card-id-group">
+                          <span className="hostinger-card-id">{msg.id}</span>
+                          <span className="hostinger-card-date">• {msg.date}</span>
+                        </div>
+                        <span className={`status-pill ${
+                          msg.status === 'Unread' ? 'status-pending' : 
+                          msg.status === 'Replied' ? 'status-active' : 'status-assigned'
+                        }`}>
+                          {msg.status}
+                        </span>
+                      </div>
+                      <div className="hostinger-card-customer">
+                        <span className="hostinger-cust-name">{msg.name}</span>
+                        <span className="hostinger-cust-phone">{msg.email}</span>
+                      </div>
+                      <div style={{ background: '#F8FAFC', borderRadius: '10px', padding: '10px 12px', fontSize: '13px', color: '#334155' }}>
+                        <strong style={{ display: 'block', color: '#475569', fontSize: '11px', textTransform: 'uppercase', marginBottom: '4px' }}>
+                          Category: {msg.category || 'Support'}
+                        </strong>
+                        {msg.message}
+                      </div>
+                      <div className="hostinger-card-actions">
+                        <button 
+                          className="btn btn-sm btn-outline flex align-center gap-1"
+                          style={{ borderRadius: '8px', padding: '6px 12px', fontSize: '12px', fontWeight: '700' }}
+                          onClick={() => {
+                            handleMarkMessageRead(msg.id);
+                            setViewMessageModal({ open: true, message: msg });
+                          }}
+                        >
+                          <Eye size={13} /> View Message
+                        </button>
+                        {msg.status !== 'Replied' ? (
+                          <button 
+                            className="btn btn-sm btn-outline text-green flex align-center gap-1"
+                            style={{ borderRadius: '8px', padding: '6px 12px', fontSize: '12px', fontWeight: '700' }}
+                            onClick={() => handleToggleMessageStatus(msg.id, 'Replied')}
+                          >
+                            <CheckCircle2 size={13} /> Mark Replied
+                          </button>
+                        ) : (
+                          <button 
+                            className="btn btn-sm btn-outline flex align-center gap-1"
+                            style={{ borderRadius: '8px', padding: '6px 12px', fontSize: '12px', fontWeight: '700' }}
+                            onClick={() => handleToggleMessageStatus(msg.id, 'Read')}
+                          >
+                            Mark Read
+                          </button>
+                        )}
+                        <button 
+                          className="btn btn-danger-icon btn-sm"
+                          style={{ borderRadius: '8px', padding: '6px 10px' }}
+                          onClick={() => handleDeleteMessage(msg.id)}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ));
+                })()}
               </div>
             </div>
           </div>
