@@ -2,8 +2,15 @@
   "appId": "com.emperialcabs.booking",
   "appName": "EMPERIAL CABS",
   "webDir": "dist",
-
   "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 500,
+      "launchAutoHide": true,
+      "backgroundColor": "#FFFFFF",
+      "showSpinner": false,
+      "splashFullScreen": false,
+      "splashImmersive": false
+    },
     "GoogleAuth": {
       "scopes": ["profile", "email"],
       "serverClientId": "256291841083-ueibs1i67ue9dbpjas60ak2vbn37ubc2.apps.googleusercontent.com",

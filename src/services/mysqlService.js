@@ -2,14 +2,15 @@
 // Host: srv1671.hstgr.io | Database: u889282535_taxi | Central Backend API: taxii-yth5.vercel.app
 
 const getApiEndpoints = () => {
-  const centralApi = 'https://taxii-yth5.vercel.app/api/db';
+  const primaryApi = 'https://emperialcabs.com/api/db.php';
+  const secondaryApi = 'https://emperialcabs.com/api/db';
   if (typeof window !== 'undefined' && window.location) {
     const host = window.location.hostname.toLowerCase();
-    if (host.includes('taxii-yth5') || host.includes('localhost') || host.includes('127.0.0.1')) {
-      return ['/api/db', centralApi];
+    if (host.includes('emperialcabs.com') || host.includes('localhost') || host.includes('127.0.0.1')) {
+      return ['/api/db.php', '/api/db', primaryApi];
     }
   }
-  return [centralApi, '/api/db'];
+  return [primaryApi, secondaryApi, '/api/db.php'];
 };
 
 const sendRequest = async (action, data = {}) => {

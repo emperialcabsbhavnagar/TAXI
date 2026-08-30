@@ -1,7 +1,13 @@
-# Apache Rewrite Rules for Single Page Application (React Router) on Hostinger / cPanel
+# Apache Rewrite Rules for Single Page Application (React Router) & API Endpoints on Hostinger / cPanel
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
+
+  # Directly execute Hostinger PHP MySQL API
+  RewriteRule ^api/db$ /api/db.php [L,QSA]
+  RewriteRule ^api/db\.php$ - [L]
+
+  # SPA Routing Fallback to index.html
   RewriteRule ^index\.html$ - [L]
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d

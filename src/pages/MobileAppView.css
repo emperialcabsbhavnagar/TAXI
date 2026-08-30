@@ -29,7 +29,7 @@
   max-height: 100vh;
   max-height: 100dvh;
   margin: 0;
-  background: #F8FAFC;
+  background: #FFFFFF !important;
   display: flex;
   flex-direction: column;
   position: relative;
