@@ -63,41 +63,63 @@ const isNativeApp = () => {
  * On native: triggers Android system account picker (real phone accounts).
  * Falls through to in-app fallback modal if native fails.
  */
+// Initialize GoogleAuth once for native platform
+if (typeof window !== 'undefined' && isNativeApp()) {
+  try {
+    GoogleAuth.initialize({
+      clientId: '256291841083-ueibs1i67ue9dbpjas60ak2vbn37ubc2.apps.googleusercontent.com',
+      serverClientId: '256291841083-ueibs1i67ue9dbpjas60ak2vbn37ubc2.apps.googleusercontent.com',
+      scopes: ['profile', 'email']
+    });
+  } catch (e) {}
+}
+
 export const signInWithGoogle = async () => {
   // ── 1. Native Android/iOS: Strictly Native Google Account bottom sheet (In-App Only) ──
   if (isNativeApp()) {
     try {
-      try {
-        GoogleAuth.initialize({
-          clientId: '256291841083-ueibs1i67ue9dbpjas60ak2vbn37ubc2.apps.googleusercontent.com',
-          serverClientId: '256291841083-ueibs1i67ue9dbpjas60ak2vbn37ubc2.apps.googleusercontent.com',
-          scopes: ['profile', 'email']
-        });
-      } catch (initErr) {
-        console.log('[GoogleAuth] init note:', initErr?.message || initErr);
-      }
-
       // Triggers native Android Google Account bottom sheet picker (all phone accounts)
       const googleUser = await GoogleAuth.signIn();
 
       if (googleUser) {
-        const email = (
-          googleUser.email ||
-          googleUser.authentication?.email ||
-          (googleUser.id ? `user_${googleUser.id.slice(-6)}@gmail.com` : null)
-        );
-        const name = (
-          googleUser.displayName ||
-          googleUser.name ||
-          (googleUser.givenName ? `${googleUser.givenName} ${googleUser.familyName || ''}`.trim() : '') ||
-          (email ? email.split('@')[0] : 'Google User')
-        );
-        const photoURL = googleUser.imageUrl || googleUser.photoUrl || null;
-        const uid = googleUser.id || googleUser.userId || 'goog_' + Date.now();
+        let email = googleUser.email || googleUser.authentication?.email || '';
+        let name = googleUser.displayName || googleUser.name || (googleUser.givenName ? `${googleUser.givenName} ${googleUser.familyName || ''}`.trim() : '');
+        let photoURL = googleUser.imageUrl || googleUser.photoUrl || null;
+        let uid = googleUser.id || googleUser.userId || null;
 
-        if (email) {
-          return { name, email, photoURL, uid };
+        // Decode JWT idToken if present to extract verified Google profile fields
+        const idToken = googleUser.authentication?.idToken || googleUser.idToken;
+        if (idToken && typeof idToken === 'string') {
+          try {
+            const parts = idToken.split('.');
+            if (parts.length === 3) {
+              const base64Url = parts[1];
+              const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+              const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+              const decoded = JSON.parse(jsonPayload);
+              if (decoded.email && !email) email = decoded.email;
+              if (decoded.name && !name) name = decoded.name;
+              if (decoded.picture && !photoURL) photoURL = decoded.picture;
+              if (decoded.sub && !uid) uid = decoded.sub;
+            }
+          } catch (jwtErr) {
+            console.log('[GoogleAuth] idToken decode note:', jwtErr);
+          }
         }
+
+        // Final fallback if email is still missing but account selected
+        if (!email) {
+          const rawId = uid || googleUser.id || Date.now();
+          email = `user_${String(rawId).slice(-6)}@gmail.com`;
+        }
+        if (!name) {
+          email.split('@')[0];
+        }
+        if (!uid) {
+          uid = 'goog_' + Date.now();
+        }
+
+        return { name: name || 'Empire Rider', email, photoURL, uid };
       }
     } catch (nativeErr) {
       console.warn('[GoogleAuth] Native sign-in note:', nativeErr?.message || nativeErr);

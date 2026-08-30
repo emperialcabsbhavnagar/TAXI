@@ -597,10 +597,13 @@ export default function MobileAppView() {
           onGoToCreateAccount={() => setAppStage('CREATE_PROFILE')}
           onGoogleSignIn={(acc) => {
             if (acc) setSelectedGoogleAccount(acc);
-            // LetsYouInScreen already checked Firestore:
-            // - Returning user: profile_completed=true → go to APP_HOME
-            // - New user: goes to CREATE_PROFILE via onGoToCreateAccount
-            completeOnboarding();
+            try {
+              localStorage.setItem('EMPERIAL CABS_permissions_asked', 'true');
+              localStorage.setItem('EMPERIAL CABS_onboarded', 'true');
+              localStorage.setItem('EMPERIAL CABS_profile_completed', 'true');
+            } catch (e) {}
+            completeOnboarding(acc);
+            setAppStage('APP_HOME');
           }}
           onBack={() => setAppStage('ONBOARDING')}
         />
