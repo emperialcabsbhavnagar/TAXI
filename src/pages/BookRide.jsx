@@ -308,7 +308,7 @@ export default function BookRide() {
                         flexDirection: 'column',
                         alignItems: 'center',
                         gap: '2px',
-                        boxShadow: tripType === 'one-way' ? '0 4px 14px rgba(227, 177, 15, 0.35)' : 'none',
+                        boxShadow: 'none',
                         transition: 'all 0.2s ease'
                       }}
                     >
@@ -332,7 +332,7 @@ export default function BookRide() {
                         flexDirection: 'column',
                         alignItems: 'center',
                         gap: '2px',
-                        boxShadow: tripType === 'round-trip' ? '0 4px 14px rgba(227, 177, 15, 0.35)' : 'none',
+                        boxShadow: 'none',
                         transition: 'all 0.2s ease'
                       }}
                     >
@@ -356,7 +356,7 @@ export default function BookRide() {
                         flexDirection: 'column',
                         alignItems: 'center',
                         gap: '2px',
-                        boxShadow: tripType === 'custom-trip' ? '0 4px 14px rgba(227, 177, 15, 0.35)' : 'none',
+                        boxShadow: 'none',
                         transition: 'all 0.2s ease'
                       }}
                     >

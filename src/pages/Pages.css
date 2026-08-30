@@ -1737,7 +1737,7 @@
   background: #ffffff;
   border-radius: 24px;
   padding: 2rem;
-  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.05);
+  box-shadow: none;
   border: 1px solid #e2e8f0;
 }
 
@@ -1795,7 +1795,7 @@
 .light-input:focus {
   border-color: #E3B10F;
   background: #ffffff;
-  box-shadow: 0 0 0 4px rgba(227, 177, 15, 0.25);
+  box-shadow: none;
 }
 
 .light-btn-swap {
@@ -1858,7 +1858,7 @@
 .vehicle-light-card.active {
   border-color: #E3B10F;
   background: #FEFCE8;
-  box-shadow: 0 6px 20px rgba(227, 177, 15, 0.25);
+  box-shadow: none;
 }
 
 .vehicle-thumb {
@@ -1905,7 +1905,7 @@
   justify-content: center;
   gap: 0.6rem;
   cursor: pointer;
-  box-shadow: 0 6px 20px rgba(227, 177, 15, 0.4);
+  box-shadow: none;
   transition: all 0.2s ease;
   letter-spacing: 0.02em;
 }
@@ -1914,7 +1914,7 @@
   background: #C99600;
   color: #0f172a;
   transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(227, 177, 15, 0.55);
+  box-shadow: none;
 }
 
 /* RIGHT SUMMARY CARD (BIG & PROMINENT) */
@@ -1922,7 +1922,7 @@
   background: #ffffff;
   border-radius: 24px;
   padding: 2rem;
-  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.05);
+  box-shadow: none;
   border: 1px solid #e2e8f0;
 }
 
@@ -1970,8 +1970,8 @@
   flex-shrink: 0;
 }
 
-.timeline-dot.green { background: #E3B10F; box-shadow: 0 0 8px rgba(227, 177, 15, 0.6); }
-.timeline-dot.red { background: #ef4444; box-shadow: 0 0 8px rgba(239, 68, 68, 0.4); }
+.timeline-dot.green { background: #E3B10F; box-shadow: none; }
+.timeline-dot.red { background: #ef4444; box-shadow: none; }
 
 .timeline-line {
   height: 20px;
