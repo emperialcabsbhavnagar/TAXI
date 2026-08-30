@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import db from '../../services/dbService';
 import { signInWithGoogle, loadCustomerFromFirestore, saveCustomerToFirestore, setupRecaptcha, sendPhoneOTP, sendEmailOTP } from '../../services/firebaseService';
-import { saveCustomerToMySQL, loadAllInquiriesFromMySQL } from '../../services/mysqlService';
+import { saveCustomerToMySQL, loadAllInquiriesFromMySQL, loadAllCustomersFromMySQL } from '../../services/mysqlService';
 import logoPng from '../../assets/images/let-you-screen/logo.png';
 
 // ─── Utility: derive a clean display name from an email ──────────────────────
@@ -29,11 +29,12 @@ export default function LetsYouInScreen({
   const [otpError, setOtpError] = useState('');
   const [emailOtpCode, setEmailOtpCode] = useState(''); // displayed to user for testing
 
-  // ─── After Google gives us user data: check Firestore, route accordingly ──
-  const processGoogleUser = (googleData) => {
+  // ─── After Google gives us user data: check DB for returning vs new user ──
+  const processGoogleUser = async (googleData) => {
     if (!googleData || !googleData.email) return;
 
-    const email = googleData.email;
+    setLoading(true);
+    const email = googleData.email.toLowerCase().trim();
     let name = googleData.name || '';
     if (!name || name === 'Google User') {
       name = formatNameFromEmail(email);
@@ -41,64 +42,116 @@ export default function LetsYouInScreen({
     const photoURL = googleData.photoURL || null;
     const uid = googleData.uid || 'goog_' + Date.now();
 
-    // ── Build profile instantly from Google data ──
-    const profile = {
-      id: 'CUST-' + Math.floor(10000 + Math.random() * 89999),
-      name,
-      email,
-      phone: phoneNumber || localStorage.getItem('cabsy_user_phone') || '',
-      photoURL,
-      uid,
-      profession: '',
-      area: '',
-      totalRides: 0,
-      totalSpent: 0,
-      registeredAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      status: 'Active',
-      lastLogin: new Date().toISOString()
-    };
+    let existingProfile = null;
 
-    // ── Save to localStorage INSTANTLY (no network wait) ──
+    // ── 1. Check local storage for existing completed profile by email ──
     try {
-      localStorage.setItem('cabsy_user_profile', JSON.stringify(profile));
-      localStorage.setItem('cabsy_user_phone', profile.phone || '');
-      localStorage.setItem('EMPERIAL CABS_onboarded', 'true');
-      window.dispatchEvent(new Event('storage'));
+      const savedRaw = localStorage.getItem('cabsy_user_profile');
+      if (savedRaw) {
+        const parsed = JSON.parse(savedRaw);
+        if (parsed && parsed.email && parsed.email.toLowerCase().trim() === email && parsed.phone) {
+          existingProfile = parsed;
+        }
+      }
     } catch (e) {}
 
-    if (setSelectedGoogleAccount) setSelectedGoogleAccount(profile);
-    setLoading(false);
+    // ── 2. Check Hostinger MySQL database for returning user by email ──
+    if (!existingProfile) {
+      try {
+        const mysqlCustomers = await loadAllCustomersFromMySQL().catch(() => []);
+        const match = (mysqlCustomers || []).find(c => {
+          const cEmail = (c.email || c.customerEmail || '').toLowerCase().trim();
+          return cEmail === email && (c.phone || c.name);
+        });
+        if (match) {
+          existingProfile = {
+            id: match.id || ('CUST-' + Math.floor(10000 + Math.random() * 89999)),
+            name: match.name || match.customerName || name,
+            email: email,
+            phone: match.phone || match.customerPhone || '',
+            photoURL: match.photoURL || photoURL,
+            profession: match.profession || '',
+            area: match.area || '',
+            status: 'Active'
+          };
+        }
+      } catch (e) {}
+    }
 
-    // ── Check Firestore in BACKGROUND for returning user detection ──
-    loadCustomerFromFirestore(email).then(existing => {
-      if (existing && existing.name && existing.phone) {
-        // Merge cloud profile into local
-        const merged = { ...profile, ...existing, lastLogin: new Date().toISOString() };
+    // ── 3. Check Firestore database for returning user by email ──
+    if (!existingProfile) {
+      try {
+        const firestoreMatch = await loadCustomerFromFirestore(email).catch(() => null);
+        if (firestoreMatch && (firestoreMatch.name || firestoreMatch.phone)) {
+          existingProfile = {
+            id: firestoreMatch.id || ('CUST-' + Math.floor(10000 + Math.random() * 89999)),
+            name: firestoreMatch.name || name,
+            email: email,
+            phone: firestoreMatch.phone || '',
+            photoURL: firestoreMatch.photoURL || photoURL,
+            profession: firestoreMatch.profession || '',
+            area: firestoreMatch.area || '',
+            status: 'Active'
+          };
+        }
+      } catch (e) {}
+    }
+
+    if (existingProfile && existingProfile.phone) {
+      // ── RETURNING USER: Exists in DB with completed profile -> Direct Home Login ──
+      const merged = {
+        ...existingProfile,
+        name: existingProfile.name || name,
+        photoURL: photoURL || existingProfile.photoURL,
+        uid: uid,
+        lastLogin: new Date().toISOString()
+      };
+
+      try {
         localStorage.setItem('cabsy_user_profile', JSON.stringify(merged));
+        localStorage.setItem('cabsy_user_phone', merged.phone || '');
+        localStorage.setItem('EMPERIAL CABS_onboarded', 'true');
         localStorage.setItem('EMPERIAL CABS_profile_completed', 'true');
         window.dispatchEvent(new Event('storage'));
-      }
-    }).catch(() => {});
+      } catch (e) {}
 
-    // ── Background: save to Firestore + MySQL (non-blocking) ──
-    saveCustomerToFirestore(profile).catch(() => {});
-    saveCustomerToMySQL(profile).catch(() => {});
-    try { db.saveCustomer(profile); } catch(e) {}
+      if (setSelectedGoogleAccount) setSelectedGoogleAccount(merged);
+      saveCustomerToFirestore(merged).catch(() => {});
+      saveCustomerToMySQL(merged).catch(() => {});
+      try { db.saveCustomer(merged); } catch(e) {}
+      restoreTrips(merged);
 
-    // ── Background: restore trip history (non-blocking) ──
-    restoreTrips(profile);
+      setLoading(false);
 
-    // ── Check if returning user (local check — instant) ──
-    const isProfileCompleted = localStorage.getItem('EMPERIAL CABS_profile_completed') === 'true';
-    if (isProfileCompleted) {
-      // Returning user → go straight to home
       if (onGoogleSignIn) {
-        onGoogleSignIn(profile);
+        onGoogleSignIn(merged);
       } else if (onNext) {
         onNext();
       }
     } else {
-      // New user → go to complete profile
+      // ── NEW USER: Not found in DB -> Route to Enter Profile Details ──
+      const newDraftProfile = {
+        id: 'CUST-' + Math.floor(10000 + Math.random() * 89999),
+        name,
+        email,
+        phone: phoneNumber || '',
+        photoURL,
+        uid,
+        registeredAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        status: 'Active',
+        lastLogin: new Date().toISOString()
+      };
+
+      try {
+        localStorage.setItem('cabsy_user_profile', JSON.stringify(newDraftProfile));
+        localStorage.setItem('EMPERIAL CABS_onboarded', 'true');
+        localStorage.removeItem('EMPERIAL CABS_profile_completed');
+        window.dispatchEvent(new Event('storage'));
+      } catch (e) {}
+
+      if (setSelectedGoogleAccount) setSelectedGoogleAccount(newDraftProfile);
+      setLoading(false);
+
       if (onGoToCreateAccount) {
         onGoToCreateAccount();
       } else if (onNext) {
