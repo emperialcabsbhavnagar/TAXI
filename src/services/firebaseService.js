@@ -64,15 +64,14 @@ const isNativeApp = () => {
  * Falls through to in-app fallback modal if native fails.
  */
 export const signInWithGoogle = async () => {
-  // ── 1. Native Android/iOS: Native system account picker bottom sheet ──
+  // ── 1. Native Android/iOS: Strictly Native Google Account bottom sheet (In-App Only) ──
   if (isNativeApp()) {
     try {
       try {
         GoogleAuth.initialize({
           clientId: '256291841083-ueibs1i67ue9dbpjas60ak2vbn37ubc2.apps.googleusercontent.com',
           serverClientId: '256291841083-ueibs1i67ue9dbpjas60ak2vbn37ubc2.apps.googleusercontent.com',
-          scopes: ['profile', 'email'],
-          grantOfflineAccess: false,
+          scopes: ['profile', 'email']
         });
       } catch (initErr) {
         console.log('[GoogleAuth] init note:', initErr?.message || initErr);
@@ -101,11 +100,14 @@ export const signInWithGoogle = async () => {
         }
       }
     } catch (nativeErr) {
-      console.warn('[GoogleAuth] Native sign-in error:', nativeErr?.message || nativeErr);
+      console.warn('[GoogleAuth] Native sign-in note:', nativeErr?.message || nativeErr);
     }
+
+    // ON NATIVE APP: Strictly DO NOT open external Chrome browser!
+    return null;
   }
 
-  // ── 2. Firebase OAuth Web Provider Fallback (Web browser or native fallback) ──
+  // ── 2. Web Browser Only: Firebase Web OAuth Popup ──
   try {
     const result = await signInWithPopup(auth, googleProvider);
     if (result && result.user) {
@@ -118,7 +120,7 @@ export const signInWithGoogle = async () => {
       };
     }
   } catch (webAuthErr) {
-    console.warn('[GoogleAuth] Popup sign-in error:', webAuthErr?.message || webAuthErr);
+    console.warn('[GoogleAuth] Web popup sign-in error:', webAuthErr?.message || webAuthErr);
   }
 
   return null;

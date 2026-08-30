@@ -16,14 +16,6 @@
         {
           "client_id": "256291841083-ueibs1i67ue9dbpjas60ak2vbn37ubc2.apps.googleusercontent.com",
           "client_type": 3
-        },
-        {
-          "client_id": "256291841083-androiddebug.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.emperialcabs.booking",
-            "certificate_hash": "014d27cd5cb39b56b46a8f9f63004fbd0c6d42b9"
-          }
         }
       ],
       "api_key": [
