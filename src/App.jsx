@@ -44,13 +44,8 @@ function MainLayout({ handleOpenBooking, isBookingOpen, handleCloseBooking }) {
   const searchParams = new URLSearchParams(location.search);
   const isMobileQuery = searchParams.has('app') || searchParams.has('mobile') || searchParams.has('android') || searchParams.get('mode') === 'app' || searchParams.get('mode') === 'mobile' || searchParams.get('mode') === 'android';
 
-  // Device User-Agent Detection (Android Phone & Mobile Browsers)
-  const userAgent = typeof navigator !== 'undefined' ? (navigator.userAgent || '').toLowerCase() : '';
-  const isAndroidDevice = userAgent.includes('android');
-  const isMobileDevice = /android|iphone|ipad|ipod|blackberry|windows phone/i.test(userAgent);
-
-  // 1. Mobile App Mode (Triggered by Native APK, VITE_APP_MODE=android, Android/Mobile Phone User-Agent, mobile domain/path/query)
-  if (!isWebSite && (isCapacitorNative || appMode === 'android' || appMode === 'app' || appMode === 'mobile' || isAndroidDevice || isMobileDevice || isMobileDomain || isMobilePath || isMobileQuery)) {
+  // 1. Mobile App Mode (Triggered strictly by Native Capacitor APK, explicit mode=app, VITE_APP_MODE=android, or /app route)
+  if (!isWebSite && (isCapacitorNative || appMode === 'android' || appMode === 'app' || appMode === 'mobile' || isMobileDomain || isMobilePath || isMobileQuery)) {
     return <MobileAppView platform={appMode || 'android'} />;
   }
 
