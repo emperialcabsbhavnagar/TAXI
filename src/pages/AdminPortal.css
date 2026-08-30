@@ -1908,84 +1908,133 @@
     padding: 0.75rem;
   }
 
-  /* MOBILE RESPONSIVE CARD TRANSFORMATION FOR ALL TABLES (ZERO HORIZONTAL SCROLL) */
-  .table-responsive {
-    border-radius: 12px;
-    border: none;
-    overflow-x: hidden !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-  }
-
-  .admin-table {
-    display: block !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-    border: none !important;
-  }
-
-  .admin-table thead {
-    display: none !important;
-  }
-
-  .admin-table tbody {
+  /* HOSTINGER DESIGN SYSTEM MOBILE CARDS (CLEAN & ALIGNED) */
+  .admin-mobile-card-list {
     display: flex !important;
     flex-direction: column !important;
-    gap: 0.85rem !important;
+    gap: 12px !important;
     width: 100% !important;
     box-sizing: border-box !important;
   }
 
-  .admin-table tr {
-    display: flex !important;
-    flex-direction: column !important;
-    background: #ffffff !important;
-    border: 1px solid #e2e8f0 !important;
-    border-radius: 16px !important;
-    padding: 0.9rem 1rem !important;
-    margin: 0 !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03) !important;
-    box-sizing: border-box !important;
-    width: 100% !important;
-    max-width: 100% !important;
+  .hostinger-admin-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 14px 16px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
-  .admin-table td {
-    display: flex !important;
-    justify-content: space-between !important;
-    align-items: center !important;
-    padding: 0.5rem 0 !important;
-    border-bottom: 1px solid #f1f5f9 !important;
-    font-size: 0.88rem !important;
-    text-align: right !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-    white-space: normal !important;
-    word-break: break-word !important;
-    max-width: 100% !important;
+  .hostinger-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #f1f5f9;
+    padding-bottom: 8px;
   }
 
-  .admin-table td:last-child {
-    border-bottom: none !important;
-    padding-bottom: 0 !important;
-    margin-top: 0.4rem !important;
-    justify-content: flex-end !important;
-    gap: 0.4rem !important;
-    flex-wrap: wrap !important;
+  .hostinger-card-id-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
-  .admin-table td[data-label]::before {
-    content: attr(data-label);
+  .hostinger-card-id {
     font-weight: 800;
+    font-size: 0.95rem;
+    color: #0f172a;
+  }
+
+  .hostinger-card-date {
+    font-size: 0.76rem;
     color: #64748b;
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    text-align: left;
-    margin-right: 0.5rem;
-    flex-shrink: 0;
+    font-weight: 600;
+  }
+
+  .hostinger-card-customer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .hostinger-cust-name {
+    font-weight: 800;
+    font-size: 0.95rem;
+    color: #0f172a;
+  }
+
+  .hostinger-cust-phone {
+    font-size: 0.82rem;
+    color: #475569;
+    font-weight: 700;
+  }
+
+  .hostinger-card-route {
+    background: #f8fafc;
+    border: 1px solid #f1f5f9;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .hostinger-route-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.86rem;
+    color: #0f172a;
+    font-weight: 600;
+    word-break: break-word;
+  }
+
+  .hostinger-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .hostinger-vehicle-badge {
+    background: #f1f5f9;
+    color: #334155;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid #e2e8f0;
+  }
+
+  .hostinger-fare-tag {
+    font-weight: 800;
+    font-size: 1.05rem;
+    color: #059669;
+  }
+
+  .hostinger-driver-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.82rem;
+    color: #047857;
+    background: #ecfdf5;
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid #a7f3d0;
+    font-weight: 600;
+  }
+
+  .hostinger-card-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    border-top: 1px solid #f1f5f9;
+    padding-top: 10px;
   }
 
   /* Mobile App Bottom Dock */

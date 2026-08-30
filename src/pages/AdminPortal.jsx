@@ -1690,6 +1690,54 @@ export default function AdminPortal() {
                     </tbody>
                   </table>
                 </div>
+
+                {/* HOSTINGER MOBILE CARDS FOR RECENT RIDES */}
+                <div className="admin-mobile-card-list">
+                  {sortedInquiries.slice(0, 5).map(inq => (
+                    <div key={inq.id} className="hostinger-admin-card">
+                      <div className="hostinger-card-top">
+                        <div className="hostinger-card-id-group">
+                          <span className="hostinger-card-id">{inq.id}</span>
+                          <span className="hostinger-card-date">• {inq.date}</span>
+                        </div>
+                        <span className={`status-tag status-${inq.status.toLowerCase()}`}>
+                          {inq.status}
+                        </span>
+                      </div>
+                      <div className="hostinger-card-customer">
+                        <span className="hostinger-cust-name">{resolveCustomerName(inq)}</span>
+                        <span className="hostinger-cust-phone">📞 {inq.customerPhone}</span>
+                      </div>
+                      <div className="hostinger-card-route">
+                        <div className="hostinger-route-item">
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981', flexShrink: 0 }}></span>
+                          <span>{inq.pickup}</span>
+                        </div>
+                        <div className="hostinger-route-item">
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EF4444', flexShrink: 0 }}></span>
+                          <span>{inq.dropoff}</span>
+                        </div>
+                      </div>
+                      <div className="hostinger-card-footer">
+                        <span className="hostinger-vehicle-badge">{inq.vehicle || 'Taxi'}</span>
+                        <span className="hostinger-fare-tag">₹{Number(inq.fare).toFixed(2)}</span>
+                      </div>
+                      <div className="hostinger-card-actions">
+                        {inq.status === 'Pending' ? (
+                          <button 
+                            className="btn btn-sm btn-primary-green"
+                            style={{ width: '100%', justifyContent: 'center', padding: '8px 12px', fontSize: '13px', fontWeight: '800' }}
+                            onClick={() => setAssignModal({ open: true, inquiry: inq })}
+                          >
+                            Confirm & Assign Driver
+                          </button>
+                        ) : (
+                          <span className="text-muted text-xs font-semibold">Assigned Driver: {inq.driver || 'Done'}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {/* FLEET DRIVER STATUS */}
@@ -1891,6 +1939,137 @@ export default function AdminPortal() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* HOSTINGER ALIGNED MOBILE CARDS */}
+              <div className="admin-mobile-card-list">
+                {sortedInquiries.filter(i => !i.isCustom && i.tripType !== 'Custom Trip' && i.tripType !== 'custom-trip').map(inq => (
+                  <div key={inq.id} className="hostinger-admin-card">
+                    {/* Header Bar */}
+                    <div className="hostinger-card-top">
+                      <div className="hostinger-card-id-group">
+                        <span className="hostinger-card-id">{inq.id}</span>
+                        <span className="hostinger-card-date">• {inq.date}</span>
+                      </div>
+                      <span className={`status-tag status-${inq.status.toLowerCase()}`}>
+                        {inq.status}
+                      </span>
+                    </div>
+
+                    {/* Customer Row */}
+                    <div className="hostinger-card-customer">
+                      <span className="hostinger-cust-name">{resolveCustomerName(inq)}</span>
+                      <span className="hostinger-cust-phone">📞 {inq.customerPhone}</span>
+                    </div>
+
+                    {/* Route Box */}
+                    <div className="hostinger-card-route">
+                      <div className="hostinger-route-item">
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981', flexShrink: 0 }}></span>
+                        <span>{inq.pickup}</span>
+                      </div>
+                      <div className="hostinger-route-item">
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EF4444', flexShrink: 0 }}></span>
+                        <span>{inq.dropoff}</span>
+                      </div>
+                    </div>
+
+                    {/* Vehicle & Fare Row */}
+                    <div className="hostinger-card-footer">
+                      <span className="hostinger-vehicle-badge">{inq.vehicle}</span>
+                      <div style={{ textAlign: 'right' }}>
+                        <span className="hostinger-fare-tag">₹{Number(inq.fare).toFixed(2)}</span>
+                        {inq.walletDiscountUsed > 0 && (
+                          <div style={{ fontSize: '11px', color: '#059669', fontWeight: '700' }}>
+                            🎁 -₹{Number(inq.walletDiscountUsed).toFixed(2)} coupon
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Driver Assignment Line */}
+                    {inq.driver && inq.driver !== '-' && (
+                      <div className="hostinger-driver-line">
+                        <UserCheck size={13} color="#059669" /> Driver: <strong>{inq.driver}</strong>
+                      </div>
+                    )}
+
+                    {/* Aligned Action Buttons Bar */}
+                    <div className="hostinger-card-actions">
+                      <button 
+                        className="btn-action-view"
+                        disabled={actionLoadingId === 'receipt_' + inq.id}
+                        style={{
+                          background: '#EFF6FF',
+                          color: '#1D4ED8',
+                          border: '1px solid #BFDBFE',
+                          padding: '6px 10px',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                          fontWeight: '800',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                        onClick={() => setReceiptModal({ open: true, inquiry: inq })}
+                      >
+                        <Eye size={12} /> Receipt
+                      </button>
+
+                      {inq.status === 'Pending' && (
+                        <button 
+                          className="btn-action-assign"
+                          disabled={actionLoadingId === 'confirm_' + inq.id}
+                          style={{
+                            padding: '6px 10px',
+                            fontSize: '12px',
+                            borderRadius: '8px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                          onClick={() => setAssignModal({ open: true, inquiry: inq })}
+                        >
+                          <UserCheck size={12} /> {actionLoadingId === 'confirm_' + inq.id ? 'Assigning...' : 'Assign Driver'}
+                        </button>
+                      )}
+
+                      {(inq.status === 'Pending' || inq.status === 'Confirmed') && (
+                        <button 
+                          className="btn-action-cancel"
+                          disabled={actionLoadingId === 'cancel_' + inq.id}
+                          style={{
+                            padding: '6px 10px',
+                            fontSize: '12px',
+                            borderRadius: '8px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                          onClick={() => handleCancelInquiry(inq.id)}
+                        >
+                          <XCircle size={12} /> Cancel
+                        </button>
+                      )}
+
+                      <button 
+                        className="btn-action-delete"
+                        disabled={actionLoadingId === 'delete_' + inq.id}
+                        style={{
+                          padding: '6px 10px',
+                          fontSize: '12px',
+                          borderRadius: '8px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                        onClick={() => handleDeleteInquiry(inq.id)}
+                      >
+                        <Trash2 size={12} /> Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
