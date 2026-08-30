@@ -1722,6 +1722,20 @@
 
 /* SMARTPHONE MOBILE RESPONSIVE ENGINE (<= 768px) */
 @media (max-width: 768px) {
+  /* STRICTLY HIDE ALL TABLES ON MOBILE - SHOW CARDS ONLY */
+  .table-responsive,
+  .admin-table {
+    display: none !important;
+  }
+
+  .admin-mobile-card-list {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
   /* Wrapper Layout Adjustments */
   .admin-portal-wrapper {
     flex-direction: column;
