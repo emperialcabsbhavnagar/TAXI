@@ -61,7 +61,6 @@ const isNativeApp = () => {
  * Attempt native Google Sign-In on Android/iOS.
  * Returns { name, email, photoURL, uid } or null if cancelled/failed.
  * On native: triggers Android system account picker (real phone accounts).
- * Falls through to in-app fallback modal if native fails.
  */
 // Initialize GoogleAuth once for native platform
 if (typeof window !== 'undefined' && isNativeApp()) {
