@@ -22,7 +22,7 @@ import {
   requestNotificationPermission 
 } from '../services/notificationEngine';
 import db from '../services/dbService';
-import { loadAllInquiriesFromFirestore } from '../services/firebaseService';
+import { loadAllInquiriesFromFirestore, updateInquiryStatus, deleteInquiryFromFirestore } from '../services/firebaseService';
 import { 
   LayoutDashboard, 
   Inbox, 
@@ -1128,6 +1128,7 @@ export default function AdminPortal() {
 
     if (targetInq) {
       updateInquiryStatusInMySQL(inquiryId, 'Cancelled').catch(() => {});
+      updateInquiryStatus(inquiryId, 'Cancelled').catch(() => {});
 
       if (Number(targetInq.walletDiscountUsed) > 0 && targetInq.customerPhone) {
         db.refundWalletCoins(targetInq.customerPhone, targetInq.walletDiscountUsed, inquiryId, targetInq.pickup, targetInq.dropoff);
@@ -1158,6 +1159,7 @@ export default function AdminPortal() {
       setActionLoadingId(actionKey);
 
       deleteInquiryFromMySQL(inquiryId).catch(() => {});
+      deleteInquiryFromFirestore(inquiryId).catch(() => {});
       setInquiries(prev => {
         const filtered = prev.filter(i => i.id !== inquiryId);
         localStorage.setItem('cabsy_inquiries', JSON.stringify(filtered));
