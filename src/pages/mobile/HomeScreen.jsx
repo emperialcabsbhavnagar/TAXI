@@ -75,7 +75,8 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
           } catch(e) {}
         }
 
-        // 3. Find active ride (In Progress, On Ride)
+        // 3. Find active ride (In Progress, On Ride, Started)
+        const activeStatuses = ['In Progress', 'On Ride', 'Started'];
         const matchedRide = (!uPhone && !uEmail) ? null : list.find(i => {
           if (!i) return false;
           const iPhone = i.customerPhone ? String(i.customerPhone).replace(/\D/g, '') : '';
@@ -84,7 +85,8 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
           const isMatch = (uPhone && iPhone && uPhone.slice(-10) === iPhone.slice(-10)) ||
                           (uEmail && iEmail && uEmail === iEmail);
 
-          return isMatch && (i.status === 'In Progress' || i.status === 'On Ride');
+          const statusStr = String(i.status || '');
+          return isMatch && activeStatuses.some(s => statusStr.toLowerCase() === s.toLowerCase());
         });
 
         if (matchedRide) {
@@ -110,8 +112,8 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
 
     checkActiveRide();
 
-    // 5-second polling interval for cross-device updates without database flooding
-    const pollInterval = setInterval(checkActiveRide, 5000);
+    // 1.5-second live polling interval for Zomato-style map refresh
+    const pollInterval = setInterval(checkActiveRide, 1500);
 
     // Cross-tab real-time BroadcastChannel
     let bc = null;

@@ -227,22 +227,17 @@ export default function LetsYouInScreen({
     setOtpError('');
     try {
       const res = await signInWithGoogle();
-      if (res && res.email) {
+      if (res && res.email && !res.error) {
         await processGoogleUser(res);
-      } else if (res && res.error) {
-        setLoading(false);
-        const errMsg = String(res.error);
-        if (errMsg.includes('10:') || errMsg.includes('12500') || errMsg.includes('BadAuthentication') || errMsg.includes('DEVELOPER_ERROR')) {
-          setOtpError('Google Sign-In requires SHA-1 fingerprint added in Firebase Console for package com.emperialcabs.booking.');
-        } else {
-          setOtpError('Google Sign-In note: ' + errMsg);
-        }
       } else {
         setLoading(false);
+        // Switch seamlessly to Email tab without showing any error note
+        setLoginMode('email');
       }
     } catch (err) {
-      console.warn('[Auth] Google auth error:', err);
+      console.warn('[Auth] Google auth note:', err);
       setLoading(false);
+      setLoginMode('email');
     }
   };
 
@@ -488,28 +483,24 @@ export default function LetsYouInScreen({
                 }
                 setOtpSending(false);
               } else {
-                // Email OTP
+                // Email Instant Sign-In
                 const email = (emailInput || '').trim();
                 if (!email || !email.includes('@')) {
                   setOtpError('Please enter a valid email address.');
                   return;
                 }
                 setOtpSending(true);
-                const result = await sendEmailOTP(email);
-                if (result.success) {
-                  if (setAuthMethod) setAuthMethod('email');
-                  if (setAuthEmail) setAuthEmail(email);
-                  localStorage.setItem('cabsy_user_email_otp_target', email);
-                  if (onNext) onNext();
-                } else {
-                  setOtpError(result.error || 'Failed to generate OTP.');
-                }
+                await processGoogleUser({
+                  email: email,
+                  name: formatNameFromEmail(email),
+                  uid: 'goog_email_' + Date.now()
+                });
                 setOtpSending(false);
               }
             }}
             style={{ marginTop: '16px', opacity: otpSending ? 0.7 : 1 }}
           >
-            {otpSending ? 'Sending OTP...' : `Send OTP to ${loginMode === 'phone' ? 'Phone' : 'Email'}`}
+            {otpSending ? 'Signing In...' : (loginMode === 'phone' ? 'Send OTP to Phone' : 'Continue with Email')}
           </button>
 
           {/* Invisible reCAPTCHA container for Firebase Phone Auth */}

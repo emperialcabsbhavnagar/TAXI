@@ -70,9 +70,9 @@ export default function Footer() {
           {/* Bottom Bar */}
           <div className="footer-bottom">
             <div className="footer-legal">
-              <Link to="/faq">Privacy Policy</Link>
+              <Link to="/privacy">Privacy Policy</Link>
               <span className="separator">|</span>
-              <Link to="/faq">Terms & Conditions</Link>
+              <Link to="/terms">Terms & Conditions</Link>
             </div>
 
             <div className="store-badges">

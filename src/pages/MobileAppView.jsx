@@ -102,14 +102,15 @@ export default function MobileAppView() {
 
         const savedInquiries = localStorage.getItem('cabsy_inquiries');
         if (savedInquiries) {
-          const list = JSON.parse(savedInquiries);
+          const activeStatuses = ['In Progress', 'On Ride', 'Started'];
           const activeRide = list.find(i => {
             if (!i) return false;
             const iPhone = i.customerPhone ? String(i.customerPhone).replace(/\D/g, '') : '';
             const iEmail = i.customerEmail ? String(i.customerEmail).toLowerCase().trim() : '';
             const isMatch = (uPhone && iPhone && uPhone.slice(-10) === iPhone.slice(-10)) ||
                             (uEmail && iEmail && uEmail === iEmail);
-            return isMatch && (i.status === 'In Progress' || i.status === 'On Ride');
+            const statusStr = String(i.status || '');
+            return isMatch && activeStatuses.some(s => statusStr.toLowerCase() === s.toLowerCase());
           });
 
           if (activeRide) {
@@ -196,13 +197,15 @@ export default function MobileAppView() {
             const uPhone = (userProf?.phone || savedPhone || '').replace(/\D/g, '');
             const uEmail = (userProf?.email || '').toLowerCase().trim();
 
+            const activeStatuses = ['In Progress', 'On Ride', 'Started'];
             inProgressRide = list.find(i => {
               if (!i) return false;
               const iPhone = i.customerPhone ? String(i.customerPhone).replace(/\D/g, '') : '';
               const iEmail = i.customerEmail ? String(i.customerEmail).toLowerCase().trim() : '';
               const isMatch = (uPhone && iPhone && uPhone.slice(-10) === iPhone.slice(-10)) ||
                               (uEmail && iEmail && uEmail === iEmail);
-              return isMatch && (i.status === 'In Progress' || i.status === 'On Ride');
+              const statusStr = String(i.status || '');
+              return isMatch && activeStatuses.some(s => statusStr.toLowerCase() === s.toLowerCase());
             });
           } catch(e) {}
         }

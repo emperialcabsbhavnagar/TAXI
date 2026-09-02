@@ -36,13 +36,15 @@ export default function TripTrackingScreen({ userCoords, pickupLoc, dropoffLoc, 
         const uPhone = (userProf?.phone || savedPhone || '').replace(/\D/g, '');
         const uEmail = (userProf?.email || '').toLowerCase().trim();
 
+        const activeStatuses = ['In Progress', 'On Ride', 'Started'];
         const current = (!uPhone && !uEmail) ? null : list.find(i => {
           if (!i) return false;
           const iPhone = i.customerPhone ? String(i.customerPhone).replace(/\D/g, '') : '';
           const iEmail = i.customerEmail ? String(i.customerEmail).toLowerCase().trim() : '';
           const isMatch = (uPhone && iPhone && uPhone.slice(-10) === iPhone.slice(-10)) ||
                           (uEmail && iEmail && uEmail === iEmail);
-          return isMatch && (i.status === 'In Progress' || i.status === 'On Ride');
+          const statusStr = String(i.status || '');
+          return isMatch && activeStatuses.some(s => statusStr.toLowerCase() === s.toLowerCase());
         });
 
         if (current) {
@@ -66,7 +68,7 @@ export default function TripTrackingScreen({ userCoords, pickupLoc, dropoffLoc, 
     };
 
     syncRide();
-    const interval = setInterval(syncRide, 5000); // 5s polling interval across devices
+    const interval = setInterval(syncRide, 1500); // 1.5s sub-second live Zomato-style map refresh
 
     window.addEventListener('storage', syncRide);
     window.addEventListener('EMPERIAL CABS_trip_started', syncRide);

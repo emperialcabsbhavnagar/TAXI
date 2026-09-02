@@ -33,20 +33,50 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
     return INITIAL_VEHICLES;
   };
 
-  // Load ONLY current user's inquiries (not all users)
+  // Load ONLY current user's inquiries (Instant cache + Background Sync)
   const loadInquiries = async () => {
     const userProfile = getUserProfile();
     const userPhone = (userProfile?.phone || '').replace(/\D/g, '');
     const userEmail = (userProfile?.email || '').toLowerCase().trim();
-    const userName = (userProfile?.name || '').toLowerCase().trim();
 
+    const filterUserRides = (items) => {
+      if (!Array.isArray(items)) return [];
+      const seen = new Set();
+      return items.filter(item => {
+        if (!item) return false;
+        const iPhone = (item.customerPhone || '').replace(/\D/g, '');
+        const iEmail = (item.customerEmail || '').toLowerCase().trim();
+
+        const matchesPhone = userPhone && iPhone && (userPhone.slice(-10) === iPhone.slice(-10));
+        const matchesEmail = userEmail && iEmail && (userEmail === iEmail);
+
+        if (!matchesPhone && !matchesEmail) return false;
+        const idKey = item.id || `${iPhone}-${item.timestamp || item.scheduledTime}`;
+        if (seen.has(idKey)) return false;
+        seen.add(idKey);
+        return true;
+      });
+    };
+
+    // ── 1. INSTANT PASS (< 1ms): Display cached local inquiries immediately ──
     try {
+      const localRaw = localStorage.getItem('cabsy_inquiries');
+      const localList = localRaw ? JSON.parse(localRaw) : [];
+      const instantRides = filterUserRides(localList);
+      if (instantRides.length > 0) {
+        setInquiries(instantRides);
+      }
+    } catch (e) {}
+
+    // ── 2. BACKGROUND PASS: Fetch fresh MySQL & Firestore updates with tight 2.5s timeout ──
+    try {
+      const withTimeout = (p, ms = 2500) => Promise.race([p, new Promise(r => setTimeout(() => r([]), ms))]);
+
       const [mysqlData, firestoreData] = await Promise.all([
-        loadAllInquiriesFromMySQL().catch(() => []),
-        loadAllInquiriesFromFirestore().catch(() => [])
+        withTimeout(loadAllInquiriesFromMySQL().catch(() => [])),
+        withTimeout(loadAllInquiriesFromFirestore().catch(() => []))
       ]);
 
-      // Merge MySQL + Firestore + LocalStorage by ID
       const inqMap = new Map();
       const localRaw = localStorage.getItem('cabsy_inquiries');
       const localList = localRaw ? JSON.parse(localRaw) : [];
@@ -57,33 +87,14 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
           inqMap.set(item.id, { ...inqMap.get(item.id), ...item });
         }
       });
-      const list = Array.from(inqMap.values());
+      const mergedList = Array.from(inqMap.values());
+      const freshUserRides = filterUserRides(mergedList);
 
-      // ── CRITICAL: Filter to show ONLY this user's rides (Strict Phone & Email Match) ──
-      const userRides = list.filter(item => {
-        const iPhone = (item.customerPhone || '').replace(/\D/g, '');
-        const iEmail = (item.customerEmail || '').toLowerCase().trim();
-
-        const matchesPhone = userPhone && iPhone && (userPhone.slice(-10) === iPhone.slice(-10));
-        const matchesEmail = userEmail && iEmail && (userEmail === iEmail);
-
-        return matchesPhone || matchesEmail;
-      });
-
-      // Deduplicate by ID
-      const seen = new Set();
-      const unique = userRides.filter(item => {
-        const idKey = item.id || `${item.customerPhone}-${item.timestamp || item.scheduledTime}`;
-        if (seen.has(idKey)) return false;
-        seen.add(idKey);
-        return true;
-      });
-      setInquiries(unique);
+      setInquiries(freshUserRides);
       return;
     } catch (e) {
-      console.error("Failed to fetch inquiries", e);
+      console.error("Failed to fetch remote inquiries", e);
     }
-    setInquiries([]);
   };
 
   useEffect(() => {

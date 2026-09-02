@@ -12,6 +12,7 @@ import Contact from './pages/Contact';
 import BookRide from './pages/BookRide';
 import AdminPortal from './pages/AdminPortal';
 import MobileAppView from './pages/MobileAppView';
+import PrivacyPolicy from './pages/PrivacyPolicy';
 import NotFound from './pages/NotFound';
 
 function ScrollToTop() {
@@ -95,6 +96,9 @@ function MainLayout({ handleOpenBooking, isBookingOpen, handleCloseBooking }) {
           <Route path="/services" element={<Services onOpenBooking={handleOpenBooking} />} />
           <Route path="/book-ride" element={<BookRide />} />
           <Route path="/faq" element={<Faq onOpenBooking={handleOpenBooking} />} />
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/terms" element={<PrivacyPolicy />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/admin" element={<AdminPortal />} />
           <Route path="*" element={<NotFound />} />
