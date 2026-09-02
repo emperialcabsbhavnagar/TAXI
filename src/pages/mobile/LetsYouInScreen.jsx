@@ -192,12 +192,20 @@ export default function LetsYouInScreen({
   // ─── Main handler: "Continue with Google" button ──
   const handleGoogleAuth = async () => {
     setLoading(true);
+    setOtpError('');
     try {
-      const googleUser = await signInWithGoogle();
-      if (googleUser && googleUser.email) {
-        await processGoogleUser(googleUser);
+      const res = await signInWithGoogle();
+      if (res && res.email) {
+        await processGoogleUser(res);
+      } else if (res && res.error) {
+        setLoading(false);
+        const errMsg = String(res.error);
+        if (errMsg.includes('10:') || errMsg.includes('12500') || errMsg.includes('BadAuthentication') || errMsg.includes('DEVELOPER_ERROR')) {
+          setOtpError('Google Sign-In requires SHA-1 fingerprint added in Firebase Console for package com.emperialcabs.booking.');
+        } else {
+          setOtpError('Google Sign-In note: ' + errMsg);
+        }
       } else {
-        // Native picker was cancelled or returned no data
         setLoading(false);
       }
     } catch (err) {

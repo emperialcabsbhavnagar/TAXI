@@ -122,7 +122,8 @@ export const signInWithGoogle = async () => {
         return { name: name || 'Empire Rider', email, photoURL, uid };
       }
     } catch (nativeErr) {
-      console.warn('[GoogleAuth] Native sign-in note:', nativeErr?.message || nativeErr);
+      console.warn('[GoogleAuth] Native sign-in error:', nativeErr?.message || nativeErr);
+      return { error: nativeErr?.message || String(nativeErr) || 'BadAuthentication' };
     }
 
     // ON NATIVE APP: Strictly DO NOT open external Chrome browser!
