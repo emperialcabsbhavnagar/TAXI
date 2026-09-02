@@ -22,6 +22,7 @@ import {
   requestNotificationPermission 
 } from '../services/notificationEngine';
 import db from '../services/dbService';
+import { loadAllInquiriesFromFirestore } from '../services/firebaseService';
 import { 
   LayoutDashboard, 
   Inbox, 
@@ -506,13 +507,16 @@ export default function AdminPortal() {
       try {
         if (isInitial) setFirestoreLoading(true);
 
-        // 1. Fetch Inquiries from Hostinger MySQL
-        const mysqlInquiries = await loadAllInquiriesFromMySQL();
+        // 1. Fetch Inquiries from Hostinger MySQL, Firestore & LocalStorage in parallel
+        const [mysqlInquiries, firestoreInquiries] = await Promise.all([
+          loadAllInquiriesFromMySQL().catch(() => []),
+          loadAllInquiriesFromFirestore().catch(() => [])
+        ]);
         const localInquiries = db.getInquiries() || [];
         
-        // Merge MySQL + Local Storage inquiries
+        // Merge Local Storage + MySQL + Firestore inquiries
         const inqMap = new Map();
-        [...localInquiries, ...mysqlInquiries].forEach(item => {
+        [...localInquiries, ...mysqlInquiries, ...firestoreInquiries].forEach(item => {
           if (item && item.id) {
             inqMap.set(item.id, { ...inqMap.get(item.id), ...item });
           }

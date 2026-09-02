@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "555496247847",
+    "project_id": "taxibhavnagar",
+    "storage_bucket": "taxibhavnagar.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:555496247847:android:9dfc9a7a7595b7ddb8b402",
+        "android_client_info": {
+          "package_name": "com.emperialcabs.booking"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCBdaPXLUsaxtYRXXv8_EKQ5K-BKIlqguQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

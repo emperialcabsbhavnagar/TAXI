@@ -76,6 +76,9 @@ export const signInWithGoogle = async () => {
   // ── 1. Native Android/iOS: Strictly Native Google Account bottom sheet (In-App Only) ──
   if (isNativeApp()) {
     try {
+      // Sign out first to ensure Google Play Services ALWAYS shows the account picker sheet with all email accounts on device
+      await GoogleAuth.signOut().catch(() => {});
+
       // Triggers native Android Google Account bottom sheet picker (all phone accounts)
       const googleUser = await GoogleAuth.signIn();
 
@@ -216,24 +219,27 @@ export const loadCustomerFromFirestore = async (email, phone) => {
  * Also stores a copy under the user's sub-collection for fast per-user history lookup.
  */
 export const saveInquiryToFirestore = async (inquiry) => {
-  if (!inquiry) return null;
+  if (!inquiry || !db) return null;
   try {
+    const inqId = String(inquiry.id || ('INQ-' + Math.floor(1000 + Math.random() * 9000)));
     // 1. Global admin collection
     const globalRef = collection(db, 'cabsy_inquiries');
-    const docRef = await addDoc(globalRef, {
+    const docRef = doc(globalRef, inqId);
+    await setDoc(docRef, {
       ...inquiry,
-      createdAt: serverTimestamp()
-    });
+      id: inqId,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
 
     // 2. Per-user sub-collection (keyed by phone or email)
     const userKey = inquiry.customerPhone || inquiry.customerEmail || inquiry.customerName;
     if (userKey) {
       const userDocId = String(userKey).toLowerCase().replace(/[^a-z0-9]/g, '_');
-      const userInqRef = doc(db, 'cabsy_customers', userDocId, 'inquiries', docRef.id);
-      await setDoc(userInqRef, { ...inquiry, firestoreId: docRef.id, createdAt: serverTimestamp() });
+      const userInqRef = doc(db, 'cabsy_customers', userDocId, 'inquiries', inqId);
+      await setDoc(userInqRef, { ...inquiry, id: inqId, firestoreId: inqId }, { merge: true });
     }
 
-    return docRef.id;
+    return inqId;
   } catch (e) {
     console.warn('Firestore saveInquiry failed (offline?):', e);
     return null;
@@ -251,6 +257,19 @@ export const loadAllInquiriesFromFirestore = async () => {
   } catch (e) {
     console.warn('Firestore loadAllInquiries failed:', e);
     return [];
+  }
+};
+
+export const subscribeToInquiriesFirestore = (onUpdate) => {
+  try {
+    const ref = collection(db, 'cabsy_inquiries');
+    const { onSnapshot } = require('firebase/firestore');
+    return onSnapshot(ref, (snapshot) => {
+      const list = snapshot.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
+      onUpdate(list);
+    }, (err) => console.warn('Firestore onSnapshot error:', err));
+  } catch (e) {
+    return () => {};
   }
 };
 

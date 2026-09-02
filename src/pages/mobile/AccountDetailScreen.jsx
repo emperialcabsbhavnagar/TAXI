@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import db from '../../services/dbService';
 import { saveCustomerToMySQL } from '../../services/mysqlService';
+import { saveCustomerToFirestore } from '../../services/firebaseService';
 
 const formatNameFromEmail = (email) => {
   if (!email || !email.includes('@')) return '';
@@ -151,8 +152,12 @@ export default function AccountDetailScreen({ onBack, onSave, isCreateMode = fal
         localStorage.setItem(`cabsy_user_profile_${cleanPhone}`, JSON.stringify(finalProfile));
         localStorage.setItem('cabsy_user_phone', finalProfile.phone);
       }
+      if (finalProfile.email) {
+        localStorage.setItem(`cabsy_user_profile_email_${finalProfile.email.toLowerCase().trim()}`, JSON.stringify(finalProfile));
+      }
       db.saveCustomer(finalProfile);
       await saveCustomerToMySQL(finalProfile).catch(() => {});
+      await saveCustomerToFirestore(finalProfile).catch(() => {});
       window.dispatchEvent(new Event('storage'));
       window.dispatchEvent(new CustomEvent('EMPERIAL CABS_db_sync', { detail: { type: 'CUSTOMER_UPDATED', data: finalProfile } }));
     } catch (err) {}

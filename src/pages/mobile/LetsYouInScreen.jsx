@@ -44,51 +44,83 @@ export default function LetsYouInScreen({
 
     // ── 1. Check local storage for existing completed profile by email ──
     try {
-      const savedRaw = localStorage.getItem('cabsy_user_profile');
-      if (savedRaw) {
-        const parsed = JSON.parse(savedRaw);
-        if (parsed && parsed.email && parsed.email.toLowerCase().trim() === email && parsed.phone) {
-          existingProfile = parsed;
+      // Direct email profile cache
+      const emailCachedRaw = localStorage.getItem(`cabsy_user_profile_email_${email}`);
+      if (emailCachedRaw) {
+        const parsed = JSON.parse(emailCachedRaw);
+        if (parsed && parsed.phone) existingProfile = parsed;
+      }
+      
+      // Default profile cache
+      if (!existingProfile) {
+        const savedRaw = localStorage.getItem('cabsy_user_profile');
+        if (savedRaw) {
+          const parsed = JSON.parse(savedRaw);
+          if (parsed && parsed.email && parsed.email.toLowerCase().trim() === email && parsed.phone) {
+            existingProfile = parsed;
+          }
+        }
+      }
+
+      // Customer registry cache
+      if (!existingProfile) {
+        const custRaw = localStorage.getItem('cabsy_customers');
+        if (custRaw) {
+          const custs = JSON.parse(custRaw);
+          if (Array.isArray(custs)) {
+            const found = custs.find(c => c && c.email && c.email.toLowerCase().trim() === email && c.phone);
+            if (found) existingProfile = found;
+          }
         }
       }
     } catch (e) {}
 
-    // ── 2. Check Hostinger MySQL database for returning user by email ──
-    if (!existingProfile) {
-      try {
-        const mysqlCustomers = await loadAllCustomersFromMySQL().catch(() => []);
-        const match = (mysqlCustomers || []).find(c => {
-          const cEmail = (c.email || c.customerEmail || '').toLowerCase().trim();
-          return cEmail === email && (c.phone || c.name);
-        });
-        if (match) {
-          existingProfile = {
-            id: match.id || ('CUST-' + Math.floor(10000 + Math.random() * 89999)),
-            name: match.name || match.customerName || name,
-            email: email,
-            phone: match.phone || match.customerPhone || '',
-            photoURL: match.photoURL || photoURL,
-            profession: match.profession || '',
-            area: match.area || '',
-            status: 'Active'
-          };
-        }
-      } catch (e) {}
-    }
+    // Helper for timeout
+    const withTimeout = (promise, ms = 1500) => {
+      return Promise.race([
+        promise,
+        new Promise(resolve => setTimeout(() => resolve(null), ms))
+      ]);
+    };
 
-    // ── 3. Check Firestore database for returning user by email ──
+    // ── 2. Parallel remote checks (MySQL & Firestore) with 1.5s maximum timeout ──
     if (!existingProfile) {
       try {
-        const firestoreMatch = await loadCustomerFromFirestore(email).catch(() => null);
-        if (firestoreMatch && (firestoreMatch.name || firestoreMatch.phone)) {
+        const [mysqlResult, firestoreResult] = await Promise.all([
+          withTimeout(loadAllCustomersFromMySQL().catch(() => []), 1500),
+          withTimeout(loadCustomerFromFirestore(email).catch(() => null), 1500)
+        ]);
+
+        // Check MySQL result
+        if (mysqlResult && Array.isArray(mysqlResult)) {
+          const match = mysqlResult.find(c => {
+            const cEmail = (c.email || c.customerEmail || '').toLowerCase().trim();
+            return cEmail === email && (c.phone || c.name);
+          });
+          if (match) {
+            existingProfile = {
+              id: match.id || ('CUST-' + Math.floor(10000 + Math.random() * 89999)),
+              name: match.name || match.customerName || name,
+              email: email,
+              phone: match.phone || match.customerPhone || '',
+              photoURL: match.photoURL || photoURL,
+              profession: match.profession || '',
+              area: match.area || '',
+              status: 'Active'
+            };
+          }
+        }
+
+        // Fallback to Firestore result if MySQL didn't match
+        if (!existingProfile && firestoreResult && (firestoreResult.name || firestoreResult.phone)) {
           existingProfile = {
-            id: firestoreMatch.id || ('CUST-' + Math.floor(10000 + Math.random() * 89999)),
-            name: firestoreMatch.name || name,
+            id: firestoreResult.id || ('CUST-' + Math.floor(10000 + Math.random() * 89999)),
+            name: firestoreResult.name || name,
             email: email,
-            phone: firestoreMatch.phone || '',
-            photoURL: firestoreMatch.photoURL || photoURL,
-            profession: firestoreMatch.profession || '',
-            area: firestoreMatch.area || '',
+            phone: firestoreResult.phone || '',
+            photoURL: firestoreResult.photoURL || photoURL,
+            profession: firestoreResult.profession || '',
+            area: firestoreResult.area || '',
             status: 'Active'
           };
         }
