@@ -156,17 +156,18 @@ export default function AccountDetailScreen({ onBack, onSave, isCreateMode = fal
         localStorage.setItem(`cabsy_user_profile_email_${finalProfile.email.toLowerCase().trim()}`, JSON.stringify(finalProfile));
       }
       db.saveCustomer(finalProfile);
-      await saveCustomerToMySQL(finalProfile).catch(() => {});
-      await saveCustomerToFirestore(finalProfile).catch(() => {});
+
+      // Async background DB writes (non-blocking so UI moves instantly)
+      saveCustomerToMySQL(finalProfile).catch(() => {});
+      saveCustomerToFirestore(finalProfile).catch(() => {});
+
       window.dispatchEvent(new Event('storage'));
       window.dispatchEvent(new CustomEvent('EMPERIAL CABS_db_sync', { detail: { type: 'CUSTOMER_UPDATED', data: finalProfile } }));
     } catch (err) {}
+
     setSavedSuccess(true);
-    setTimeout(() => {
-      setSavedSuccess(false);
-      if (onSave) onSave(finalProfile);
-      else if (onBack) onBack();
-    }, 1000);
+    if (onSave) onSave(finalProfile);
+    else if (onBack) onBack();
   };
 
   return (

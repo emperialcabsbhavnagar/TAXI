@@ -672,8 +672,16 @@ export default function MobileAppView() {
     case 'ACCOUNT_CREATED':
       return (
         <AccountCreatedScreen
-          onNext={() => completeOnboarding()}
-          onBack={() => completeOnboarding()}
+          onNext={() => {
+            localStorage.setItem('EMPERIAL CABS_onboarded', 'true');
+            localStorage.setItem('EMPERIAL CABS_profile_completed', 'true');
+            setAppStage('APP_HOME');
+          }}
+          onBack={() => {
+            localStorage.setItem('EMPERIAL CABS_onboarded', 'true');
+            localStorage.setItem('EMPERIAL CABS_profile_completed', 'true');
+            setAppStage('APP_HOME');
+          }}
         />
       );
 
