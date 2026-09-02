@@ -434,7 +434,7 @@ export default function MobileAppView() {
     const selectedVehicleName = carObj?.name || 'SWIFT';
     const totalFareNum = carObj?.totalFareNum || 770;
 
-    const newInquiryId = `INQ-${Math.floor(1000 + Math.random() * 9000)}`;
+    const newInquiryId = db.getNextInquiryId();
     const walletDiscountUsed = carObj?.walletDiscountUsed || 0;
     const originalFare = carObj?.originalFare || totalFareNum;
     const couponUsed = carObj?.couponUsed || (walletDiscountUsed > 0 ? `Wallet Reward (-₹${walletDiscountUsed})` : null);

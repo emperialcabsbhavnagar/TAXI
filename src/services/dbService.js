@@ -64,11 +64,35 @@ class DatabaseService {
     }
   }
 
+  getNextInquiryId() {
+    try {
+      const inquiries = this.getInquiries();
+      let maxNum = 0;
+      if (Array.isArray(inquiries)) {
+        inquiries.forEach(i => {
+          if (i && i.id) {
+            const strId = String(i.id);
+            const match = strId.match(/INQ-(\d+)/i);
+            if (match) {
+              const val = parseInt(match[1], 10);
+              if (!isNaN(val) && val < 9000) {
+                if (val > maxNum) maxNum = val;
+              }
+            }
+          }
+        });
+      }
+      return `INQ-${maxNum + 1}`;
+    } catch (e) {
+      return 'INQ-1';
+    }
+  }
+
   saveInquiry(inquiry) {
     const inquiries = this.getInquiries();
     const existingIdx = inquiries.findIndex(i => i.id && inquiry.id && i.id === inquiry.id);
     const newInquiry = {
-      id: inquiry.id || ('INQ-' + Math.floor(1000 + Math.random() * 9000)),
+      id: inquiry.id || this.getNextInquiryId(),
       timestamp: new Date().toISOString(),
       date: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
       status: 'Pending',

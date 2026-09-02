@@ -200,7 +200,7 @@ export default function BookRide() {
       ? (exactDropoffAddress.trim() ? `${exactDropoffAddress.trim()}, ${finalDropoffCity}` : `${finalDropoffCity}, Main Spot`) 
       : dropoffDestination;
 
-    const newInquiryId = `INQ-${Math.floor(1000 + Math.random() * 9000)}`;
+    const newInquiryId = db.getNextInquiryId();
     const newInquiry = {
       id: newInquiryId,
       customerName,

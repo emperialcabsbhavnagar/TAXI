@@ -11,10 +11,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 $db_configs = [
-    ['host' => getenv('MYSQL_HOST') ?: 'localhost', 'user' => getenv('MYSQL_USER') ?: 'u889282535_taxi', 'pass' => getenv('MYSQL_PASSWORD') ?: 'Mahadev@0963', 'name' => getenv('MYSQL_DATABASE') ?: 'u889282535_taxi', 'port' => '3306'],
-    ['host' => 'srv1671.hstgr.io', 'user' => 'u889282535_taxi', 'pass' => 'Mahadev@0963', 'name' => 'u889282535_taxi', 'port' => '3306'],
     ['host' => 'localhost', 'user' => 'u217835086_TAXI', 'pass' => 'Mahadev@0963', 'name' => 'u217835086_TAXI', 'port' => '3306'],
-    ['host' => 'srv2213.hstgr.io', 'user' => 'u217835086_TAXI', 'pass' => 'Mahadev@0963', 'name' => 'u217835086_TAXI', 'port' => '3306']
+    ['host' => getenv('MYSQL_HOST') ?: 'localhost', 'user' => getenv('MYSQL_USER') ?: 'u889282535_taxi', 'pass' => getenv('MYSQL_PASSWORD') ?: 'Mahadev@0963', 'name' => getenv('MYSQL_DATABASE') ?: 'u889282535_taxi', 'port' => '3306'],
+    ['host' => 'srv2213.hstgr.io', 'user' => 'u217835086_TAXI', 'pass' => 'Mahadev@0963', 'name' => 'u217835086_TAXI', 'port' => '3306'],
+    ['host' => 'srv1671.hstgr.io', 'user' => 'u889282535_taxi', 'pass' => 'Mahadev@0963', 'name' => 'u889282535_taxi', 'port' => '3306']
 ];
 
 $pdo = null;
@@ -109,7 +109,18 @@ switch ($action) {
         break;
 
     case 'saveInquiry':
-        $id = !empty($data['id']) ? $data['id'] : ('INQ-' . round(microtime(true) * 1000));
+        if (empty($data['id'])) {
+            try {
+                $maxStmt = $pdo->query("SELECT MAX(CAST(SUBSTRING(id, 5) AS UNSIGNED)) as max_id FROM inquiries WHERE id LIKE 'INQ-%'");
+                $maxRow = $maxStmt->fetch();
+                $nextNum = intval($maxRow['max_id'] ?? 0) + 1;
+                $id = 'INQ-' . $nextNum;
+            } catch (Exception $e) {
+                $id = 'INQ-' . round(microtime(true) * 1000);
+            }
+        } else {
+            $id = $data['id'];
+        }
         $fare = is_numeric($data['fare'] ?? null) ? floatval($data['fare']) : 0.00;
         $origFare = is_numeric($data['originalFare'] ?? null) ? floatval($data['originalFare']) : $fare;
         $walletDisc = is_numeric($data['walletDiscountUsed'] ?? null) ? floatval($data['walletDiscountUsed']) : 0.00;

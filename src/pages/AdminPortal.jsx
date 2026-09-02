@@ -1258,7 +1258,7 @@ export default function AdminPortal() {
     setActionLoadingId('add_inquiry');
 
     const createdInquiry = {
-      id: 'INQ-' + Math.floor(1000 + Math.random() * 8999),
+      id: db.getNextInquiryId(),
       customerName: newInquiryForm.customerName,
       customerPhone: newInquiryForm.customerPhone || '+91 9876543210',
       pickup: newInquiryForm.pickup,
