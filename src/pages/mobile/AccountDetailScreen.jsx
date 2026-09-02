@@ -25,14 +25,21 @@ export default function AccountDetailScreen({ onBack, onSave, isCreateMode = fal
         nameVal = formatNameFromEmail(emailVal);
       }
 
+      // In create mode: pre-fill Google data (name, email, photo) but leave
+      // customer-specific fields blank so the user is forced to fill them
+      const phoneVal = googleData?.phone || base.phone || savedPhone || '';
+      const ageVal = (base.age && Number(base.age) > 0 && Number(base.age) <= 100) ? base.age : (isCreateMode ? '' : 26);
+      const professionVal = base.profession || (isCreateMode ? '' : '');
+      const areaVal = base.area || (isCreateMode ? '' : '');
+
       return {
         id: base.id || ('CUST-' + Math.floor(10000 + Math.random() * 89999)),
         name: nameVal,
         email: emailVal,
-        phone: googleData?.phone || base.phone || savedPhone || '',
-        age: (base.age && Number(base.age) > 0 && Number(base.age) <= 100) ? base.age : 26,
-        profession: base.profession || 'Rider',
-        area: base.area || 'Bhavnagar, Gujarat',
+        phone: phoneVal,
+        age: ageVal,
+        profession: professionVal,
+        area: areaVal,
         photoURL: googleData?.photoURL || base.photoURL || null,
         joined: base.joined || new Date().toISOString().split('T')[0]
       };
@@ -42,9 +49,9 @@ export default function AccountDetailScreen({ onBack, onSave, isCreateMode = fal
         name: googleData?.name || '',
         email: googleData?.email || '',
         phone: localStorage.getItem('cabsy_user_phone') || '',
-        age: 26,
-        profession: 'Rider',
-        area: 'Bhavnagar, Gujarat',
+        age: '',
+        profession: '',
+        area: '',
         photoURL: googleData?.photoURL || null,
         joined: new Date().toISOString().split('T')[0]
       };
@@ -112,8 +119,23 @@ export default function AccountDetailScreen({ onBack, onSave, isCreateMode = fal
     }
   };
 
+  const [validationError, setValidationError] = useState('');
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setValidationError('');
+
+    // In create mode, phone number is mandatory
+    const cleanPhone = (profile.phone || '').replace(/\D/g, '');
+    if (isCreateMode && cleanPhone.length < 10) {
+      setValidationError('Please enter a valid phone number to continue.');
+      return;
+    }
+    if (isCreateMode && !profile.name.trim()) {
+      setValidationError('Please enter your name to continue.');
+      return;
+    }
+
     const finalProfile = {
       ...profile,
       id: profile.id || ('CUST-' + Math.floor(10000 + Math.random() * 89999)),
@@ -125,7 +147,6 @@ export default function AccountDetailScreen({ onBack, onSave, isCreateMode = fal
       localStorage.setItem('cabsy_user_profile', JSON.stringify(finalProfile));
       localStorage.setItem('EMPERIAL CABS_onboarded', 'true');
       localStorage.setItem('EMPERIAL CABS_profile_completed', 'true');
-      const cleanPhone = (finalProfile.phone || '').replace(/\D/g, '');
       if (cleanPhone) {
         localStorage.setItem(`cabsy_user_profile_${cleanPhone}`, JSON.stringify(finalProfile));
         localStorage.setItem('cabsy_user_phone', finalProfile.phone);
@@ -233,10 +254,17 @@ export default function AccountDetailScreen({ onBack, onSave, isCreateMode = fal
           </p>
         </div>
 
+        {/* Validation Error */}
+        {validationError && (
+          <div style={{ background: '#FEF2F2', border: '1.5px solid #FCA5A5', color: '#991B1B', padding: '14px 18px', borderRadius: '16px', fontWeight: '700', textAlign: 'center', marginBottom: '16px', fontFamily: 'Space Grotesk', fontSize: '14px' }}>
+            {validationError}
+          </div>
+        )}
+
         {/* Success Alert */}
         {savedSuccess && (
           <div style={{ background: '#DCFCE7', border: '1.5px solid #86EFAC', color: '#15803D', padding: '14px 18px', borderRadius: '16px', fontWeight: '800', textAlign: 'center', marginBottom: '24px', fontFamily: 'League Spartan', fontSize: '16px' }}>
-            ✓ Profile Saved Successfully!
+            Profile Saved Successfully
           </div>
         )}
 

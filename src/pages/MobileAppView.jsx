@@ -595,15 +595,10 @@ export default function MobileAppView() {
           setAuthEmail={setAuthEmail}
           onNext={() => setAppStage('OTP_VERIFY')}
           onGoToCreateAccount={() => setAppStage('CREATE_PROFILE')}
-          onGoogleSignIn={(acc) => {
-            if (acc) setSelectedGoogleAccount(acc);
-            try {
-              localStorage.setItem('EMPERIAL CABS_permissions_asked', 'true');
-              localStorage.setItem('EMPERIAL CABS_onboarded', 'true');
-              localStorage.setItem('EMPERIAL CABS_profile_completed', 'true');
-            } catch (e) {}
-            completeOnboarding(acc);
-            setAppStage('APP_HOME');
+          onGoogleSignIn={(returningUserProfile) => {
+            // Called ONLY for returning users who already have a completed profile in DB
+            if (returningUserProfile) setSelectedGoogleAccount(returningUserProfile);
+            completeOnboarding(returningUserProfile);
           }}
           onBack={() => setAppStage('ONBOARDING')}
         />

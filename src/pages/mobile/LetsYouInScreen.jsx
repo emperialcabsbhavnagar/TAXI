@@ -95,8 +95,9 @@ export default function LetsYouInScreen({
       } catch (e) {}
     }
 
+    // ─── DECISION: Returning user (has phone on record) vs New user ───
     if (existingProfile && existingProfile.phone) {
-      // ── RETURNING USER: Exists in DB with completed profile -> Direct Home Login ──
+      // ── RETURNING USER: Exists in DB with completed profile -> Direct Home ──
       const merged = {
         ...existingProfile,
         name: existingProfile.name || name,
@@ -121,26 +122,29 @@ export default function LetsYouInScreen({
 
       setLoading(false);
 
+      // Signal MobileAppView: this is a RETURNING user -> go to APP_HOME
       if (onGoogleSignIn) {
         onGoogleSignIn(merged);
-      } else if (onNext) {
-        onNext();
       }
     } else {
-      // ── NEW USER: Not found in DB -> Route to Enter Profile Details ──
+      // ── NEW USER: Not found in DB -> Route to Create Profile form ──
       const newDraftProfile = {
         id: 'CUST-' + Math.floor(10000 + Math.random() * 89999),
         name,
         email,
-        phone: phoneNumber || '',
+        phone: '',       // Blank — customer must fill this
         photoURL,
         uid,
+        age: '',          // Blank — customer must fill this
+        profession: '',   // Blank — customer must fill this
+        area: '',         // Blank — customer must fill this
         registeredAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
         status: 'Active',
         lastLogin: new Date().toISOString()
       };
 
       try {
+        // Save draft (without profile_completed flag) so AccountDetailScreen can read it
         localStorage.setItem('cabsy_user_profile', JSON.stringify(newDraftProfile));
         localStorage.setItem('EMPERIAL CABS_onboarded', 'true');
         localStorage.removeItem('EMPERIAL CABS_profile_completed');
@@ -150,10 +154,9 @@ export default function LetsYouInScreen({
       if (setSelectedGoogleAccount) setSelectedGoogleAccount(newDraftProfile);
       setLoading(false);
 
+      // Signal MobileAppView: this is a NEW user -> go to CREATE_PROFILE
       if (onGoToCreateAccount) {
         onGoToCreateAccount();
-      } else if (onNext) {
-        onNext();
       }
     }
   };
@@ -192,8 +195,9 @@ export default function LetsYouInScreen({
     try {
       const googleUser = await signInWithGoogle();
       if (googleUser && googleUser.email) {
-        processGoogleUser(googleUser);
+        await processGoogleUser(googleUser);
       } else {
+        // Native picker was cancelled or returned no data
         setLoading(false);
       }
     } catch (err) {
