@@ -212,7 +212,7 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
         canEdit: false
       };
     }
-    if (st.includes('progress') || st.includes('ride') || st.includes('started')) {
+    if (st.includes('progress') || st.includes('ride') || st.includes('started') || st.includes('on the way')) {
       return {
         label: 'In Progress',
         Icon: CheckCircle2,
@@ -220,18 +220,20 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
         border: '#BAE6FD',
         color: '#0369A1',
         canCancel: false,
-        canEdit: false
+        canEdit: false,
+        cancelReason: 'Trip has already started. Active trips cannot be cancelled by customer.'
       };
     }
-    if (st.includes('approve') || st.includes('confirm') || st.includes('success')) {
+    if (st.includes('approve') || st.includes('confirm') || st.includes('assigned') || st.includes('success')) {
       return {
         label: 'Confirmed',
         Icon: CheckCircle2,
         bg: '#ECFDF5',
         border: '#A7F3D0',
         color: '#047857',
-        canCancel: false,
-        canEdit: false
+        canCancel: true,
+        canEdit: false,
+        cancelReason: 'You can cancel this inquiry before the trip starts.'
       };
     }
     if (st.includes('reject') || st.includes('decline') || st.includes('cancel')) {
@@ -242,7 +244,8 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
         border: '#FCA5A5',
         color: '#B91C1C',
         canCancel: false,
-        canEdit: false
+        canEdit: false,
+        cancelReason: 'Booking already cancelled.'
       };
     }
     return {
@@ -252,7 +255,8 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
       border: '#CBD5E1',
       color: '#475569',
       canCancel: true,
-      canEdit: true
+      canEdit: true,
+      cancelReason: 'You can modify or cancel this pending inquiry anytime.'
     };
   };
 
