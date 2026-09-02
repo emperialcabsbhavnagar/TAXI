@@ -22,7 +22,7 @@ import {
   requestNotificationPermission 
 } from '../services/notificationEngine';
 import db from '../services/dbService';
-import { loadAllInquiriesFromFirestore, updateInquiryStatus, deleteInquiryFromFirestore } from '../services/firebaseService';
+import { loadAllInquiriesFromFirestore, subscribeToInquiriesFirestore, updateInquiryStatus, deleteInquiryFromFirestore } from '../services/firebaseService';
 import { 
   LayoutDashboard, 
   Inbox, 
@@ -571,6 +571,21 @@ export default function AdminPortal() {
     window.addEventListener('EMPERIAL CABS_admin_notif', syncAdminNotifs);
     window.addEventListener('EMPERIAL CABS_db_sync', syncAdminNotifs);
     window.addEventListener('storage', syncAdminNotifs);
+
+    // Subscribe to live real-time Firestore inquiry snapshots
+    const unsubscribeFirestore = subscribeToInquiriesFirestore((firestoreInquiries) => {
+      if (Array.isArray(firestoreInquiries) && firestoreInquiries.length > 0) {
+        setInquiries(prev => {
+          const inqMap = new Map();
+          [...prev, ...firestoreInquiries].forEach(item => {
+            if (item && item.id) {
+              inqMap.set(item.id, { ...inqMap.get(item.id), ...item });
+            }
+          });
+          return Array.from(inqMap.values());
+        });
+      }
+    });
     
     // Poll Hostinger MySQL silently in background every 12s (prevents DB connection exhaustion)
     const interval = setInterval(() => fetchAllData(false), 12000);
@@ -580,6 +595,7 @@ export default function AdminPortal() {
       window.removeEventListener('EMPERIAL CABS_db_sync', syncAdminNotifs);
       window.removeEventListener('storage', syncAdminNotifs);
       clearInterval(interval);
+      if (typeof unsubscribeFirestore === 'function') unsubscribeFirestore();
     };
   }, []);
 

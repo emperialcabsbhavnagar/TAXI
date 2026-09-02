@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import './MobileAppView.css';
 import { db } from '../services/dbService';
 import { saveInquiryToMySQL, saveCustomerToMySQL } from '../services/mysqlService';
+import { saveInquiryToFirestore, saveCustomerToFirestore } from '../services/firebaseService';
 import { notifyAdmin, notifyCustomer, requestNotificationPermission } from '../services/notificationEngine';
 
 // Import Modular Mobile Screen Components
@@ -487,7 +488,9 @@ export default function MobileAppView() {
       customerEmail: userProf.email
     });
 
-    // 3. Save directly to Hostinger MySQL Database
+    // 3. Dual-write directly to Firestore & Hostinger MySQL Database
+    saveInquiryToFirestore(newInquiry).catch(e => console.warn('Firestore inquiry save failed:', e));
+    saveCustomerToFirestore(userProf).catch(e => console.warn('Firestore customer save failed:', e));
     saveInquiryToMySQL(newInquiry).catch(e => console.warn('MySQL inquiry save failed:', e));
     saveCustomerToMySQL(userProf).catch(e => console.warn('MySQL customer save failed:', e));
 

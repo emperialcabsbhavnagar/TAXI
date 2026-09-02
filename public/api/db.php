@@ -10,38 +10,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit();
 }
 
-$db_host = getenv('MYSQL_HOST') ?: 'localhost';
-$db_user = getenv('MYSQL_USER') ?: 'u217835086_TAXI';
-$db_pass = getenv('MYSQL_PASSWORD') ?: 'Mahadev@0963';
-$db_name = getenv('MYSQL_DATABASE') ?: 'u217835086_TAXI';
-$db_port = getenv('MYSQL_PORT') ?: '3306';
+$db_configs = [
+    ['host' => getenv('MYSQL_HOST') ?: 'localhost', 'user' => getenv('MYSQL_USER') ?: 'u889282535_taxi', 'pass' => getenv('MYSQL_PASSWORD') ?: 'Mahadev@0963', 'name' => getenv('MYSQL_DATABASE') ?: 'u889282535_taxi', 'port' => '3306'],
+    ['host' => 'srv1671.hstgr.io', 'user' => 'u889282535_taxi', 'pass' => 'Mahadev@0963', 'name' => 'u889282535_taxi', 'port' => '3306'],
+    ['host' => 'localhost', 'user' => 'u217835086_TAXI', 'pass' => 'Mahadev@0963', 'name' => 'u217835086_TAXI', 'port' => '3306'],
+    ['host' => 'srv2213.hstgr.io', 'user' => 'u217835086_TAXI', 'pass' => 'Mahadev@0963', 'name' => 'u217835086_TAXI', 'port' => '3306']
+];
 
-// Fallback to remote host if localhost connection fails
 $pdo = null;
-try {
-    $dsn = "mysql:host=$db_host;port=$db_port;dbname=$db_name;charset=utf8mb4";
-    $pdo = new PDO($dsn, $db_user, $db_pass, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES => false
-    ]);
-} catch (PDOException $e) {
-    if ($db_host === 'localhost') {
-        try {
-            $dsn = "mysql:host=srv2213.hstgr.io;port=3306;dbname=$db_name;charset=utf8mb4";
-            $pdo = new PDO($dsn, $db_user, $db_pass, [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                PDO::ATTR_EMULATE_PREPARES => false
-            ]);
-        } catch (PDOException $e2) {
-            echo json_encode(['success' => false, 'error' => 'Database connection failed: ' . $e2->getMessage()]);
-            exit();
-        }
-    } else {
-        echo json_encode(['success' => false, 'error' => 'Database connection failed: ' . $e->getMessage()]);
-        exit();
+$last_error = null;
+
+foreach ($db_configs as $cfg) {
+    try {
+        $dsn = "mysql:host={$cfg['host']};port={$cfg['port']};dbname={$cfg['name']};charset=utf8mb4";
+        $pdo = new PDO($dsn, $cfg['user'], $cfg['pass'], [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false
+        ]);
+        if ($pdo) break;
+    } catch (PDOException $e) {
+        $last_error = $e->getMessage();
     }
+}
+
+if (!$pdo) {
+    echo json_encode(['success' => false, 'error' => 'Database connection failed: ' . $last_error, 'inquiries' => [], 'customers' => []]);
+    exit();
 }
 
 // Ensure database tables exist
