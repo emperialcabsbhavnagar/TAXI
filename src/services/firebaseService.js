@@ -16,6 +16,7 @@ import {
   orderBy,
   updateDoc,
   deleteDoc,
+  onSnapshot,
   serverTimestamp
 } from 'firebase/firestore';
 
@@ -114,7 +115,7 @@ export const signInWithGoogle = async () => {
           email = `user_${String(rawId).slice(-6)}@gmail.com`;
         }
         if (!name) {
-          email.split('@')[0];
+          name = email.split('@')[0];
         }
         if (!uid) {
           uid = 'goog_' + Date.now();
@@ -261,14 +262,15 @@ export const loadAllInquiriesFromFirestore = async () => {
 };
 
 export const subscribeToInquiriesFirestore = (onUpdate) => {
+  if (!db) return () => {};
   try {
     const ref = collection(db, 'cabsy_inquiries');
-    const { onSnapshot } = require('firebase/firestore');
     return onSnapshot(ref, (snapshot) => {
       const list = snapshot.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
       onUpdate(list);
     }, (err) => console.warn('Firestore onSnapshot error:', err));
   } catch (e) {
+    console.warn('Firestore subscribe failed:', e);
     return () => {};
   }
 };

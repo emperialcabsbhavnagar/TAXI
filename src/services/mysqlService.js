@@ -4,13 +4,36 @@
 const getApiEndpoints = () => {
   const primaryApi = 'https://emperialcabs.com/api/db.php';
   const secondaryApi = 'https://emperialcabs.com/api/db';
-  if (typeof window !== 'undefined' && window.location) {
-    const host = window.location.hostname.toLowerCase();
-    if (host.includes('emperialcabs.com') || host.includes('localhost') || host.includes('127.0.0.1')) {
+
+  // On native Capacitor app (Android/iOS APK), ALWAYS use absolute URLs.
+  // The embedded WebView serves static files — relative paths like /api/db.php
+  // resolve to capacitor://localhost/api/db.php (a static file, not a PHP server).
+  if (typeof window !== 'undefined') {
+    const isNative = (
+      window.Capacitor?.isNativePlatform?.() ||
+      window.Capacitor?.isNative ||
+      window.Capacitor?.platform === 'android' ||
+      window.Capacitor?.platform === 'ios' ||
+      window.location?.protocol === 'capacitor:' ||
+      window.location?.protocol === 'ionic:'
+    );
+    if (isNative) {
+      return [primaryApi, secondaryApi];
+    }
+
+    // On the live domain (emperialcabs.com), prefer relative paths (same-origin, faster)
+    const host = window.location?.hostname?.toLowerCase() || '';
+    if (host.includes('emperialcabs.com')) {
       return ['/api/db.php', '/api/db', primaryApi];
     }
+
+    // Local dev (localhost / 127.0.0.1) — try relative first, then absolute
+    if (host.includes('localhost') || host.includes('127.0.0.1')) {
+      return [primaryApi, secondaryApi, '/api/db.php'];
+    }
   }
-  return [primaryApi, secondaryApi, '/api/db.php'];
+
+  return [primaryApi, secondaryApi];
 };
 
 const sendRequest = async (action, data = {}) => {

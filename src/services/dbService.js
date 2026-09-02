@@ -115,6 +115,47 @@ class DatabaseService {
     }
   }
 
+  getCustomerByPhone(phone) {
+    if (!phone) return null;
+    const cleanPhone = String(phone).replace(/\D/g, '').slice(-10);
+    if (!cleanPhone) return null;
+    try {
+      // Check phone-indexed cache first
+      const phoneCached = localStorage.getItem(`cabsy_user_profile_${cleanPhone}`);
+      if (phoneCached) {
+        const parsed = JSON.parse(phoneCached);
+        if (parsed && parsed.name) return parsed;
+      }
+      // Fall back to customer registry
+      const customers = this.getCustomers();
+      return customers.find(c => {
+        const cPhone = (c.phone || '').replace(/\D/g, '').slice(-10);
+        return cPhone && cPhone === cleanPhone;
+      }) || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  getCustomerByEmail(email) {
+    if (!email) return null;
+    const cleanEmail = email.toLowerCase().trim();
+    try {
+      const emailCached = localStorage.getItem(`cabsy_user_profile_email_${cleanEmail}`);
+      if (emailCached) {
+        const parsed = JSON.parse(emailCached);
+        if (parsed && parsed.name) return parsed;
+      }
+      const customers = this.getCustomers();
+      return customers.find(c => {
+        const cEmail = (c.email || '').toLowerCase().trim();
+        return cEmail && cEmail === cleanEmail;
+      }) || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   saveCustomer(customerProfile) {
     if (!customerProfile || (!customerProfile.name && !customerProfile.phone && !customerProfile.email)) return null;
     

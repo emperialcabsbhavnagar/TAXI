@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import BottomNavBar from '../../components/BottomNavBar';
 import { INITIAL_VEHICLES } from '../AdminPortal';
 import { loadAllInquiriesFromMySQL, updateInquiryStatusInMySQL, saveInquiryToMySQL } from '../../services/mysqlService';
+import { loadAllInquiriesFromFirestore, updateInquiryStatus as updateInquiryStatusFirestore } from '../../services/firebaseService';
 import db from '../../services/dbService';
 import { Calendar, Clock3, CheckCircle2, XCircle, Car, ArrowRight, X, Edit3 } from 'lucide-react';
 
@@ -40,15 +41,23 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
     const userName = (userProfile?.name || '').toLowerCase().trim();
 
     try {
-      const mysqlData = await loadAllInquiriesFromMySQL().catch(() => []);
-      let list = Array.isArray(mysqlData) && mysqlData.length > 0 ? mysqlData : [];
-      if (list.length === 0) {
-        const saved = localStorage.getItem('cabsy_inquiries');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) list = parsed;
+      const [mysqlData, firestoreData] = await Promise.all([
+        loadAllInquiriesFromMySQL().catch(() => []),
+        loadAllInquiriesFromFirestore().catch(() => [])
+      ]);
+
+      // Merge MySQL + Firestore + LocalStorage by ID
+      const inqMap = new Map();
+      const localRaw = localStorage.getItem('cabsy_inquiries');
+      const localList = localRaw ? JSON.parse(localRaw) : [];
+      [...(Array.isArray(localList) ? localList : []),
+       ...(Array.isArray(mysqlData) ? mysqlData : []),
+       ...(Array.isArray(firestoreData) ? firestoreData : [])].forEach(item => {
+        if (item && item.id) {
+          inqMap.set(item.id, { ...inqMap.get(item.id), ...item });
         }
-      }
+      });
+      const list = Array.from(inqMap.values());
 
       // ── CRITICAL: Filter to show ONLY this user's rides (Strict Phone & Email Match) ──
       const userRides = list.filter(item => {
@@ -72,7 +81,7 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
       setInquiries(unique);
       return;
     } catch (e) {
-      console.error("Failed to fetch inquiries from Hostinger MySQL", e);
+      console.error("Failed to fetch inquiries", e);
     }
     setInquiries([]);
   };
@@ -124,6 +133,7 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
     try {
       const targetInq = inquiries.find(item => item.id === inqId || item.createdAt === inqId);
       updateInquiryStatusInMySQL(inqId, 'Cancelled').catch(() => {});
+      updateInquiryStatusFirestore(inqId, 'Cancelled').catch(() => {});
       const updatedList = inquiries.map(item => {
         if (item.id === inqId || (item.createdAt && item.createdAt === inqId)) {
           return { ...item, status: 'Cancelled' };
