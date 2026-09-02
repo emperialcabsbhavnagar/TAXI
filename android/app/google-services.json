@@ -1,33 +1,33 @@
 {
   "project_info": {
-    "project_number": "256291841083",
-    "project_id": "taxi-c2ef8",
-    "storage_bucket": "taxi-c2ef8.firebasestorage.app"
+    "project_number": "555496247847",
+    "project_id": "taxibhavnagar",
+    "storage_bucket": "taxibhavnagar.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:256291841083:android:982539125c47698272a81e",
+        "mobilesdk_app_id": "1:555496247847:android:9dfc9a7a7595b7ddb8b402",
         "android_client_info": {
           "package_name": "com.emperialcabs.booking"
         }
       },
       "oauth_client": [
         {
-          "client_id": "256291841083-ueibs1i67ue9dbpjas60ak2vbn37ubc2.apps.googleusercontent.com",
+          "client_id": "555496247847-mhki7n17mv041nogm83nd51qqldp9vbl.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyCeZfwrDSwQokxyRejA3EtJYE_AYfRriFo"
+          "current_key": "AIzaSyCBdaPXLUsaxtYRXXv8_EKQ5K-BKIlqguQ"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "256291841083-ueibs1i67ue9dbpjas60ak2vbn37ubc2.apps.googleusercontent.com",
+              "client_id": "555496247847-mhki7n17mv041nogm83nd51qqldp9vbl.apps.googleusercontent.com",
               "client_type": 3
             }
           ]

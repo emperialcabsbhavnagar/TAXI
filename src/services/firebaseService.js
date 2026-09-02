@@ -19,15 +19,14 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 
-// Firebase Credentials matching android/app/google-services.json (Project: taxi-c2ef8)
+// Firebase Credentials matching android/app/google-services.json (Project: taxibhavnagar)
 export const firebaseConfig = {
-  apiKey: "AIzaSyCeZfwrDSwQokxyRejA3EtJYE_AYfRriFo",
-  authDomain: "taxi-c2ef8.firebaseapp.com",
-  projectId: "taxi-c2ef8",
-  storageBucket: "taxi-c2ef8.firebasestorage.app",
-  messagingSenderId: "256291841083",
-  appId: "1:256291841083:web:7c73e1a0ccb579fab8b402",
-  measurementId: "G-9GEY1LG188"
+  apiKey: "AIzaSyCBdaPXLUsaxtYRXXv8_EKQ5K-BKIlqguQ",
+  authDomain: "taxibhavnagar.firebaseapp.com",
+  projectId: "taxibhavnagar",
+  storageBucket: "taxibhavnagar.firebasestorage.app",
+  messagingSenderId: "555496247847",
+  appId: "1:555496247847:android:9dfc9a7a7595b7ddb8b402"
 };
 
 // Initialize Firebase App & Auth Services
@@ -66,8 +65,8 @@ const isNativeApp = () => {
 if (typeof window !== 'undefined' && isNativeApp()) {
   try {
     GoogleAuth.initialize({
-      clientId: '256291841083-ueibs1i67ue9dbpjas60ak2vbn37ubc2.apps.googleusercontent.com',
-      serverClientId: '256291841083-ueibs1i67ue9dbpjas60ak2vbn37ubc2.apps.googleusercontent.com',
+      clientId: '555496247847-mhki7n17mv041nogm83nd51qqldp9vbl.apps.googleusercontent.com',
+      serverClientId: '555496247847-mhki7n17mv041nogm83nd51qqldp9vbl.apps.googleusercontent.com',
       scopes: ['profile', 'email']
     });
   } catch (e) {}
