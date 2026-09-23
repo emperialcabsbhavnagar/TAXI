@@ -2,3 +2,4 @@ User-agent: *
 Allow: /
 
 Sitemap: https://emperialcabs.com/sitemap.xml
+Sitemap: https://emperialcabs.com/sitemap-routes.xml

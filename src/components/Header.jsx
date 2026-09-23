@@ -70,6 +70,15 @@ export default function Header({ onOpenBooking }) {
 
             <li className="nav-item">
               <Link 
+                to="/routes" 
+                className={`nav-link ${location.pathname.startsWith('/routes') || location.pathname.startsWith('/taxi/') ? 'active' : ''}`}
+              >
+                Routes
+              </Link>
+            </li>
+
+            <li className="nav-item">
+              <Link 
                 to="/book-ride" 
                 className={`nav-link ${location.pathname === '/book-ride' ? 'active' : ''}`}
               >

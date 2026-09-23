@@ -1,0 +1,314 @@
+/* EMPERIAL CABS — Popular Routes Directory Styles */
+
+.popular-routes-page {
+  background-color: #F8FAFC;
+  color: #0F172A;
+  min-height: 100vh;
+}
+
+.directory-hero {
+  background: linear-gradient(135deg, #0B132B 0%, #1C2541 100%);
+  color: #FFFFFF;
+  padding: 3.5rem 0 4.5rem;
+}
+
+.directory-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #94A3B8;
+  margin-bottom: 2rem;
+}
+
+.directory-breadcrumb a {
+  color: #94A3B8;
+  text-decoration: none;
+}
+
+.directory-breadcrumb a:hover {
+  color: #10B981;
+}
+
+.directory-breadcrumb span {
+  color: #F8FAFC;
+  font-weight: 600;
+}
+
+.directory-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #34D399;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 0.4rem 1rem;
+  border-radius: 9999px;
+  margin-bottom: 1.25rem;
+}
+
+.directory-title {
+  font-size: 2.85rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  margin-bottom: 1.25rem;
+  color: #FFFFFF;
+}
+
+.directory-subtitle {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: #CBD5E1;
+  max-width: 680px;
+  margin: 0 auto 2.5rem;
+}
+
+.directory-search-bar {
+  max-width: 620px;
+  margin: 0 auto;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.directory-search-bar input {
+  width: 100%;
+  padding: 1.1rem 3.25rem 1.1rem 3.25rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  color: #FFFFFF;
+  font-size: 1.05rem;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.directory-search-bar input::placeholder {
+  color: #94A3B8;
+}
+
+.directory-search-bar input:focus {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: #10B981;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2);
+}
+
+.directory-search-bar .search-icon {
+  position: absolute;
+  left: 1.2rem;
+  color: #94A3B8;
+  pointer-events: none;
+}
+
+.btn-clear-search {
+  position: absolute;
+  right: 1.2rem;
+  background: none;
+  border: none;
+  color: #94A3B8;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+/* ROUTES GRID SECTION */
+.routes-grid-section {
+  padding: 5rem 0;
+  background: #FFFFFF;
+}
+
+.directory-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.75rem;
+  margin-top: 3rem;
+}
+
+.directory-route-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 1rem;
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: all 0.25s ease;
+}
+
+.directory-route-card:hover {
+  transform: translateY(-4px);
+  border-color: #10B981;
+  box-shadow: 0 15px 30px -10px rgba(0, 0, 0, 0.08);
+}
+
+.d-route-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.d-route-name h3 {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #0F172A;
+  margin: 0 0 0.35rem;
+}
+
+.d-highway-tag {
+  font-size: 0.75rem;
+  color: #64748B;
+  display: block;
+}
+
+.d-price-badge {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.d-price-badge small {
+  display: block;
+  font-size: 0.7rem;
+  color: #64748B;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.d-price-badge strong {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #059669;
+}
+
+.d-route-specs {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #475569;
+  padding: 0.85rem 0;
+  border-top: 1px dashed #E2E8F0;
+  border-bottom: 1px dashed #E2E8F0;
+  margin-bottom: 1.25rem;
+}
+
+.d-route-specs span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.spec-dot {
+  color: #CBD5E1;
+}
+
+.spec-oneway {
+  color: #4F46E5;
+  font-weight: 600;
+}
+
+.d-btn-view {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #10B981;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.d-btn-view:hover {
+  color: #059669;
+  gap: 0.75rem;
+}
+
+/* CITY DIRECTORY SECTION */
+.city-directory-section {
+  padding: 5rem 0;
+  background: #F8FAFC;
+}
+
+.cities-directory-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.25rem;
+  margin-top: 3rem;
+}
+
+.city-directory-pill {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 0.85rem;
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  text-decoration: none;
+  color: #0F172A;
+  transition: all 0.2s ease;
+}
+
+.city-directory-pill:hover {
+  transform: translateY(-2px);
+  border-color: #10B981;
+  box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.05);
+}
+
+.city-pill-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  background: #ECFDF5;
+  color: #059669;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.city-pill-text {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.city-pill-text strong {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0F172A;
+}
+
+.city-pill-text small {
+  font-size: 0.75rem;
+  color: #64748B;
+}
+
+.city-arrow {
+  color: #94A3B8;
+  flex-shrink: 0;
+}
+
+/* RESPONSIVE */
+@media (max-width: 1024px) {
+  .directory-cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .cities-directory-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .directory-title {
+    font-size: 2.15rem;
+  }
+  .directory-cards-grid {
+    grid-template-columns: 1fr;
+  }
+  .cities-directory-grid {
+    grid-template-columns: 1fr;
+  }
+}

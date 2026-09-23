@@ -26,12 +26,26 @@ export default function Footer() {
 
             {/* Quick Links */}
             <div className="footer-col">
-              <h4 className="footer-title">Quick Link</h4>
+              <h4 className="footer-title">Quick Links</h4>
               <ul className="footer-links">
                 <li><Link to="/">Home</Link></li>
-                <li><Link to="/about">About</Link></li>
-                <li><Link to="/services">Services</Link></li>
-                <li><Link to="/contact">Contact</Link></li>
+                <li><Link to="/about">About Us</Link></li>
+                <li><Link to="/services">Fleet & Rates</Link></li>
+                <li><Link to="/routes">All Gujarat Routes</Link></li>
+                <li><Link to="/contact">Contact Support</Link></li>
+              </ul>
+            </div>
+
+            {/* Popular Gujarat Routes */}
+            <div className="footer-col">
+              <h4 className="footer-title">Popular Routes</h4>
+              <ul className="footer-links">
+                <li><Link to="/taxi/bhavnagar-to-ahmedabad">Bhavnagar to Ahmedabad</Link></li>
+                <li><Link to="/taxi/bhavnagar-to-vadodara">Bhavnagar to Vadodara</Link></li>
+                <li><Link to="/taxi/bhavnagar-to-surat">Bhavnagar to Surat</Link></li>
+                <li><Link to="/taxi/bhavnagar-to-rajkot">Bhavnagar to Rajkot</Link></li>
+                <li><Link to="/taxi/ahmedabad-to-bhavnagar">Ahmedabad to Bhavnagar</Link></li>
+                <li><Link to="/routes" style={{ color: '#10B981', fontWeight: '700' }}>View All 800+ Routes &rarr;</Link></li>
               </ul>
             </div>
 
@@ -39,11 +53,10 @@ export default function Footer() {
             <div className="footer-col">
               <h4 className="footer-title">Support</h4>
               <ul className="footer-links">
-                <li><Link to="/contact">Customer Support</Link></li>
-                <li><Link to="/faq">Disclaimer</Link></li>
-                <li><Link to="/faq">FAQ</Link></li>
-                <li><Link to="/contact">Contact</Link></li>
-                <li><Link to="/admin" style={{ color: '#00b87c', fontWeight: 'bold' }}>⚡ Admin Portal</Link></li>
+                <li><Link to="/faq">Frequently Asked Questions</Link></li>
+                <li><Link to="/contact">24/7 Helpline</Link></li>
+                <li><Link to="/privacy">Privacy & Terms</Link></li>
+                <li><Link to="/admin" style={{ color: '#10B981', fontWeight: 'bold' }}>Admin Portal</Link></li>
               </ul>
             </div>
 

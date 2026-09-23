@@ -13,6 +13,9 @@ import BookRide from './pages/BookRide';
 import AdminPortal from './pages/AdminPortal';
 import MobileAppView from './pages/MobileAppView';
 import PrivacyPolicy from './pages/PrivacyPolicy';
+import RouteLandingPage from './pages/RouteLandingPage';
+import CityHubPage from './pages/CityHubPage';
+import PopularRoutes from './pages/PopularRoutes';
 import NotFound from './pages/NotFound';
 
 function ScrollToTop() {
@@ -39,14 +42,19 @@ function ScrollToTop() {
     } else if (pathname === '/faq') {
       title = "Frequently Asked Questions (FAQ) | EMPERIAL CABS Bhavnagar";
       desc = "Find answers to top questions about EMPERIAL CABS rates, cancellation policies, outstation tolls, and driver assignment.";
+    } else if (pathname === '/routes' || pathname === '/popular-routes') {
+      title = "Gujarat Taxi Routes & Fares Directory | EMPERIAL CABS";
+      desc = "Browse all direct city-to-city outstation taxi routes, fixed fares, and travel times across Bhavnagar, Ahmedabad, Vadodara, Surat, Rajkot, and all Gujarat cities.";
     } else if (pathname.startsWith('/admin')) {
       title = "Dispatcher Admin Portal | EMPERIAL CABS";
       desc = "Internal Admin Dispatcher Operations Management System.";
     }
 
-    document.title = title;
-    const metaDesc = document.querySelector('meta[name="description"]');
-    if (metaDesc) metaDesc.setAttribute('content', desc);
+    if (!pathname.startsWith('/taxi/') && !pathname.startsWith('/taxi-service-in-')) {
+      document.title = title;
+      const metaDesc = document.querySelector('meta[name="description"]');
+      if (metaDesc) metaDesc.setAttribute('content', desc);
+    }
   }, [pathname]);
   return null;
 }
@@ -95,6 +103,10 @@ function MainLayout({ handleOpenBooking, isBookingOpen, handleCloseBooking }) {
           <Route path="/about" element={<About onOpenBooking={handleOpenBooking} />} />
           <Route path="/services" element={<Services onOpenBooking={handleOpenBooking} />} />
           <Route path="/book-ride" element={<BookRide />} />
+          <Route path="/routes" element={<PopularRoutes />} />
+          <Route path="/popular-routes" element={<PopularRoutes />} />
+          <Route path="/taxi/:routeSlug" element={<RouteLandingPage onOpenBooking={handleOpenBooking} />} />
+          <Route path="/taxi-service-in-:citySlug" element={<CityHubPage onOpenBooking={handleOpenBooking} />} />
           <Route path="/faq" element={<Faq onOpenBooking={handleOpenBooking} />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/privacy-policy" element={<PrivacyPolicy />} />
