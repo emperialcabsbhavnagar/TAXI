@@ -56,14 +56,29 @@ export default function PopularRoutes() {
     }).catch(() => {});
   }, []);
 
-  // Combine static featured routes with any custom routes configured in MySQL
+  // Combine static featured routes with any custom routes and prices configured in MySQL
   const allRoutesList = [
-    ...POPULAR_FEATURED_ROUTES,
+    ...POPULAR_FEATURED_ROUTES.map(featured => {
+      const dbMatch = dbRoutes.find(r => 
+        r && r.pickup && r.dropoff &&
+        (r.pickup.toLowerCase().trim() === featured.from.toLowerCase().trim() || featured.from.toLowerCase().includes(r.pickup.toLowerCase().trim())) &&
+        (r.dropoff.toLowerCase().trim() === featured.to.toLowerCase().trim() || featured.to.toLowerCase().includes(r.dropoff.toLowerCase().trim()))
+      );
+      if (dbMatch && dbMatch.price) {
+        return {
+          ...featured,
+          baseFare: Number(dbMatch.price),
+          distanceKm: dbMatch.distanceKm ? Number(dbMatch.distanceKm) : featured.distanceKm,
+          duration: dbMatch.duration || featured.duration
+        };
+      }
+      return featured;
+    }),
     ...dbRoutes
       .filter(r => r && r.pickup && r.dropoff)
       .filter(r => !POPULAR_FEATURED_ROUTES.some(p => 
-        p.from.toLowerCase() === r.pickup.toLowerCase() && 
-        p.to.toLowerCase() === r.dropoff.toLowerCase()
+        p.from.toLowerCase().trim() === r.pickup.toLowerCase().trim() && 
+        p.to.toLowerCase().trim() === r.dropoff.toLowerCase().trim()
       ))
       .map(r => ({
         from: r.pickup,
