@@ -138,6 +138,14 @@ async function ensureTablesExist() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       );
     `);
+
+    await executeQuery(`
+      CREATE TABLE IF NOT EXISTS places (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(150) NOT NULL UNIQUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
     tablesEnsured = true;
   } catch (err) {
     console.warn('ensureTablesExist warning:', err);
@@ -388,6 +396,33 @@ export async function handleMySQLRequest(action, data = {}) {
           return { success: true, wallet: { balance: Number(rows[0].balance || 0), transactions: txns } };
         }
         return { success: true, wallet: { balance: 0, transactions: [] } };
+      }
+
+      case 'getPlaces': {
+        const [rows] = await executeQuery('SELECT name FROM places ORDER BY id ASC');
+        return { success: true, places: (rows || []).map(r => r.name) };
+      }
+
+      case 'savePlace': {
+        const { name } = data;
+        if (!name) return { success: false, error: 'Missing place name' };
+        await executeQuery('INSERT IGNORE INTO places (name) VALUES (?)', [String(name).trim()]);
+        return { success: true };
+      }
+
+      case 'seedGujaratPlaces': {
+        const gujaratCities = [
+          'Ahmedabad', 'Surat', 'Vadodara (Baroda)', 'Rajkot', 'Bhavnagar',
+          'Jamnagar', 'Junagadh', 'Gandhinagar', 'Anand', 'Bharuch',
+          'Navsari', 'Morbi', 'Surendranagar', 'Gandhidham', 'Nadiad',
+          'Porbandar', 'Mehsana', 'Bhuj', 'Veraval', 'Vapi',
+          'Valsad', 'Godhra', 'Palanpur', 'Patan', 'Botad',
+          'Amreli', 'Gondal', 'Dahod', 'Himmatnagar', 'Ankleshwar'
+        ];
+        for (const city of gujaratCities) {
+          await executeQuery('INSERT INTO places (name) VALUES (?) ON DUPLICATE KEY UPDATE name=VALUES(name)', [city]).catch(() => {});
+        }
+        return { success: true, count: gujaratCities.length };
       }
 
       default:

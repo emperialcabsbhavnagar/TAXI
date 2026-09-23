@@ -82,3 +82,60 @@ CREATE TABLE IF NOT EXISTS `drivers` (
   `rating` DECIMAL(3,2) DEFAULT 5.00 COMMENT 'Driver Rating',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- --------------------------------------------------------
+-- 5. Table structure for `places` (Available Gujarat Cities / Locations)
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `places` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique Place ID',
+  `name` VARCHAR(150) NOT NULL UNIQUE COMMENT 'City / Place Name',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Seed / Insert 30 Gujarat Cities into `places`
+INSERT INTO `places` (`name`) VALUES
+('Ahmedabad'),
+('Surat'),
+('Vadodara (Baroda)'),
+('Rajkot'),
+('Bhavnagar'),
+('Jamnagar'),
+('Junagadh'),
+('Gandhinagar'),
+('Anand'),
+('Bharuch'),
+('Navsari'),
+('Morbi'),
+('Surendranagar'),
+('Gandhidham'),
+('Nadiad'),
+('Porbandar'),
+('Mehsana'),
+('Bhuj'),
+('Veraval'),
+('Vapi'),
+('Valsad'),
+('Godhra'),
+('Palanpur'),
+('Patan'),
+('Botad'),
+('Amreli'),
+('Gondal'),
+('Dahod'),
+('Himmatnagar'),
+('Ankleshwar')
+ON DUPLICATE KEY UPDATE `name` = VALUES(`name`);
+
+-- --------------------------------------------------------
+-- 6. Table structure for `routes` (Fixed Route Pricing & Travel Duration)
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `routes` (
+  `id` VARCHAR(64) NOT NULL PRIMARY KEY COMMENT 'Unique Route ID',
+  `pickup` VARCHAR(150) NOT NULL COMMENT 'Origin Place',
+  `dropoff` VARCHAR(150) NOT NULL COMMENT 'Destination Place',
+  `price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT 'Fixed Fare in Rupees (₹)',
+  `duration` VARCHAR(100) DEFAULT '' COMMENT 'Travel Duration (e.g. 2 Hr 30 MIN)',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `unique_route_pair` (`pickup`, `dropoff`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+

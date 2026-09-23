@@ -194,15 +194,80 @@ export const INITIAL_DESTINATIONS = [
   { id: 'DEST-107', name: 'Bhavnagar → Mumbai Central Airport', pickup: 'Bhavnagar, Gujarat', dropoff: 'Mumbai Central Airport (BOM)', price: 8100, duration: '10 hr 30 min' }
 ];
 
+export const parseDurationHrMin = (str) => {
+  if (!str || typeof str !== 'string') return { hours: '', mins: '' };
+  const s = str.trim();
+  const hrMatch = s.match(/(\d+)\s*(?:hr|hour|h)\b/i);
+  const minMatch = s.match(/(\d+)\s*(?:min|minute|m)\b/i);
+
+  let hours = hrMatch ? hrMatch[1] : '';
+  let mins = minMatch ? minMatch[1] : '';
+
+  if (!hours && !mins && s.includes(':')) {
+    const parts = s.split(':');
+    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+      hours = String(parseInt(parts[0], 10) || '');
+      mins = String(parseInt(parts[1], 10) || '');
+    }
+  }
+
+  if (!hours && !mins && /^\d+$/.test(s)) {
+    const num = parseInt(s, 10);
+    if (num <= 24) {
+      hours = String(num);
+    } else {
+      mins = String(num);
+    }
+  }
+
+  return { hours, mins };
+};
+
+export const formatDurationHrMin = (hours, mins) => {
+  const h = hours !== undefined && hours !== null && String(hours).trim() !== '' ? parseInt(hours, 10) : 0;
+  const m = mins !== undefined && mins !== null && String(mins).trim() !== '' ? parseInt(mins, 10) : 0;
+  
+  if (h > 0 && m > 0) {
+    return `${h} Hr ${m} MIN`;
+  } else if (h > 0) {
+    return `${h} Hr`;
+  } else if (m > 0) {
+    return `${m} MIN`;
+  }
+  return '';
+};
+
 export const INITIAL_PLACES = [
-  'Bhavnagar, Gujarat',
-  'Bhavnagar Railway Station',
-  'Ahmedabad Airport (AMD)',
-  'Vadodara Central Railway Station',
-  'SG Highway IT Park',
-  'Alkapuri Commercial Hub',
-  'Ghogha Circle & Beach',
-  'Mumbai Central Airport (BOM)'
+  'Ahmedabad',
+  'Surat',
+  'Vadodara (Baroda)',
+  'Rajkot',
+  'Bhavnagar',
+  'Jamnagar',
+  'Junagadh',
+  'Gandhinagar',
+  'Anand',
+  'Bharuch',
+  'Navsari',
+  'Morbi',
+  'Surendranagar',
+  'Gandhidham',
+  'Nadiad',
+  'Porbandar',
+  'Mehsana',
+  'Bhuj',
+  'Veraval',
+  'Vapi',
+  'Valsad',
+  'Godhra',
+  'Palanpur',
+  'Patan',
+  'Botad',
+  'Amreli',
+  'Gondal',
+  'Dahod',
+  'Himmatnagar',
+  'Ankleshwar'
 ];
 
 export default function AdminPortal() {
@@ -347,7 +412,21 @@ export default function AdminPortal() {
 
   const [places, setPlaces] = useState(() => {
     const saved = localStorage.getItem('cabsy_places');
-    return saved ? JSON.parse(saved) : INITIAL_PLACES;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const merged = [...parsed];
+          INITIAL_PLACES.forEach(city => {
+            if (!merged.some(p => p.toLowerCase().trim() === city.toLowerCase().trim())) {
+              merged.push(city);
+            }
+          });
+          return merged;
+        }
+      } catch (e) {}
+    }
+    return INITIAL_PLACES;
   });
 
   const [newPlaceInput, setNewPlaceInput] = useState('');
@@ -778,25 +857,28 @@ export default function AdminPortal() {
       return;
     }
 
+    const durStr = formatDurationHrMin(newDestForm.hours, newDestForm.mins);
     const created = {
       id: `DEST-${Math.floor(100 + Math.random() * 900)}`,
       name: `${pickupVal} → ${dropoffVal}`,
       pickup: pickupVal,
       dropoff: dropoffVal,
       price: Number(newDestForm.price) || 0,
-      duration: newDestForm.duration || ''
+      duration: durStr || newDestForm.duration || ''
     };
     setDestinations([...destinations.filter(d => d && d.pickup && d.dropoff), created]);
-    setNewDestForm({ name: '', pickup: places[0] || '', dropoff: places[1] || '', price: '', duration: '' });
+    setNewDestForm({ name: '', pickup: places[0] || '', dropoff: places[1] || '', price: '', hours: '', mins: '', duration: '' });
     setAddDestModal(false);
   };
 
   const handleEditDestSubmit = (e) => {
     e.preventDefault();
+    if (!editDestModal.destination) return;
+    const durStr = formatDurationHrMin(editDestModal.destination.hours, editDestModal.destination.mins);
     const updatedDest = {
       ...editDestModal.destination,
       price: Number(editDestModal.destination.price) || 0,
-      duration: editDestModal.destination.duration || ''
+      duration: durStr || editDestModal.destination.duration || ''
     };
     setDestinations(destinations.map(d => d.id === updatedDest.id ? updatedDest : d));
     setEditDestModal({ open: false, destination: null });
@@ -818,12 +900,14 @@ export default function AdminPortal() {
         d.dropoff.toLowerCase().trim() === dest.toLowerCase().trim()
       );
       if (existing) {
+        const timeObj = parseDurationHrMin(existing.duration || '');
         initialRates[dest] = {
           price: existing.price !== undefined && existing.price !== null ? String(existing.price) : '',
-          duration: existing.duration || ''
+          hours: timeObj.hours,
+          mins: timeObj.mins
         };
       } else {
-        initialRates[dest] = { price: '', duration: '' };
+        initialRates[dest] = { price: '', hours: '', mins: '' };
       }
     });
     setBatchMatrixModal({ open: true, originPlace: origin, rates: initialRates });
@@ -838,12 +922,14 @@ export default function AdminPortal() {
         d.dropoff.toLowerCase().trim() === dest.toLowerCase().trim()
       );
       if (existing) {
+        const timeObj = parseDurationHrMin(existing.duration || '');
         initialRates[dest] = {
           price: existing.price !== undefined && existing.price !== null ? String(existing.price) : '',
-          duration: existing.duration || ''
+          hours: timeObj.hours,
+          mins: timeObj.mins
         };
       } else {
-        initialRates[dest] = { price: '', duration: '' };
+        initialRates[dest] = { price: '', hours: '', mins: '' };
       }
     });
     setBatchMatrixModal({ open: true, originPlace: newOrigin, rates: initialRates });
@@ -855,7 +941,7 @@ export default function AdminPortal() {
       rates: {
         ...prev.rates,
         [destPlace]: {
-          ...(prev.rates[destPlace] || { price: '', duration: '' }),
+          ...(prev.rates[destPlace] || { price: '', hours: '', mins: '' }),
           [field]: value
         }
       }
@@ -879,11 +965,13 @@ export default function AdminPortal() {
             d.dropoff.toLowerCase().trim() === destPlace.toLowerCase().trim()
           );
 
+          const formattedDuration = formatDurationHrMin(rateData.hours, rateData.mins);
+
           if (existingIdx >= 0) {
             updatedList[existingIdx] = {
               ...updatedList[existingIdx],
               price: numPrice,
-              duration: rateData.duration || updatedList[existingIdx].duration || ''
+              duration: formattedDuration || updatedList[existingIdx].duration || ''
             };
           } else {
             updatedList.push({
@@ -892,7 +980,7 @@ export default function AdminPortal() {
               pickup: origin,
               dropoff: destPlace,
               price: numPrice,
-              duration: rateData.duration || ''
+              duration: formattedDuration || ''
             });
           }
           savedCount++;
@@ -3014,14 +3102,11 @@ export default function AdminPortal() {
               </div>
               <div className="flex gap-2 align-center">
                 <button 
-                  className="btn btn-outline btn-lg-action flex align-center gap-2" 
-                  style={{ background: '#FFFFFF', borderColor: '#10B981', color: '#047857', fontWeight: '800', boxShadow: '0 2px 8px rgba(16,185,129,0.15)' }} 
+                  className="btn btn-primary btn-lg-action flex align-center gap-2" 
+                  style={{ background: '#10B981', borderColor: '#10B981', color: '#FFFFFF', fontWeight: '800', boxShadow: '0 4px 14px rgba(16,185,129,0.25)' }} 
                   onClick={openBatchMatrixModal}
                 >
-                  <Sparkles size={18} className="text-green" /> Enter All At Once (Bulk Pricing)
-                </button>
-                <button className="btn btn-primary btn-lg-action flex align-center gap-2" onClick={() => setAddDestModal(true)}>
-                  <Plus size={18} /> Set Route Fixed Price
+                  <Sparkles size={18} color="#FFFFFF" /> Enter All At Once (Bulk Pricing)
                 </button>
               </div>
             </div>
@@ -3132,7 +3217,10 @@ export default function AdminPortal() {
                           <div className="flex gap-2 align-center">
                             <button 
                               className="btn btn-outline btn-sm flex align-center gap-1"
-                              onClick={() => setEditDestModal({ open: true, destination: { ...dest } })}
+                              onClick={() => {
+                                const timeObj = parseDurationHrMin(dest.duration || '');
+                                setEditDestModal({ open: true, destination: { ...dest, hours: timeObj.hours, mins: timeObj.mins } });
+                              }}
                             >
                               <Edit size={14} /> Edit Price
                             </button>
@@ -3182,7 +3270,10 @@ export default function AdminPortal() {
                       <button 
                         className="btn btn-outline btn-sm flex align-center justify-center gap-1"
                         style={{ padding: '6px 12px', borderRadius: '8px', fontSize: '13px', fontWeight: '800' }}
-                        onClick={() => setEditDestModal({ open: true, destination: { ...dest } })}
+                        onClick={() => {
+                          const timeObj = parseDurationHrMin(dest.duration || '');
+                          setEditDestModal({ open: true, destination: { ...dest, hours: timeObj.hours, mins: timeObj.mins } });
+                        }}
                       >
                         <Edit size={14} /> Edit Fixed Price
                       </button>
@@ -4605,13 +4696,34 @@ export default function AdminPortal() {
                 </div>
 
                 <div className="input-group">
-                  <label>Est. Travel Time / Total Time</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. 3 hr 15 min"
-                    value={newDestForm.duration || ''} 
-                    onChange={e => setNewDestForm({ ...newDestForm, duration: e.target.value })}
-                  />
+                  <label>Est. Travel Time (Hours & Minutes)</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }}>
+                      <input 
+                        type="number" 
+                        min="0"
+                        max="48"
+                        placeholder="0"
+                        value={newDestForm.hours !== undefined ? newDestForm.hours : ''} 
+                        onChange={e => setNewDestForm({ ...newDestForm, hours: e.target.value })}
+                        style={{ textAlign: 'center', fontWeight: '700' }}
+                      />
+                      <span style={{ fontWeight: '700', color: '#64748B', fontSize: '0.9rem' }}>hr</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }}>
+                      <input 
+                        type="number" 
+                        min="0"
+                        max="59"
+                        step="5"
+                        placeholder="0"
+                        value={newDestForm.mins !== undefined ? newDestForm.mins : ''} 
+                        onChange={e => setNewDestForm({ ...newDestForm, mins: e.target.value })}
+                        style={{ textAlign: 'center', fontWeight: '700' }}
+                      />
+                      <span style={{ fontWeight: '700', color: '#64748B', fontSize: '0.9rem' }}>min</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -4689,16 +4801,40 @@ export default function AdminPortal() {
                 </div>
 
                 <div className="input-group">
-                  <label>Est. Travel Time / Total Time</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. 3 hr 15 min"
-                    value={editDestModal.destination.duration || ''} 
-                    onChange={e => setEditDestModal({ 
-                      ...editDestModal, 
-                      destination: { ...editDestModal.destination, duration: e.target.value } 
-                    })}
-                  />
+                  <label>Est. Travel Time (Hours & Minutes)</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }}>
+                      <input 
+                        type="number" 
+                        min="0"
+                        max="48"
+                        placeholder="0"
+                        value={editDestModal.destination.hours !== undefined ? editDestModal.destination.hours : ''} 
+                        onChange={e => setEditDestModal({ 
+                          ...editDestModal, 
+                          destination: { ...editDestModal.destination, hours: e.target.value } 
+                        })}
+                        style={{ textAlign: 'center', fontWeight: '700' }}
+                      />
+                      <span style={{ fontWeight: '700', color: '#64748B', fontSize: '0.9rem' }}>hr</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }}>
+                      <input 
+                        type="number" 
+                        min="0"
+                        max="59"
+                        step="5"
+                        placeholder="0"
+                        value={editDestModal.destination.mins !== undefined ? editDestModal.destination.mins : ''} 
+                        onChange={e => setEditDestModal({ 
+                          ...editDestModal, 
+                          destination: { ...editDestModal.destination, mins: e.target.value } 
+                        })}
+                        style={{ textAlign: 'center', fontWeight: '700' }}
+                      />
+                      <span style={{ fontWeight: '700', color: '#64748B', fontSize: '0.9rem' }}>min</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -4754,14 +4890,14 @@ export default function AdminPortal() {
                 <table className="admin-table batch-matrix-table" style={{ margin: 0 }}>
                   <thead style={{ background: '#F1F5F9' }}>
                     <tr>
-                      <th style={{ width: '40%' }}>Drop-off Destination (To)</th>
-                      <th style={{ width: '32%' }}>Fixed Fare in Rupees (₹)</th>
-                      <th style={{ width: '28%' }}>Est. Travel Time</th>
+                      <th style={{ width: '36%' }}>Drop-off Destination (To)</th>
+                      <th style={{ width: '28%' }}>Fixed Fare in Rupees (₹)</th>
+                      <th style={{ width: '36%' }}>Est. Travel Time (Hours & Mins)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {places.filter(p => p !== batchMatrixModal.originPlace).map((destPlace, idx) => {
-                      const currentData = batchMatrixModal.rates[destPlace] || { price: '', duration: '' };
+                      const currentData = batchMatrixModal.rates[destPlace] || { price: '', hours: '', mins: '' };
                       return (
                         <tr key={idx}>
                           <td>
@@ -4777,7 +4913,7 @@ export default function AdminPortal() {
                                 type="number"
                                 min="0"
                                 step="1"
-                                placeholder="Enter fixed ₹ price"
+                                placeholder="Fixed ₹ price"
                                 value={currentData.price}
                                 onChange={e => handleBatchRateChange(destPlace, 'price', e.target.value)}
                                 style={{
@@ -4796,23 +4932,57 @@ export default function AdminPortal() {
                             </div>
                           </td>
                           <td>
-                            <input 
-                              type="text"
-                              placeholder="e.g. 3 hr 15 min"
-                              value={currentData.duration}
-                              onChange={e => handleBatchRateChange(destPlace, 'duration', e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '8px 12px',
-                                borderRadius: '10px',
-                                border: '1.5px solid #CBD5E1',
-                                fontWeight: '600',
-                                fontSize: '0.9rem',
-                                outline: 'none',
-                                background: '#FFFFFF',
-                                color: '#0F172A'
-                              }}
-                            />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }}>
+                                <input 
+                                  type="number"
+                                  min="0"
+                                  max="48"
+                                  placeholder="0"
+                                  value={currentData.hours !== undefined ? currentData.hours : ''}
+                                  onChange={e => handleBatchRateChange(destPlace, 'hours', e.target.value)}
+                                  style={{
+                                    width: '100%',
+                                    padding: '8px 8px',
+                                    borderRadius: '10px',
+                                    border: '1.5px solid #CBD5E1',
+                                    fontWeight: '700',
+                                    fontSize: '0.9rem',
+                                    textAlign: 'center',
+                                    outline: 'none',
+                                    background: currentData.hours ? '#F0FDF4' : '#FFFFFF',
+                                    borderColor: currentData.hours ? '#10B981' : '#CBD5E1',
+                                    color: '#0F172A'
+                                  }}
+                                />
+                                <span style={{ fontWeight: '700', fontSize: '0.82rem', color: '#64748B' }}>hr</span>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }}>
+                                <input 
+                                  type="number"
+                                  min="0"
+                                  max="59"
+                                  step="5"
+                                  placeholder="0"
+                                  value={currentData.mins !== undefined ? currentData.mins : ''}
+                                  onChange={e => handleBatchRateChange(destPlace, 'mins', e.target.value)}
+                                  style={{
+                                    width: '100%',
+                                    padding: '8px 8px',
+                                    borderRadius: '10px',
+                                    border: '1.5px solid #CBD5E1',
+                                    fontWeight: '700',
+                                    fontSize: '0.9rem',
+                                    textAlign: 'center',
+                                    outline: 'none',
+                                    background: currentData.mins ? '#F0FDF4' : '#FFFFFF',
+                                    borderColor: currentData.mins ? '#10B981' : '#CBD5E1',
+                                    color: '#0F172A'
+                                  }}
+                                />
+                                <span style={{ fontWeight: '700', fontSize: '0.82rem', color: '#64748B' }}>min</span>
+                              </div>
+                            </div>
                           </td>
                         </tr>
                       );
