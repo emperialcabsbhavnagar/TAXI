@@ -1,18 +1,7 @@
 import React, { useState } from 'react';
-import db from '../../services/dbService';
-import { signInWithGoogle, loadCustomerFromFirestore, saveCustomerToFirestore, setupRecaptcha, sendPhoneOTP, sendEmailOTP } from '../../services/firebaseService';
-import { saveCustomerToMySQL, loadAllInquiriesFromMySQL, loadAllCustomersFromMySQL } from '../../services/mysqlService';
+import { signInWithGoogle, setupRecaptcha, sendPhoneOTP, sendEmailOTP } from '../../services/firebaseService';
 import logoPng from '../../assets/images/let-you-screen/logo.png';
-
-// ─── Utility: derive a clean display name from an email ──────────────────────
-const formatNameFromEmail = (email) => {
-  if (!email || !email.includes('@')) return '';
-  return email.split('@')[0]
-    .split(/[._-]/)
-    .filter(Boolean)
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(' ');
-};
+import { Smartphone, Mail, ArrowLeft, AlertCircle } from 'lucide-react';
 
 export default function LetsYouInScreen({
   phoneNumber, setPhoneNumber,
@@ -25,201 +14,6 @@ export default function LetsYouInScreen({
   const [emailInput, setEmailInput] = useState('');
   const [otpSending, setOtpSending] = useState(false);
   const [otpError, setOtpError] = useState('');
-  const [emailOtpCode, setEmailOtpCode] = useState(''); // displayed to user for testing
-
-  // ─── After Google gives us user data: check DB for returning vs new user ──
-  const processGoogleUser = async (googleData) => {
-    if (!googleData || !googleData.email) return;
-
-    setLoading(true);
-    const email = googleData.email.toLowerCase().trim();
-    let name = googleData.name || '';
-    if (!name || name === 'Google User') {
-      name = formatNameFromEmail(email);
-    }
-    const photoURL = googleData.photoURL || null;
-    const uid = googleData.uid || 'goog_' + Date.now();
-
-    let existingProfile = null;
-
-    // ── 1. Check local storage for existing completed profile by email ──
-    try {
-      // Direct email profile cache
-      const emailCachedRaw = localStorage.getItem(`cabsy_user_profile_email_${email}`);
-      if (emailCachedRaw) {
-        const parsed = JSON.parse(emailCachedRaw);
-        if (parsed && parsed.phone) existingProfile = parsed;
-      }
-      
-      // Default profile cache
-      if (!existingProfile) {
-        const savedRaw = localStorage.getItem('cabsy_user_profile');
-        if (savedRaw) {
-          const parsed = JSON.parse(savedRaw);
-          if (parsed && parsed.email && parsed.email.toLowerCase().trim() === email && parsed.phone) {
-            existingProfile = parsed;
-          }
-        }
-      }
-
-      // Customer registry cache
-      if (!existingProfile) {
-        const custRaw = localStorage.getItem('cabsy_customers');
-        if (custRaw) {
-          const custs = JSON.parse(custRaw);
-          if (Array.isArray(custs)) {
-            const found = custs.find(c => c && c.email && c.email.toLowerCase().trim() === email && c.phone);
-            if (found) existingProfile = found;
-          }
-        }
-      }
-    } catch (e) {}
-
-    // Helper for timeout
-    const withTimeout = (promise, ms = 1500) => {
-      return Promise.race([
-        promise,
-        new Promise(resolve => setTimeout(() => resolve(null), ms))
-      ]);
-    };
-
-    // ── 2. Parallel remote checks (MySQL & Firestore) with 1.5s maximum timeout ──
-    if (!existingProfile) {
-      try {
-        const [mysqlResult, firestoreResult] = await Promise.all([
-          withTimeout(loadAllCustomersFromMySQL().catch(() => []), 1500),
-          withTimeout(loadCustomerFromFirestore(email).catch(() => null), 1500)
-        ]);
-
-        // Check MySQL result
-        if (mysqlResult && Array.isArray(mysqlResult)) {
-          const match = mysqlResult.find(c => {
-            const cEmail = (c.email || c.customerEmail || '').toLowerCase().trim();
-            return cEmail === email && (c.phone || c.name);
-          });
-          if (match) {
-            existingProfile = {
-              id: match.id || ('CUST-' + Math.floor(10000 + Math.random() * 89999)),
-              name: match.name || match.customerName || name,
-              email: email,
-              phone: match.phone || match.customerPhone || '',
-              photoURL: match.photoURL || photoURL,
-              profession: match.profession || '',
-              area: match.area || '',
-              status: 'Active'
-            };
-          }
-        }
-
-        // Fallback to Firestore result if MySQL didn't match
-        if (!existingProfile && firestoreResult && (firestoreResult.name || firestoreResult.phone)) {
-          existingProfile = {
-            id: firestoreResult.id || ('CUST-' + Math.floor(10000 + Math.random() * 89999)),
-            name: firestoreResult.name || name,
-            email: email,
-            phone: firestoreResult.phone || '',
-            photoURL: firestoreResult.photoURL || photoURL,
-            profession: firestoreResult.profession || '',
-            area: firestoreResult.area || '',
-            status: 'Active'
-          };
-        }
-      } catch (e) {}
-    }
-
-    // ─── DECISION: Returning user (has phone on record) vs New user ───
-    if (existingProfile && existingProfile.phone) {
-      // ── RETURNING USER: Exists in DB with completed profile -> Direct Home ──
-      const merged = {
-        ...existingProfile,
-        name: existingProfile.name || name,
-        photoURL: photoURL || existingProfile.photoURL,
-        uid: uid,
-        lastLogin: new Date().toISOString()
-      };
-
-      try {
-        localStorage.setItem('cabsy_user_profile', JSON.stringify(merged));
-        localStorage.setItem('cabsy_user_phone', merged.phone || '');
-        localStorage.setItem('EMPERIAL CABS_onboarded', 'true');
-        localStorage.setItem('EMPERIAL CABS_profile_completed', 'true');
-        window.dispatchEvent(new Event('storage'));
-      } catch (e) {}
-
-      if (setSelectedGoogleAccount) setSelectedGoogleAccount(merged);
-      saveCustomerToFirestore(merged).catch(() => {});
-      saveCustomerToMySQL(merged).catch(() => {});
-      try { db.saveCustomer(merged); } catch(e) {}
-      restoreTrips(merged);
-
-      setLoading(false);
-
-      // Signal MobileAppView: this is a RETURNING user -> go to APP_HOME
-      if (onGoogleSignIn) {
-        onGoogleSignIn(merged);
-      }
-    } else {
-      // ── NEW USER: Not found in DB -> Route to Create Profile form ──
-      const newDraftProfile = {
-        id: 'CUST-' + Math.floor(10000 + Math.random() * 89999),
-        name,
-        email,
-        phone: '',       // Blank — customer must fill this
-        photoURL,
-        uid,
-        age: '',          // Blank — customer must fill this
-        profession: '',   // Blank — customer must fill this
-        area: '',         // Blank — customer must fill this
-        registeredAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-        status: 'Active',
-        lastLogin: new Date().toISOString()
-      };
-
-      try {
-        // Save draft (without profile_completed flag) so AccountDetailScreen can read it
-        localStorage.setItem('cabsy_user_profile', JSON.stringify(newDraftProfile));
-        localStorage.setItem('EMPERIAL CABS_onboarded', 'true');
-        localStorage.removeItem('EMPERIAL CABS_profile_completed');
-        window.dispatchEvent(new Event('storage'));
-      } catch (e) {}
-
-      if (setSelectedGoogleAccount) setSelectedGoogleAccount(newDraftProfile);
-      setLoading(false);
-
-      // Signal MobileAppView: this is a NEW user -> go to CREATE_PROFILE
-      if (onGoToCreateAccount) {
-        onGoToCreateAccount();
-      }
-    }
-  };
-
-  // ─── Restore trip history from MySQL for returning user ──
-  const restoreTrips = async (profile) => {
-    try {
-      const mysqlInquiries = await loadAllInquiriesFromMySQL().catch(() => []);
-      const userPhone = (profile.phone || '').replace(/\D/g, '');
-      const userEmail = (profile.email || '').toLowerCase().trim();
-
-      const userTrips = (mysqlInquiries || []).filter(i => {
-        const iPhone = (i.customerPhone || '').replace(/\D/g, '');
-        const iEmail = (i.customerEmail || '').toLowerCase().trim();
-        return (userPhone && iPhone && userPhone === iPhone) ||
-               (userEmail && iEmail && userEmail === iEmail);
-      });
-
-      if (userTrips.length > 0) {
-        const localRaw = localStorage.getItem('cabsy_inquiries');
-        const localList = localRaw ? JSON.parse(localRaw) : [];
-        const existingIds = new Set(localList.map(i => i.id).filter(Boolean));
-        const fresh = userTrips.filter(i => !existingIds.has(i.id));
-        const merged = [...fresh, ...localList];
-        localStorage.setItem('cabsy_inquiries', JSON.stringify(merged));
-        window.dispatchEvent(new Event('storage'));
-      }
-    } catch (e) {
-      console.warn('[Auth] Trip restore failed:', e);
-    }
-  };
 
   // ─── Main handler: "Continue with Google" button ──
   const handleGoogleAuth = async () => {
@@ -228,16 +22,81 @@ export default function LetsYouInScreen({
     try {
       const res = await signInWithGoogle();
       if (res && res.email && !res.error) {
-        await processGoogleUser(res);
+        if (onGoogleSignIn) {
+          onGoogleSignIn({ ...res, authMethod: 'google' });
+        }
       } else {
         setLoading(false);
-        // Switch seamlessly to Email tab without showing any error note
-        setLoginMode('email');
+        const errText = res?.error ? String(res.error) : '';
+        if (errText) {
+          console.warn('[GoogleAuth Note]:', errText);
+          setLoginMode('email');
+          setOtpError(errText.includes('10') || errText.includes('Developer error') || errText.includes('Something went wrong')
+            ? 'Please enter your Google email address below to receive your 6-digit verification code.'
+            : (errText.includes('cancelled') || errText.includes('canceled')
+              ? ''
+              : 'Please enter your email or mobile number below to receive your OTP.'));
+        }
       }
     } catch (err) {
-      console.warn('[Auth] Google auth note:', err);
+      console.warn('[Auth] Google sign-in note:', err);
       setLoading(false);
       setLoginMode('email');
+      setOtpError('Please enter your email address below to receive your 6-digit verification code.');
+    }
+  };
+
+  const handleSendOTP = async () => {
+    setOtpError('');
+
+    if (loginMode === 'phone') {
+      const cleanPhone = (phoneNumber || '').replace(/\D/g, '').slice(-10);
+      if (!cleanPhone || cleanPhone.length < 10) {
+        setOtpError('Please enter a valid 10-digit mobile number.');
+        return;
+      }
+      setOtpSending(true);
+      try {
+        setupRecaptcha('recaptcha-container');
+        const formatted = '+91' + cleanPhone;
+        const result = await sendPhoneOTP(formatted);
+        if (result.success) {
+          if (setAuthMethod) setAuthMethod('phone');
+          if (setPhoneNumber) setPhoneNumber(cleanPhone);
+          localStorage.setItem('cabsy_user_phone', formatted);
+          if (onNext) onNext();
+        } else {
+          setOtpError(result.error || 'Failed to send OTP to mobile. Please try again.');
+        }
+      } catch (e) {
+        console.warn('Phone OTP error:', e);
+        setOtpError('Could not send OTP. Please try again.');
+      }
+      setOtpSending(false);
+    } else {
+      // Email OTP Route
+      const cleanEmail = (emailInput || '').toLowerCase().trim();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+        setOtpError('Please enter a valid email address.');
+        return;
+      }
+      setOtpSending(true);
+      try {
+        const result = await sendEmailOTP(cleanEmail);
+        if (result.success) {
+          if (setAuthMethod) setAuthMethod('email');
+          if (setAuthEmail) setAuthEmail(cleanEmail);
+          localStorage.setItem('cabsy_user_email_otp_target', cleanEmail);
+          if (onNext) onNext();
+        } else {
+          setOtpError(result.error || 'Failed to send verification code to email.');
+        }
+      } catch (e) {
+        console.warn('Email OTP error:', e);
+        setOtpError('Could not send verification code. Please try again.');
+      }
+      setOtpSending(false);
     }
   };
 
@@ -246,18 +105,16 @@ export default function LetsYouInScreen({
   return (
     <div className="real-mobile-app">
       <div className="let-you-in-page-wrapper">
-        {/* Red City Banner Header */}
+        {/* Red Brand Header Banner */}
         <div className="let-you-red-header">
-          <button className="let-you-white-back-btn" onClick={onBack}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path d="M15 18L9 12L15 6" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+          <button className="let-you-white-back-btn" onClick={onBack} aria-label="Go Back">
+            <ArrowLeft size={22} color="#FFFFFF" />
           </button>
           
           <div className="let-you-centered-logo-box">
             <img 
               src={logoPng} 
-              alt="EMPERIAL CABS Logo" 
+              alt="EMPERIAL CABS" 
               onError={(e) => {
                 e.target.onerror = null;
                 e.target.src = logoPng;
@@ -270,7 +127,7 @@ export default function LetsYouInScreen({
         <div className="let-you-white-bottom-sheet">
           <h1 className="let-you-title">Let's You In</h1>
 
-          {/* Segmented Control Toggle (Big Company / Uber Style) */}
+          {/* Segmented Control Toggle (Zomato / Modern Corporate Style) */}
           <div style={{
             display: 'flex',
             background: '#F1F5F9',
@@ -280,7 +137,7 @@ export default function LetsYouInScreen({
           }}>
             <button
               type="button"
-              onClick={() => { setLoginMode('phone'); setOtpError(''); setEmailOtpCode(''); }}
+              onClick={() => { setLoginMode('phone'); setOtpError(''); }}
               style={{
                 flex: 1,
                 padding: '10px 16px',
@@ -300,16 +157,13 @@ export default function LetsYouInScreen({
                 gap: '8px'
               }}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={loginMode === 'phone' ? '#10B981' : '#64748B'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
-                <line x1="12" y1="18" x2="12.01" y2="18"/>
-              </svg>
+              <Smartphone size={18} color={loginMode === 'phone' ? '#10B981' : '#64748B'} />
               Phone OTP
             </button>
 
             <button
               type="button"
-              onClick={() => { setLoginMode('email'); setOtpError(''); setEmailOtpCode(''); }}
+              onClick={() => { setLoginMode('email'); setOtpError(''); }}
               style={{
                 flex: 1,
                 padding: '10px 16px',
@@ -329,10 +183,7 @@ export default function LetsYouInScreen({
                 gap: '8px'
               }}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={loginMode === 'email' ? '#10B981' : '#64748B'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                <polyline points="22,6 12,13 2,6"/>
-              </svg>
+              <Mail size={18} color={loginMode === 'email' ? '#10B981' : '#64748B'} />
               Email OTP
             </button>
           </div>
@@ -366,8 +217,9 @@ export default function LetsYouInScreen({
               <input 
                 type="tel" 
                 value={phoneNumber} 
-                onChange={(e) => setPhoneNumber(e.target.value)} 
-                placeholder="Enter Mobile Number"
+                onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 10))} 
+                placeholder="Enter 10-digit Mobile Number"
+                maxLength={10}
                 style={{
                   border: 'none',
                   background: 'transparent',
@@ -403,10 +255,7 @@ export default function LetsYouInScreen({
                 borderRight: '1.5px solid #CBD5E1',
                 height: '24px'
               }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                  <polyline points="22,6 12,13 2,6"/>
-                </svg>
+                <Mail size={20} color="#64748B" />
               </div>
               <input 
                 type="email" 
@@ -427,7 +276,7 @@ export default function LetsYouInScreen({
             </div>
           )}
 
-          {/* Clean Error Message (No Emojis) */}
+          {/* Clean Error Message */}
           {otpError && (
             <div style={{
               display: 'flex',
@@ -443,64 +292,20 @@ export default function LetsYouInScreen({
               marginTop: '12px',
               fontFamily: 'Space Grotesk, sans-serif'
             }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="12" y1="8" x2="12" y2="12"/>
-                <line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
+              <AlertCircle size={18} color="#DC2626" />
               <span>{otpError}</span>
             </div>
           )}
 
           {/* Send OTP Button */}
           <button
+            type="button"
             className="let-you-signin-btn"
             disabled={otpSending}
-            onClick={async () => {
-              setOtpError('');
-              setEmailOtpCode('');
-              
-              if (loginMode === 'phone') {
-                const cleanPhone = (phoneNumber || '').replace(/\D/g, '');
-                if (!cleanPhone || cleanPhone.length < 10) {
-                  setOtpError('Please enter a valid 10-digit mobile number.');
-                  return;
-                }
-                setOtpSending(true);
-                try {
-                  setupRecaptcha('recaptcha-container');
-                  const result = await sendPhoneOTP(cleanPhone);
-                  if (result.success) {
-                    if (setAuthMethod) setAuthMethod('phone');
-                    localStorage.setItem('cabsy_user_phone', '+91' + cleanPhone);
-                    if (onNext) onNext();
-                  } else {
-                    setOtpError(result.error || 'Failed to send OTP.');
-                  }
-                } catch (e) {
-                  console.warn('Phone OTP error:', e);
-                  setOtpError('Could not send OTP. Please try again.');
-                }
-                setOtpSending(false);
-              } else {
-                // Email Instant Sign-In
-                const email = (emailInput || '').trim();
-                if (!email || !email.includes('@')) {
-                  setOtpError('Please enter a valid email address.');
-                  return;
-                }
-                setOtpSending(true);
-                await processGoogleUser({
-                  email: email,
-                  name: formatNameFromEmail(email),
-                  uid: 'goog_email_' + Date.now()
-                });
-                setOtpSending(false);
-              }
-            }}
-            style={{ marginTop: '16px', opacity: otpSending ? 0.7 : 1 }}
+            onClick={handleSendOTP}
+            style={{ marginTop: '16px', opacity: otpSending ? 0.7 : 1, cursor: otpSending ? 'wait' : 'pointer' }}
           >
-            {otpSending ? 'Signing In...' : (loginMode === 'phone' ? 'Send OTP to Phone' : 'Continue with Email')}
+            {otpSending ? 'Sending OTP...' : (loginMode === 'phone' ? 'Send OTP to Phone' : 'Send OTP to Email')}
           </button>
 
           {/* Invisible reCAPTCHA container for Firebase Phone Auth */}
@@ -540,7 +345,7 @@ export default function LetsYouInScreen({
               <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
               <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
             </svg>
-            {loading ? 'Signing in...' : 'Continue with Google'}
+            {loading ? 'Connecting with Google...' : 'Continue with Google'}
           </button>
 
           <p className="let-you-footer-txt" style={{ textAlign: 'center', marginTop: '24px', fontSize: '14px', color: '#64748B', fontWeight: '600' }}>

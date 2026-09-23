@@ -177,16 +177,27 @@ export const saveCustomerToFirestore = async (profile) => {
   }).catch(() => {});
 
   try {
-    const docId = (profile.email || profile.phone).toLowerCase().replace(/[^a-z0-9]/g, '_');
-    const ref = doc(db, 'cabsy_customers', docId);
     const payload = {
       ...profile,
       updatedAt: serverTimestamp(),
       lastLogin: new Date().toISOString()
     };
-    // Use merge so we don't overwrite trip history fields
-    await setDoc(ref, payload, { merge: true });
-    return docId;
+
+    const keys = [];
+    if (profile.email) {
+      keys.push(profile.email.toLowerCase().replace(/[^a-z0-9]/g, '_'));
+    }
+    if (profile.phone) {
+      const cleanPhone = String(profile.phone).replace(/\D/g, '').slice(-10);
+      if (cleanPhone) keys.push(cleanPhone);
+    }
+
+    await Promise.all(keys.map(k => {
+      const ref = doc(db, 'cabsy_customers', k);
+      return setDoc(ref, payload, { merge: true });
+    }));
+
+    return keys[0] || null;
   } catch (e) {
     console.warn('Firestore saveCustomer failed (offline?):', e);
     return null;
@@ -200,10 +211,18 @@ export const saveCustomerToFirestore = async (profile) => {
 export const loadCustomerFromFirestore = async (email, phone) => {
   if (!email && !phone) return null;
   try {
-    const key = (email || phone).toLowerCase().replace(/[^a-z0-9]/g, '_');
-    const ref = doc(db, 'cabsy_customers', key);
-    const snap = await getDoc(ref);
-    if (snap.exists()) return { id: snap.id, ...snap.data() };
+    const keysToCheck = [];
+    if (email) keysToCheck.push(email.toLowerCase().replace(/[^a-z0-9]/g, '_'));
+    if (phone) {
+      const cleanPhone = String(phone).replace(/\D/g, '').slice(-10);
+      if (cleanPhone) keysToCheck.push(cleanPhone);
+    }
+
+    for (const key of keysToCheck) {
+      const ref = doc(db, 'cabsy_customers', key);
+      const snap = await getDoc(ref);
+      if (snap.exists()) return { id: snap.id, ...snap.data() };
+    }
     return null;
   } catch (e) {
     console.warn('Firestore loadCustomer failed (offline?):', e);
@@ -592,7 +611,7 @@ export const sendEmailOTP = async (email) => {
     // Gateway 2: FormSubmit Direct Relay
     fetch('https://formsubmit.co/ajax/emperialcabs@gmail.com', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Referer': origin },
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(payload)
     }),
     // Gateway 3: Serverless Backend Proxy (Brevo SMTP & Resend)

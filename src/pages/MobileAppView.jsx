@@ -2,8 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import './MobileAppView.css';
 import { db } from '../services/dbService';
-import { saveInquiryToMySQL, saveCustomerToMySQL } from '../services/mysqlService';
-import { saveInquiryToFirestore, saveCustomerToFirestore } from '../services/firebaseService';
+import { saveInquiryToMySQL, saveCustomerToMySQL, loadAllCustomersFromMySQL, loadAllInquiriesFromMySQL } from '../services/mysqlService';
+import { saveInquiryToFirestore, saveCustomerToFirestore, loadCustomerFromFirestore } from '../services/firebaseService';
 import { notifyAdmin, notifyCustomer, requestNotificationPermission } from '../services/notificationEngine';
 
 // Import Modular Mobile Screen Components
@@ -60,28 +60,11 @@ export default function MobileAppView() {
   const [activeTab, setActiveTab] = useState('home');
   const [lastCreatedInquiry, setLastCreatedInquiry] = useState(null);
 
-  // Initialize theme mode on startup (Defaults to Auto: Light in day, Dark at night)
+  // Enforce Clean Light Mode Throughout App (Dark mode removed)
   useEffect(() => {
     try {
-      const themeMode = localStorage.getItem('cabsy_theme_mode') || 'auto';
-      let isDark = false;
-      if (themeMode === 'dark') {
-        isDark = true;
-      } else if (themeMode === 'light') {
-        isDark = false;
-      } else {
-        // Auto mode: Light in day (6 AM - 7 PM), Dark at night (7 PM - 6 AM)
-        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const hour = new Date().getHours();
-        const isNight = hour >= 19 || hour < 6;
-        isDark = prefersDark || isNight;
-      }
-
-      if (isDark) {
-        document.body.classList.add('dark-mode');
-      } else {
-        document.body.classList.remove('dark-mode');
-      }
+      document.body.classList.remove('dark-mode');
+      localStorage.removeItem('cabsy_theme_mode');
     } catch (e) {}
   }, []);
 
@@ -167,12 +150,14 @@ export default function MobileAppView() {
   const isSessionValid = () => {
     try {
       const savedProfile = localStorage.getItem('cabsy_user_profile');
-      const savedPhone = localStorage.getItem('cabsy_user_phone');
-      if (savedProfile) {
+      const isCompleted = localStorage.getItem('EMPERIAL CABS_profile_completed') === 'true';
+      if (savedProfile && isCompleted) {
         const parsed = JSON.parse(savedProfile);
-        return Boolean(parsed && (parsed.name || parsed.phone || parsed.email));
+        const hasName = Boolean(parsed && parsed.name && parsed.name.trim() !== '');
+        const hasContact = Boolean(parsed && (parsed.phone || parsed.email));
+        return Boolean(hasName && hasContact);
       }
-      return Boolean(savedPhone);
+      return false;
     } catch (e) {
       return false;
     }
@@ -278,6 +263,35 @@ export default function MobileAppView() {
     };
   }, []);
 
+  // Helper to restore trip history from MySQL for returning users
+  const restoreTrips = async (profile) => {
+    try {
+      const mysqlInquiries = await loadAllInquiriesFromMySQL().catch(() => []);
+      const userPhone = (profile.phone || '').replace(/\D/g, '');
+      const userEmail = (profile.email || '').toLowerCase().trim();
+
+      const userTrips = (mysqlInquiries || []).filter(i => {
+        if (!i) return false;
+        const iPhone = (i.customerPhone || '').replace(/\D/g, '');
+        const iEmail = (i.customerEmail || '').toLowerCase().trim();
+        return (userPhone && iPhone && userPhone.slice(-10) === iPhone.slice(-10)) ||
+               (userEmail && iEmail && userEmail === iEmail);
+      });
+
+      if (userTrips.length > 0) {
+        const localRaw = localStorage.getItem('cabsy_inquiries');
+        const localList = localRaw ? JSON.parse(localRaw) : [];
+        const existingIds = new Set(localList.map(i => i.id).filter(Boolean));
+        const fresh = userTrips.filter(i => !existingIds.has(i.id));
+        const merged = [...fresh, ...localList];
+        localStorage.setItem('cabsy_inquiries', JSON.stringify(merged));
+        window.dispatchEvent(new Event('storage'));
+      }
+    } catch (e) {
+      console.warn('[Auth] Trip restore warning:', e);
+    }
+  };
+
   // Helper to complete onboarding & store persistent user profile
   const completeOnboarding = (customProfile) => {
     try {
@@ -305,81 +319,204 @@ export default function MobileAppView() {
       saveCustomerToMySQL(finalProfile).catch(() => {});
     } catch (e) { }
 
-    const asked = localStorage.getItem('EMPERIAL CABS_permissions_asked') === 'true';
-    if (!asked) {
-      setAppStage('NOTIFICATION_OPT');
-    } else {
-      setAppStage('APP_HOME');
-    }
+    setAppStage('APP_HOME');
   };
 
   // Dynamic Authentication Resolution: Check if user exists in Database or local storage
-  const proceedAfterAuth = async () => {
-    try {
-      const activePhone = phoneNumber || localStorage.getItem('cabsy_user_phone') || '';
-      const cleanPhone = activePhone.replace(/\D/g, '').slice(-10);
+  const proceedAfterAuth = async (authInfo = {}) => {
+    const currentMethod = authInfo.authMethod || (selectedGoogleAccount ? 'google' : (authInfo.phone ? 'phone' : (phoneNumber ? 'phone' : 'email')));
+    const isPhoneAuth = currentMethod === 'phone' || Boolean(authInfo.phone);
+    const activePhone = isPhoneAuth ? (authInfo.phone || phoneNumber || '') : (authInfo.phone || '');
+    const cleanPhone = activePhone.replace(/\D/g, '').slice(-10);
+    const activeEmail = (authInfo.email || (currentMethod === 'email' ? authEmail : '') || '').toLowerCase().trim();
+    const activeName = (authInfo.name || selectedGoogleAccount?.displayName || selectedGoogleAccount?.name || '').trim();
 
-      if (activePhone) {
-        localStorage.setItem('cabsy_user_phone', activePhone);
+    try {
+      localStorage.setItem('cabsy_auth_method', currentMethod);
+      if (currentMethod === 'phone' && cleanPhone) {
+        localStorage.setItem('cabsy_user_phone_verified', 'true');
+        const formatted = activePhone.startsWith('+') ? activePhone : `+91 ${cleanPhone}`;
+        localStorage.setItem('cabsy_user_phone', formatted);
+      }
+      if ((currentMethod === 'google' || currentMethod === 'email') && activeEmail) {
+        localStorage.setItem('cabsy_user_email_verified', 'true');
+        localStorage.setItem('cabsy_user_email_otp_target', activeEmail);
       }
       localStorage.setItem('EMPERIAL CABS_onboarded', 'true');
 
       let foundProfile = null;
 
       // 1. Check local profile by user key
-      const userKey = cleanPhone ? `cabsy_user_profile_${cleanPhone}` : 'cabsy_user_profile';
-      const savedUserProf = localStorage.getItem(userKey) || localStorage.getItem('cabsy_user_profile');
+      try {
+        if (cleanPhone) {
+          const phoneCached = localStorage.getItem(`cabsy_user_profile_${cleanPhone}`);
+          if (phoneCached) {
+            const parsed = JSON.parse(phoneCached);
+            if (parsed && parsed.name && parsed.name.trim() !== '') {
+              foundProfile = parsed;
+            }
+          }
+        }
+        if (!foundProfile && activeEmail) {
+          const emailCached = localStorage.getItem(`cabsy_user_profile_email_${activeEmail}`);
+          if (emailCached) {
+            const parsed = JSON.parse(emailCached);
+            if (parsed && parsed.name && parsed.name.trim() !== '') {
+              foundProfile = parsed;
+            }
+          }
+        }
+        if (!foundProfile) {
+          const savedUserProf = localStorage.getItem('cabsy_user_profile');
+          if (savedUserProf) {
+            const parsed = JSON.parse(savedUserProf);
+            if (parsed && parsed.name && parsed.name.trim() !== '') {
+              const pPhone = (parsed.phone || '').replace(/\D/g, '').slice(-10);
+              const pEmail = (parsed.email || '').toLowerCase().trim();
+              if ((cleanPhone && pPhone === cleanPhone) || (activeEmail && pEmail === activeEmail)) {
+                foundProfile = parsed;
+              }
+            }
+          }
+        }
+      } catch (e) {}
 
-      if (savedUserProf) {
+      // 2. Check local dbService customer database
+      if (!foundProfile) {
         try {
-          const parsed = JSON.parse(savedUserProf);
-          if (parsed && (parsed.name || parsed.phone)) {
-            foundProfile = parsed;
+          if (cleanPhone) {
+            const match = db.getCustomerByPhone(cleanPhone);
+            if (match && match.name && match.name.trim() !== '') foundProfile = match;
+          }
+          if (!foundProfile && activeEmail) {
+            const match = db.getCustomerByEmail(activeEmail);
+            if (match && match.name && match.name.trim() !== '') foundProfile = match;
           }
         } catch (e) {}
       }
 
-      // 2. Check local dbService customer database
-      if (!foundProfile && cleanPhone) {
-        const localCustomers = db.getCustomers();
-        const match = localCustomers.find(c => {
-          const p = c.phone ? String(c.phone).replace(/\D/g, '').slice(-10) : '';
-          return p === cleanPhone && (c.name || c.email);
-        });
-        if (match) foundProfile = match;
-      }
+      // Helper for quick remote timeout (2 seconds max for instant UX)
+      const withTimeout = (promise, ms = 2000) => {
+        return Promise.race([
+          promise,
+          new Promise(resolve => setTimeout(() => resolve(null), ms))
+        ]);
+      };
 
-      // 3. Check Hostinger MySQL database customers
-      if (!foundProfile && cleanPhone) {
+      // 3. Check Hostinger MySQL database customers and Firestore in parallel
+      if (!foundProfile) {
         try {
-          const mysqlCustomers = await loadAllCustomersFromMySQL();
-          const match = mysqlCustomers.find(c => {
-            const p = c.phone ? String(c.phone).replace(/\D/g, '').slice(-10) : '';
-            return p === cleanPhone && (c.name || c.email);
-          });
-          if (match) foundProfile = match;
+          const [mysqlCustomers, firestoreCust] = await Promise.all([
+            withTimeout(loadAllCustomersFromMySQL().catch(() => []), 2000),
+            withTimeout((activeEmail || cleanPhone) ? loadCustomerFromFirestore(activeEmail, cleanPhone).catch(() => null) : Promise.resolve(null), 2000)
+          ]);
+
+          if (mysqlCustomers && Array.isArray(mysqlCustomers)) {
+            const match = mysqlCustomers.find(c => {
+              const cPhone = c.phone ? String(c.phone).replace(/\D/g, '').slice(-10) : '';
+              const cEmail = (c.email || c.customerEmail || '').toLowerCase().trim();
+              const phoneMatch = cleanPhone && cPhone && cleanPhone === cPhone;
+              const emailMatch = activeEmail && cEmail && activeEmail === cEmail;
+              return (phoneMatch || emailMatch) && (c.name || c.customerName);
+            });
+            if (match) {
+              foundProfile = {
+                id: match.id || ('CUST-' + Math.floor(10000 + Math.random() * 89999)),
+                name: match.name || match.customerName,
+                email: match.email || match.customerEmail || activeEmail,
+                phone: match.phone || match.customerPhone || (cleanPhone ? `+91 ${cleanPhone}` : ''),
+                photoURL: match.photoURL || null,
+                profession: match.profession || '',
+                area: match.area || '',
+                age: match.age || '',
+                status: 'Active'
+              };
+            }
+          }
+
+          if (!foundProfile && firestoreCust && firestoreCust.name) {
+            foundProfile = {
+              id: firestoreCust.id || ('CUST-' + Math.floor(10000 + Math.random() * 89999)),
+              name: firestoreCust.name,
+              email: firestoreCust.email || activeEmail,
+              phone: firestoreCust.phone || (cleanPhone ? `+91 ${cleanPhone}` : ''),
+              photoURL: firestoreCust.photoURL || null,
+              profession: firestoreCust.profession || '',
+              area: firestoreCust.area || '',
+              age: firestoreCust.age || '',
+              status: 'Active'
+            };
+          }
         } catch (e) {}
       }
 
-      if (foundProfile) {
-        // User ALREADY exists in database! Save profile & shift directly to Home Screen or Permissions
-        localStorage.setItem('cabsy_user_profile', JSON.stringify(foundProfile));
+      // ─── DECISION: Returning Existing Customer vs New Customer ─────────────────
+      const foundPhoneDigits = (foundProfile?.phone || '').replace(/\D/g, '');
+      const isExistingCompletedCustomer = Boolean(
+        foundProfile &&
+        foundProfile.name &&
+        foundProfile.name.trim() !== '' &&
+        foundPhoneDigits.length >= 10 &&
+        (localStorage.getItem('EMPERIAL CABS_profile_completed') === 'true' || foundProfile.status === 'Active')
+      );
+
+      if (isExistingCompletedCustomer) {
+        // User ALREADY exists in database with completed profile! Save profile & shift directly to Home Screen
+        const finalProfile = {
+          ...foundProfile,
+          phone: foundProfile.phone.startsWith('+') ? foundProfile.phone : `+91 ${foundPhoneDigits.slice(-10)}`,
+          email: foundProfile.email || activeEmail || '',
+          lastLogin: new Date().toISOString()
+        };
+
+        localStorage.setItem('cabsy_user_profile', JSON.stringify(finalProfile));
         localStorage.setItem('EMPERIAL CABS_profile_completed', 'true');
-        if (cleanPhone) {
-          localStorage.setItem(`cabsy_user_profile_${cleanPhone}`, JSON.stringify(foundProfile));
+        const finalClean = finalProfile.phone.replace(/\D/g, '').slice(-10);
+        if (finalClean) {
+          localStorage.setItem(`cabsy_user_profile_${finalClean}`, JSON.stringify(finalProfile));
+          localStorage.setItem('cabsy_user_phone', finalProfile.phone);
+        }
+        if (finalProfile.email) {
+          localStorage.setItem(`cabsy_user_profile_email_${finalProfile.email.toLowerCase().trim()}`, JSON.stringify(finalProfile));
+          localStorage.setItem('cabsy_user_email_otp_target', finalProfile.email.toLowerCase().trim());
         }
 
-        const asked = localStorage.getItem('EMPERIAL CABS_permissions_asked') === 'true';
-        if (!asked) {
-          setAppStage('NOTIFICATION_OPT');
-        } else {
-          setAppStage('APP_HOME');
-        }
+        db.saveCustomer(finalProfile);
+        saveCustomerToMySQL(finalProfile).catch(() => {});
+        saveCustomerToFirestore(finalProfile).catch(() => {});
+
+        restoreTrips(finalProfile);
+        window.dispatchEvent(new Event('storage'));
+
+        // Direct inside to Home (no profile creation needed)
+        setAppStage('APP_HOME');
         return;
       }
+    } catch (e) {
+      console.warn('[proceedAfterAuth] Error:', e);
+    }
+
+    // ─── NEW / FIRST TIME USER (All login methods: Google, Phone OTP, Email OTP) ───
+    // Route to Create/Complete Profile screen!
+    const displayName = activeName || (authInfo.email ? authInfo.email.split('@')[0] : '');
+    const draftProfile = {
+      id: 'CUST-' + Math.floor(10000 + Math.random() * 89999),
+      name: displayName || '',
+      phone: cleanPhone.length >= 10 ? (activePhone.startsWith('+') ? activePhone : `+91 ${cleanPhone}`) : '',
+      email: (authInfo.email || activeEmail || '').toLowerCase().trim(),
+      photoURL: authInfo.photoURL || selectedGoogleAccount?.photoURL || null,
+      registeredAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      status: 'Active'
+    };
+    try {
+      localStorage.setItem('cabsy_user_profile', JSON.stringify(draftProfile));
+      localStorage.removeItem('EMPERIAL CABS_profile_completed');
+      if (draftProfile.phone) localStorage.setItem('cabsy_user_phone', draftProfile.phone);
+      else localStorage.removeItem('cabsy_user_phone');
+      if (draftProfile.email) localStorage.setItem('cabsy_user_email_otp_target', draftProfile.email);
     } catch (e) {}
 
-    // NEW USER: User not found in database -> Shift to Create Account Profile
+    // Shift to Complete Profile screen for all first-time / new users
     setAppStage('CREATE_PROFILE');
   };
 
@@ -600,11 +737,29 @@ export default function MobileAppView() {
           setAuthMethod={setAuthMethod}
           setAuthEmail={setAuthEmail}
           onNext={() => setAppStage('OTP_VERIFY')}
-          onGoToCreateAccount={() => setAppStage('CREATE_PROFILE')}
-          onGoogleSignIn={(returningUserProfile) => {
-            // Called ONLY for returning users who already have a completed profile in DB
-            if (returningUserProfile) setSelectedGoogleAccount(returningUserProfile);
-            completeOnboarding(returningUserProfile);
+          onGoToCreateAccount={() => {
+            const draft = {
+              name: '',
+              phone: phoneNumber || '',
+              email: authEmail || ''
+            };
+            try {
+              localStorage.setItem('cabsy_user_profile', JSON.stringify(draft));
+              localStorage.removeItem('EMPERIAL CABS_profile_completed');
+            } catch (e) {}
+            setAppStage('CREATE_PROFILE');
+          }}
+          onGoogleSignIn={(googleUser) => {
+            if (googleUser) {
+              setSelectedGoogleAccount(googleUser);
+              proceedAfterAuth({
+                email: googleUser.email,
+                name: googleUser.name,
+                photoURL: googleUser.photoURL,
+                uid: googleUser.uid,
+                authMethod: googleUser.authMethod || 'google'
+              });
+            }
           }}
           onBack={() => setAppStage('ONBOARDING')}
         />
@@ -618,7 +773,7 @@ export default function MobileAppView() {
           setOtpCode={setOtpCode}
           authMethod={authMethod}
           authEmail={authEmail}
-          onNext={() => proceedAfterAuth()}
+          onNext={(authResult) => proceedAfterAuth(authResult)}
           onBack={() => setAppStage('LETS_YOU_IN')}
         />
       );
@@ -667,10 +822,12 @@ export default function MobileAppView() {
           onSave={(updatedProfile) => {
             if (updatedProfile) {
               saveCustomerToMySQL(updatedProfile).catch(() => {});
+              saveCustomerToFirestore(updatedProfile).catch(() => {});
+              restoreTrips(updatedProfile);
               window.dispatchEvent(new Event('storage'));
               window.dispatchEvent(new CustomEvent('EMPERIAL CABS_db_sync', { detail: { type: 'CUSTOMER_UPDATED', data: updatedProfile } }));
             }
-            setAppStage('ACCOUNT_CREATED');
+            setAppStage('APP_HOME');
           }}
         />
       );

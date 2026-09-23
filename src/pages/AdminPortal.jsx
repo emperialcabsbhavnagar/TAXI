@@ -185,13 +185,13 @@ const INITIAL_CUSTOMERS = [
 ];
 
 export const INITIAL_DESTINATIONS = [
-  { id: 'DEST-101', name: 'Bhavnagar → Railway Station', pickup: 'Bhavnagar, Gujarat', dropoff: 'Bhavnagar Railway Station', distanceKm: 18 },
-  { id: 'DEST-102', name: 'Bhavnagar → Ahmedabad Airport (AMD)', pickup: 'Bhavnagar, Gujarat', dropoff: 'Ahmedabad Airport (AMD)', distanceKm: 175 },
-  { id: 'DEST-103', name: 'Bhavnagar → Vadodara Central Station', pickup: 'Bhavnagar, Gujarat', dropoff: 'Vadodara Central Railway Station', distanceKm: 110 },
-  { id: 'DEST-104', name: 'Bhavnagar → SG Highway IT Park', pickup: 'Bhavnagar, Gujarat', dropoff: 'SG Highway IT Park', distanceKm: 180 },
-  { id: 'DEST-105', name: 'Bhavnagar → Alkapuri Hub', pickup: 'Bhavnagar, Gujarat', dropoff: 'Alkapuri Commercial Hub', distanceKm: 112 },
-  { id: 'DEST-106', name: 'Bhavnagar → Ghogha Circle & Beach', pickup: 'Bhavnagar, Gujarat', dropoff: 'Ghogha Circle & Beach', distanceKm: 12 },
-  { id: 'DEST-107', name: 'Bhavnagar → Mumbai Central Airport', pickup: 'Bhavnagar, Gujarat', dropoff: 'Mumbai Central Airport (BOM)', distanceKm: 540 }
+  { id: 'DEST-101', name: 'Bhavnagar → Railway Station', pickup: 'Bhavnagar, Gujarat', dropoff: 'Bhavnagar Railway Station', price: 270, duration: '35 min' },
+  { id: 'DEST-102', name: 'Bhavnagar → Ahmedabad Airport (AMD)', pickup: 'Bhavnagar, Gujarat', dropoff: 'Ahmedabad Airport (AMD)', price: 2625, duration: '3 hr 15 min' },
+  { id: 'DEST-103', name: 'Bhavnagar → Vadodara Central Station', pickup: 'Bhavnagar, Gujarat', dropoff: 'Vadodara Central Railway Station', price: 1650, duration: '2 hr 10 min' },
+  { id: 'DEST-104', name: 'Bhavnagar → SG Highway IT Park', pickup: 'Bhavnagar, Gujarat', dropoff: 'SG Highway IT Park', price: 2700, duration: '3 hr 30 min' },
+  { id: 'DEST-105', name: 'Bhavnagar → Alkapuri Hub', pickup: 'Bhavnagar, Gujarat', dropoff: 'Alkapuri Commercial Hub', price: 1680, duration: '2 hr 15 min' },
+  { id: 'DEST-106', name: 'Bhavnagar → Ghogha Circle & Beach', pickup: 'Bhavnagar, Gujarat', dropoff: 'Ghogha Circle & Beach', price: 180, duration: '25 min' },
+  { id: 'DEST-107', name: 'Bhavnagar → Mumbai Central Airport', pickup: 'Bhavnagar, Gujarat', dropoff: 'Mumbai Central Airport (BOM)', price: 8100, duration: '10 hr 30 min' }
 ];
 
 export const INITIAL_PLACES = [
@@ -337,7 +337,12 @@ export default function AdminPortal() {
   const [destinations, setDestinations] = useState(() => {
     const saved = localStorage.getItem('cabsy_destinations');
     const parsed = saved ? JSON.parse(saved) : INITIAL_DESTINATIONS;
-    return parsed.filter(d => d && d.pickup && d.dropoff);
+    return parsed.filter(d => d && d.pickup && d.dropoff).map(d => ({
+      ...d,
+      price: (d.price !== undefined && d.price !== null && d.price !== '') 
+        ? Number(d.price) 
+        : Math.round((Number(d.distanceKm) || 15) * 15)
+    }));
   });
 
   const [places, setPlaces] = useState(() => {
@@ -624,8 +629,8 @@ export default function AdminPortal() {
   const [newDriverForm, setNewDriverForm] = useState({ name: '', phone: '', vehicle: 'Empire Regular', plate: '' });
   const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', email: '' });
   const [newInquiryForm, setNewInquiryForm] = useState({ customerName: '', customerPhone: '', pickup: '', dropoff: '', vehicle: 'Empire Regular', fare: 35.00 });
-  const [newVehicleForm, setNewVehicleForm] = useState({ name: '', passengers: '4 Persons', rate: '15.00', status: 'Active', image: '', description: '' });
-  const [newDestForm, setNewDestForm] = useState({ name: '', pickup: '', dropoff: '', distanceKm: 15 });
+  const [newDestForm, setNewDestForm] = useState({ name: '', pickup: '', dropoff: '', price: '', duration: '' });
+  const [batchMatrixModal, setBatchMatrixModal] = useState({ open: false, originPlace: '', rates: {} });
 
   const handleImageFileUpload = (e, isEdit = false) => {
     const file = e.target.files && e.target.files[0];
@@ -738,12 +743,22 @@ export default function AdminPortal() {
   const handleAddPlace = (e) => {
     e.preventDefault();
     if (!newPlaceInput.trim()) return;
-    const trimmed = newPlaceInput.trim();
-    if (places.includes(trimmed)) {
-      alert("This location place already exists in the system.");
+    const inputVal = newPlaceInput.trim();
+    // Allow single place or comma-separated places
+    const candidates = inputVal.split(',').map(s => s.trim()).filter(Boolean);
+    const updated = [...places];
+    const added = [];
+    candidates.forEach(c => {
+      if (!updated.includes(c)) {
+        updated.push(c);
+        added.push(c);
+      }
+    });
+    if (added.length === 0) {
+      alert("Entered place(s) already exist in the system.");
       return;
     }
-    setPlaces([...places, trimmed]);
+    setPlaces(updated);
     setNewPlaceInput('');
   };
 
@@ -755,8 +770,8 @@ export default function AdminPortal() {
 
   const handleAddDestSubmit = (e) => {
     e.preventDefault();
-    const pickupVal = newDestForm.pickup || places[0] || 'Downtown Terminal';
-    const dropoffVal = newDestForm.dropoff || (places[1] ? places[1] : places[0]) || 'International Airport T3';
+    const pickupVal = newDestForm.pickup || places[0] || 'Bhavnagar, Gujarat';
+    const dropoffVal = newDestForm.dropoff || (places[1] ? places[1] : places[0]) || 'Ahmedabad Airport (AMD)';
     
     if (pickupVal === dropoffVal) {
       alert("Pick-up location and drop-off destination cannot be the same place!");
@@ -768,16 +783,22 @@ export default function AdminPortal() {
       name: `${pickupVal} → ${dropoffVal}`,
       pickup: pickupVal,
       dropoff: dropoffVal,
-      distanceKm: Number(newDestForm.distanceKm) || 10
+      price: Number(newDestForm.price) || 0,
+      duration: newDestForm.duration || ''
     };
     setDestinations([...destinations.filter(d => d && d.pickup && d.dropoff), created]);
-    setNewDestForm({ name: '', pickup: places[0] || '', dropoff: places[1] || '', distanceKm: 15 });
+    setNewDestForm({ name: '', pickup: places[0] || '', dropoff: places[1] || '', price: '', duration: '' });
     setAddDestModal(false);
   };
 
   const handleEditDestSubmit = (e) => {
     e.preventDefault();
-    setDestinations(destinations.map(d => d.id === editDestModal.destination.id ? editDestModal.destination : d));
+    const updatedDest = {
+      ...editDestModal.destination,
+      price: Number(editDestModal.destination.price) || 0,
+      duration: editDestModal.destination.duration || ''
+    };
+    setDestinations(destinations.map(d => d.id === updatedDest.id ? updatedDest : d));
     setEditDestModal({ open: false, destination: null });
   };
 
@@ -785,6 +806,102 @@ export default function AdminPortal() {
     if (window.confirm("Are you sure you want to remove this route destination?")) {
       setDestinations(destinations.filter(d => d.id !== id));
     }
+  };
+
+  const openBatchMatrixModal = () => {
+    const origin = places[0] || '';
+    const initialRates = {};
+    places.filter(p => p !== origin).forEach(dest => {
+      const existing = destinations.find(d => 
+        d && d.pickup && d.dropoff &&
+        d.pickup.toLowerCase().trim() === origin.toLowerCase().trim() && 
+        d.dropoff.toLowerCase().trim() === dest.toLowerCase().trim()
+      );
+      if (existing) {
+        initialRates[dest] = {
+          price: existing.price !== undefined && existing.price !== null ? String(existing.price) : '',
+          duration: existing.duration || ''
+        };
+      } else {
+        initialRates[dest] = { price: '', duration: '' };
+      }
+    });
+    setBatchMatrixModal({ open: true, originPlace: origin, rates: initialRates });
+  };
+
+  const handleBatchOriginChange = (newOrigin) => {
+    const initialRates = {};
+    places.filter(p => p !== newOrigin).forEach(dest => {
+      const existing = destinations.find(d => 
+        d && d.pickup && d.dropoff &&
+        d.pickup.toLowerCase().trim() === newOrigin.toLowerCase().trim() && 
+        d.dropoff.toLowerCase().trim() === dest.toLowerCase().trim()
+      );
+      if (existing) {
+        initialRates[dest] = {
+          price: existing.price !== undefined && existing.price !== null ? String(existing.price) : '',
+          duration: existing.duration || ''
+        };
+      } else {
+        initialRates[dest] = { price: '', duration: '' };
+      }
+    });
+    setBatchMatrixModal({ open: true, originPlace: newOrigin, rates: initialRates });
+  };
+
+  const handleBatchRateChange = (destPlace, field, value) => {
+    setBatchMatrixModal(prev => ({
+      ...prev,
+      rates: {
+        ...prev.rates,
+        [destPlace]: {
+          ...(prev.rates[destPlace] || { price: '', duration: '' }),
+          [field]: value
+        }
+      }
+    }));
+  };
+
+  const handleSaveBatchMatrix = () => {
+    const origin = batchMatrixModal.originPlace;
+    if (!origin) return;
+
+    let updatedList = [...destinations];
+    let savedCount = 0;
+
+    Object.entries(batchMatrixModal.rates).forEach(([destPlace, rateData]) => {
+      if (rateData && rateData.price !== '' && rateData.price !== null && rateData.price !== undefined) {
+        const numPrice = Number(rateData.price);
+        if (numPrice >= 0) {
+          const existingIdx = updatedList.findIndex(d => 
+            d && d.pickup && d.dropoff &&
+            d.pickup.toLowerCase().trim() === origin.toLowerCase().trim() && 
+            d.dropoff.toLowerCase().trim() === destPlace.toLowerCase().trim()
+          );
+
+          if (existingIdx >= 0) {
+            updatedList[existingIdx] = {
+              ...updatedList[existingIdx],
+              price: numPrice,
+              duration: rateData.duration || updatedList[existingIdx].duration || ''
+            };
+          } else {
+            updatedList.push({
+              id: `DEST-${Math.floor(100 + Math.random() * 900)}`,
+              name: `${origin} → ${destPlace}`,
+              pickup: origin,
+              dropoff: destPlace,
+              price: numPrice,
+              duration: rateData.duration || ''
+            });
+          }
+          savedCount++;
+        }
+      }
+    });
+
+    setDestinations(updatedList);
+    setBatchMatrixModal({ open: false, originPlace: '', rates: {} });
   };
 
   const handleAddVehicleSubmit = (e) => {
@@ -1523,7 +1640,7 @@ export default function AdminPortal() {
             onClick={() => { setActiveTab('destinations'); setIsMobileMenuOpen(false); }}
           >
             <MapPin size={19} />
-            <span>Destinations & KM</span>
+            <span>Destinations & Pricing</span>
           </button>
 
           <button 
@@ -2887,17 +3004,26 @@ export default function AdminPortal() {
           </div>
         )}
 
-        {/* TAB: DESTINATIONS & KM MANAGEMENT */}
+        {/* TAB: DESTINATIONS & FIXED PRICING MANAGEMENT */}
         {activeTab === 'destinations' && (
           <div className="tab-pane">
             <div className="pane-header flex justify-between align-center mb-4">
               <div>
-                <h2>Locations & Route Distance (KM) Management</h2>
-                <p>Add city places/locations and configure exact distance in KM between any origin and destination pair.</p>
+                <h2>Locations & Fixed Route Pricing Management</h2>
+                <p>Add city places/locations and configure fixed route fares in Rupees (₹) between any origin and destination pair.</p>
               </div>
-              <button className="btn btn-primary btn-lg-action flex align-center gap-2" onClick={() => setAddDestModal(true)}>
-                <Plus size={18} /> Set Route KM Distance
-              </button>
+              <div className="flex gap-2 align-center">
+                <button 
+                  className="btn btn-outline btn-lg-action flex align-center gap-2" 
+                  style={{ background: '#FFFFFF', borderColor: '#10B981', color: '#047857', fontWeight: '800', boxShadow: '0 2px 8px rgba(16,185,129,0.15)' }} 
+                  onClick={openBatchMatrixModal}
+                >
+                  <Sparkles size={18} className="text-green" /> Enter All At Once (Bulk Pricing)
+                </button>
+                <button className="btn btn-primary btn-lg-action flex align-center gap-2" onClick={() => setAddDestModal(true)}>
+                  <Plus size={18} /> Set Route Fixed Price
+                </button>
+              </div>
             </div>
 
             {/* SECTION 1: PLACES ROSTER CARD */}
@@ -2907,7 +3033,7 @@ export default function AdminPortal() {
                 <h3 className="m-0 text-xl font-bold">1. Available Location Places ({places.length})</h3>
               </div>
               <p className="text-muted text-sm mb-4">
-                These location places will appear directly in the customer pickup and drop-off dropdown lists.
+                These location places appear directly in the customer pickup and drop-off dropdown lists. You can add one or multiple comma-separated places at once.
               </p>
 
               {/* Input Form Bar */}
@@ -2915,7 +3041,7 @@ export default function AdminPortal() {
                 <input 
                   type="text" 
                   className="form-control" 
-                  placeholder="Type new place name (e.g. Airport Terminal 3, Ubud Market...)"
+                  placeholder="Type place name(s) (e.g. Airport Terminal 3, or comma-separated: Surat, Rajkot, Jamnagar)..."
                   value={newPlaceInput}
                   onChange={e => setNewPlaceInput(e.target.value)}
                   required
@@ -2944,14 +3070,23 @@ export default function AdminPortal() {
               </div>
             </div>
 
-            {/* SECTION 2: CONFIGURED DISTANCE MATRIX */}
+            {/* SECTION 2: CONFIGURED ROUTE PRICING (FIXED ₹) */}
             <div className="card admin-table-card">
               <div className="p-4 border-b flex justify-between align-center">
                 <div>
-                  <h3 className="m-0 text-lg font-bold">2. Configured Distance Matrix (KM Between Places)</h3>
-                  <p className="text-muted text-xs m-0 mt-1">Exact route distance definitions used to calculate dynamic customer fares.</p>
+                  <h3 className="m-0 text-lg font-bold">2. Configured Route Pricing (Fixed ₹ Between Places)</h3>
+                  <p className="text-muted text-xs m-0 mt-1">Fixed route pricing in Rupees (₹) set directly by Admin. Independent of distance/kilometres.</p>
                 </div>
-                <span className="pill-badge-sm font-bold">{destinations.length} Active Routes</span>
+                <div className="flex align-center gap-2">
+                  <button 
+                    className="btn btn-outline btn-sm flex align-center gap-1"
+                    style={{ borderColor: '#10B981', color: '#047857', fontWeight: '800' }}
+                    onClick={openBatchMatrixModal}
+                  >
+                    <Sparkles size={14} /> Batch Edit Rates
+                  </button>
+                  <span className="pill-badge-sm font-bold">{destinations.length} Active Routes</span>
+                </div>
               </div>
               
               <div className="table-responsive">
@@ -2961,9 +3096,8 @@ export default function AdminPortal() {
                       <th>Route ID</th>
                       <th>Pick-up Location (From)</th>
                       <th>Drop-off Destination (To)</th>
-                      <th>Distance (KM)</th>
+                      <th>Fixed Fare (₹)</th>
                       <th>Est. Travel Time / Total Time</th>
-                      <th>Est. Reguler Fare</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -2984,16 +3118,15 @@ export default function AdminPortal() {
                           </div>
                         </td>
                         <td>
-                          <span className="pill-badge-sm font-bold">{dest.distanceKm} KM</span>
+                          <strong className="text-green text-base" style={{ fontSize: '1.05rem', fontWeight: '800' }}>
+                            ₹{Number(dest.price || (dest.distanceKm * 15)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </strong>
+                          <small className="text-muted block text-xs">(Fixed Rate)</small>
                         </td>
                         <td>
                           <span className="pill-badge-sm font-bold" style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #93C5FD' }}>
-                            ⏱️ {dest.duration || (Number(dest.distanceKm) === 175 ? '3 hr 15 min' : (Number(dest.distanceKm) === 18 ? '35 min' : `${Math.floor(Number(dest.distanceKm) / 55) > 0 ? Math.floor(Number(dest.distanceKm) / 55) + ' hr ' : ''}${Math.round(((Number(dest.distanceKm) % 55) / 55) * 60) || 25} min`))}
+                            ⏱️ {dest.duration || 'Flexible'}
                           </span>
-                        </td>
-                        <td>
-                          <strong className="text-green text-base">₹{(dest.distanceKm * 15).toFixed(2)}</strong>
-                          <small className="text-muted block text-xs">(₹15.00 / km)</small>
                         </td>
                         <td>
                           <div className="flex gap-2 align-center">
@@ -3001,7 +3134,7 @@ export default function AdminPortal() {
                               className="btn btn-outline btn-sm flex align-center gap-1"
                               onClick={() => setEditDestModal({ open: true, destination: { ...dest } })}
                             >
-                              <Edit size={14} /> Edit KM
+                              <Edit size={14} /> Edit Price
                             </button>
                             <button 
                               className="btn-icon btn-icon-danger"
@@ -3018,17 +3151,17 @@ export default function AdminPortal() {
                 </table>
               </div>
 
-              {/* HOSTINGER ALIGNED MOBILE CARDS FOR DESTINATIONS & KM MATRIX */}
+              {/* HOSTINGER ALIGNED MOBILE CARDS FOR DESTINATIONS & FIXED PRICING */}
               <div className="admin-mobile-card-list">
                 {destinations.map(dest => (
                   <div key={dest.id} className="hostinger-admin-card">
                     <div className="hostinger-card-top">
                       <div className="hostinger-card-id-group">
                         <span className="hostinger-card-id">{dest.id}</span>
-                        <span className="hostinger-card-date">• {dest.distanceKm} KM</span>
+                        <span className="hostinger-card-date">• Fixed Rate</span>
                       </div>
                       <span className="pill-badge-sm font-bold" style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #93C5FD' }}>
-                        ⏱️ {dest.duration || 'Dynamic Route'}
+                        ⏱️ {dest.duration || 'Flexible'}
                       </span>
                     </div>
                     <div className="hostinger-card-route">
@@ -3042,8 +3175,8 @@ export default function AdminPortal() {
                       </div>
                     </div>
                     <div className="hostinger-card-footer">
-                      <span className="hostinger-vehicle-badge">₹15.00 / km</span>
-                      <span className="hostinger-fare-tag">₹{(dest.distanceKm * 15).toFixed(2)}</span>
+                      <span className="hostinger-vehicle-badge">Fixed Fare</span>
+                      <span className="hostinger-fare-tag">₹{Number(dest.price || (dest.distanceKm * 15)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                     </div>
                     <div className="hostinger-card-actions">
                       <button 
@@ -3051,7 +3184,7 @@ export default function AdminPortal() {
                         style={{ padding: '6px 12px', borderRadius: '8px', fontSize: '13px', fontWeight: '800' }}
                         onClick={() => setEditDestModal({ open: true, destination: { ...dest } })}
                       >
-                        <Edit size={14} /> Edit KM Distance
+                        <Edit size={14} /> Edit Fixed Price
                       </button>
                       <button 
                         className="btn-icon btn-icon-danger"
@@ -4416,12 +4549,12 @@ export default function AdminPortal() {
         </div>
       )}
 
-      {/* MODAL 9: ADD NEW DESTINATION & ROUTE KM */}
+      {/* MODAL 9: ADD NEW DESTINATION & ROUTE FIXED PRICE */}
       {addDestModal && (
         <div className="admin-modal-overlay" onClick={() => setAddDestModal(false)}>
           <div className="admin-modal-box card" onClick={e => e.stopPropagation()}>
             <div className="modal-header-flex">
-              <h3>Configure Route KM Distance Between Places</h3>
+              <h3>Configure Route Fixed Price Between Places</h3>
               <button className="btn-modal-close" onClick={() => setAddDestModal(false)}><XCircle size={22} /></button>
             </div>
             <form onSubmit={handleAddDestSubmit}>
@@ -4455,15 +4588,20 @@ export default function AdminPortal() {
 
               <div className="form-grid-2 mt-2">
                 <div className="input-group">
-                  <label>Exact Distance in KM</label>
-                  <input 
-                    type="number" 
-                    step="0.1"
-                    placeholder="e.g. 175"
-                    value={newDestForm.distanceKm} 
-                    onChange={e => setNewDestForm({ ...newDestForm, distanceKm: e.target.value })}
-                    required
-                  />
+                  <label>Fixed Fare in Rupees (₹)</label>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <span style={{ position: 'absolute', left: '12px', fontWeight: '800', color: '#059669', fontSize: '1.05rem' }}>₹</span>
+                    <input 
+                      type="number" 
+                      min="0"
+                      step="1"
+                      placeholder="e.g. 2500"
+                      value={newDestForm.price} 
+                      onChange={e => setNewDestForm({ ...newDestForm, price: e.target.value })}
+                      style={{ paddingLeft: '28px', fontWeight: '700' }}
+                      required
+                    />
+                  </div>
                 </div>
 
                 <div className="input-group">
@@ -4479,19 +4617,19 @@ export default function AdminPortal() {
 
               <div className="modal-actions-flex mt-4">
                 <button type="button" className="btn btn-outline" onClick={() => setAddDestModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Save Route Details</button>
+                <button type="submit" className="btn btn-primary">Save Route Fixed Price</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* MODAL 10: EDIT DESTINATION & ROUTE KM */}
+      {/* MODAL 10: EDIT DESTINATION & ROUTE FIXED FARE */}
       {editDestModal.open && editDestModal.destination && (
         <div className="admin-modal-overlay" onClick={() => setEditDestModal({ open: false, destination: null })}>
           <div className="admin-modal-box card" onClick={e => e.stopPropagation()}>
             <div className="modal-header-flex">
-              <h3>Edit Route Distance & Est. Travel Time</h3>
+              <h3>Edit Route Fixed Fare (₹) & Est. Travel Time</h3>
               <button className="btn-modal-close" onClick={() => setEditDestModal({ open: false, destination: null })}><XCircle size={22} /></button>
             </div>
             <form onSubmit={handleEditDestSubmit}>
@@ -4531,17 +4669,23 @@ export default function AdminPortal() {
 
               <div className="form-grid-2 mt-2">
                 <div className="input-group">
-                  <label>Distance in KM</label>
-                  <input 
-                    type="number" 
-                    step="0.1"
-                    value={editDestModal.destination.distanceKm} 
-                    onChange={e => setEditDestModal({ 
-                      ...editDestModal, 
-                      destination: { ...editDestModal.destination, distanceKm: Number(e.target.value) } 
-                    })}
-                    required
-                  />
+                  <label>Fixed Fare in Rupees (₹)</label>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <span style={{ position: 'absolute', left: '12px', fontWeight: '800', color: '#059669', fontSize: '1.05rem' }}>₹</span>
+                    <input 
+                      type="number" 
+                      min="0"
+                      step="1"
+                      placeholder="e.g. 2500"
+                      value={editDestModal.destination.price !== undefined ? editDestModal.destination.price : ''} 
+                      onChange={e => setEditDestModal({ 
+                        ...editDestModal, 
+                        destination: { ...editDestModal.destination, price: e.target.value } 
+                      })}
+                      style={{ paddingLeft: '28px', fontWeight: '700' }}
+                      required
+                    />
+                  </div>
                 </div>
 
                 <div className="input-group">
@@ -4563,6 +4707,134 @@ export default function AdminPortal() {
                 <button type="submit" className="btn btn-primary">Save Changes</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 10B: BATCH ROUTE PRICING MATRIX - ENTER ALL AT ONCE */}
+      {batchMatrixModal.open && (
+        <div className="admin-modal-overlay" onClick={() => setBatchMatrixModal({ open: false, originPlace: '', rates: {} })}>
+          <div className="admin-modal-box card batch-matrix-modal" style={{ maxWidth: '820px', width: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header-flex" style={{ paddingBottom: '1rem', borderBottom: '1px solid #E2E8F0' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={20} className="text-green" /> Batch Route Pricing Matrix (Enter All At Once)
+                </h3>
+                <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748B' }}>
+                  Select an origin location and set the fixed rupee (₹) fares to all destinations simultaneously in one go.
+                </p>
+              </div>
+              <button className="btn-modal-close" onClick={() => setBatchMatrixModal({ open: false, originPlace: '', rates: {} })}><XCircle size={22} /></button>
+            </div>
+
+            <div style={{ padding: '1rem 0', flex: 1, overflowY: 'auto' }}>
+              {/* Origin Selector Bar */}
+              <div style={{ background: '#F8FAFC', padding: '1rem 1.25rem', borderRadius: '14px', border: '1px solid #E2E8F0', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#10B981', display: 'inline-block' }}></span>
+                  <label style={{ fontWeight: '800', fontSize: '0.9rem', color: '#0F172A', margin: 0 }}>Starting Origin Place (From):</label>
+                </div>
+                <select 
+                  className="form-control"
+                  style={{ minWidth: '260px', flex: 1, height: '42px', borderRadius: '10px', fontWeight: '700' }}
+                  value={batchMatrixModal.originPlace}
+                  onChange={e => handleBatchOriginChange(e.target.value)}
+                >
+                  {places.map((pl, idx) => (
+                    <option key={idx} value={pl}>{pl}</option>
+                  ))}
+                </select>
+                <span style={{ fontSize: '0.82rem', color: '#64748B', fontWeight: '700' }}>
+                  {places.filter(p => p !== batchMatrixModal.originPlace).length} Destinations Available
+                </span>
+              </div>
+
+              {/* Matrix Table */}
+              <div style={{ border: '1px solid #E2E8F0', borderRadius: '14px', overflow: 'hidden' }}>
+                <table className="admin-table batch-matrix-table" style={{ margin: 0 }}>
+                  <thead style={{ background: '#F1F5F9' }}>
+                    <tr>
+                      <th style={{ width: '40%' }}>Drop-off Destination (To)</th>
+                      <th style={{ width: '32%' }}>Fixed Fare in Rupees (₹)</th>
+                      <th style={{ width: '28%' }}>Est. Travel Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {places.filter(p => p !== batchMatrixModal.originPlace).map((destPlace, idx) => {
+                      const currentData = batchMatrixModal.rates[destPlace] || { price: '', duration: '' };
+                      return (
+                        <tr key={idx}>
+                          <td>
+                            <div className="route-place-cell">
+                              <span className="dot-indicator red"></span>
+                              <strong className="place-name-text" style={{ fontSize: '0.95rem' }}>{destPlace}</strong>
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                              <span style={{ position: 'absolute', left: '12px', fontWeight: '800', color: '#059669', fontSize: '1rem' }}>₹</span>
+                              <input 
+                                type="number"
+                                min="0"
+                                step="1"
+                                placeholder="Enter fixed ₹ price"
+                                value={currentData.price}
+                                onChange={e => handleBatchRateChange(destPlace, 'price', e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '8px 12px 8px 28px',
+                                  borderRadius: '10px',
+                                  border: '1.5px solid #CBD5E1',
+                                  fontWeight: '700',
+                                  fontSize: '0.95rem',
+                                  outline: 'none',
+                                  background: currentData.price ? '#ECFDF5' : '#FFFFFF',
+                                  borderColor: currentData.price ? '#10B981' : '#CBD5E1',
+                                  color: '#0F172A'
+                                }}
+                              />
+                            </div>
+                          </td>
+                          <td>
+                            <input 
+                              type="text"
+                              placeholder="e.g. 3 hr 15 min"
+                              value={currentData.duration}
+                              onChange={e => handleBatchRateChange(destPlace, 'duration', e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '8px 12px',
+                                borderRadius: '10px',
+                                border: '1.5px solid #CBD5E1',
+                                fontWeight: '600',
+                                fontSize: '0.9rem',
+                                outline: 'none',
+                                background: '#FFFFFF',
+                                color: '#0F172A'
+                              }}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="modal-actions-flex" style={{ paddingTop: '1rem', borderTop: '1px solid #E2E8F0', marginTop: '0.5rem' }}>
+              <button type="button" className="btn btn-outline" onClick={() => setBatchMatrixModal({ open: false, originPlace: '', rates: {} })}>
+                Cancel
+              </button>
+              <button 
+                type="button" 
+                className="btn btn-primary" 
+                onClick={handleSaveBatchMatrix} 
+                style={{ minWidth: '240px', fontWeight: '800' }}
+              >
+                Save All Route Rates
+              </button>
+            </div>
           </div>
         </div>
       )}

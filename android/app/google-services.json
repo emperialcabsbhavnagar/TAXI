@@ -14,6 +14,22 @@
       },
       "oauth_client": [
         {
+          "client_id": "555496247847-16phmeg8oof8fpg45kndfh5eosi37htg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.emperialcabs.booking",
+            "certificate_hash": "eaaacb5cae8a1ea0c5084c9a39d0b48769398588"
+          }
+        },
+        {
+          "client_id": "555496247847-v0713ir4cipm06t49i8rfcrtft89vfoo.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.emperialcabs.booking",
+            "certificate_hash": "014d27cd5cb39b56b46a8f9f63004fbd0c6d42b9"
+          }
+        },
+        {
           "client_id": "555496247847-mhki7n17mv041nogm83nd51qqldp9vbl.apps.googleusercontent.com",
           "client_type": 3
         }

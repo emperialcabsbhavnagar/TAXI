@@ -184,12 +184,12 @@ class DatabaseService {
     if (!customerProfile || (!customerProfile.name && !customerProfile.phone && !customerProfile.email)) return null;
     
     const customers = this.getCustomers();
-    const phoneKey = customerProfile.phone ? String(customerProfile.phone).replace(/\D/g, '') : '';
+    const phoneKey = customerProfile.phone ? String(customerProfile.phone).replace(/\D/g, '').slice(-10) : '';
     const emailKey = customerProfile.email ? String(customerProfile.email).toLowerCase().trim() : '';
 
     const existingIdx = Array.isArray(customers) ? customers.findIndex(c => {
       if (!c) return false;
-      const cPhone = c.phone ? String(c.phone).replace(/\D/g, '') : '';
+      const cPhone = c.phone ? String(c.phone).replace(/\D/g, '').slice(-10) : '';
       const cEmail = c.email ? String(c.email).toLowerCase().trim() : '';
       return (phoneKey && cPhone && phoneKey === cPhone) || (emailKey && cEmail && emailKey === cEmail);
     }) : -1;
@@ -197,7 +197,7 @@ class DatabaseService {
     const inquiries = this.getInquiries();
     const customerInquiries = Array.isArray(inquiries) ? inquiries.filter(i => {
       if (!i) return false;
-      const iPhone = i.customerPhone ? String(i.customerPhone).replace(/\D/g, '') : '';
+      const iPhone = i.customerPhone ? String(i.customerPhone).replace(/\D/g, '').slice(-10) : '';
       const iEmail = i.customerEmail ? String(i.customerEmail).toLowerCase().trim() : '';
       return (phoneKey && iPhone && phoneKey === iPhone) || (emailKey && iEmail && emailKey === iEmail);
     }) : [];
@@ -207,10 +207,13 @@ class DatabaseService {
 
     const updatedCustomer = {
       id: existingIdx >= 0 ? customers[existingIdx].id : 'CUST-' + Math.floor(10000 + Math.random() * 90000),
-      name: customerProfile.name || 'Rider',
-      email: customerProfile.email || 'user@empirecab.in',
-      phone: customerProfile.phone || '+91 98765 43210',
-      photoURL: customerProfile.photoURL || null,
+      name: customerProfile.name || (existingIdx >= 0 ? customers[existingIdx].name : 'Rider'),
+      email: customerProfile.email || (existingIdx >= 0 ? customers[existingIdx].email : ''),
+      phone: customerProfile.phone || (existingIdx >= 0 ? customers[existingIdx].phone : ''),
+      photoURL: customerProfile.photoURL || (existingIdx >= 0 ? customers[existingIdx].photoURL : null),
+      profession: customerProfile.profession || (existingIdx >= 0 ? customers[existingIdx].profession : ''),
+      area: customerProfile.area || (existingIdx >= 0 ? customers[existingIdx].area : ''),
+      age: customerProfile.age || (existingIdx >= 0 ? customers[existingIdx].age : ''),
       registeredAt: existingIdx >= 0 ? customers[existingIdx].registeredAt : new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       totalRides,
       totalSpent: `₹${totalSpent.toLocaleString('en-IN')}`,
@@ -229,6 +232,11 @@ class DatabaseService {
     if (updatedCustomer.email) {
       try {
         localStorage.setItem(`cabsy_user_profile_email_${updatedCustomer.email.toLowerCase().trim()}`, JSON.stringify(updatedCustomer));
+      } catch (e) {}
+    }
+    if (phoneKey) {
+      try {
+        localStorage.setItem(`cabsy_user_profile_${phoneKey}`, JSON.stringify(updatedCustomer));
       } catch (e) {}
     }
     

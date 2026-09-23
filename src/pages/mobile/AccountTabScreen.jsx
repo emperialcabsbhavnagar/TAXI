@@ -33,38 +33,15 @@ export default function AccountTabScreen({ activeTab, setActiveTab, onNavigate, 
     }
   });
 
-  const [themeMode, setThemeMode] = useState(() => {
-    try {
-      return localStorage.getItem('cabsy_theme_mode') || 'auto';
-    } catch (e) { return 'auto'; }
-  });
   const [showInfoModal, setShowInfoModal] = useState(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   useEffect(() => {
-    let isDark = false;
-    if (themeMode === 'dark') {
-      isDark = true;
-    } else if (themeMode === 'light') {
-      isDark = false;
-    } else {
-      // Auto Mode: check device preference or night hours (7PM - 6AM)
-      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-      const hour = new Date().getHours();
-      const isNight = hour >= 19 || hour < 6;
-      isDark = prefersDark || isNight;
-    }
-
-    if (isDark) {
-      document.body.classList.add('dark-mode');
-    } else {
-      document.body.classList.remove('dark-mode');
-    }
-
     try {
-      localStorage.setItem('cabsy_theme_mode', themeMode);
+      document.body.classList.remove('dark-mode');
+      localStorage.removeItem('cabsy_theme_mode');
     } catch (e) {}
-  }, [themeMode]);
+  }, []);
 
   useEffect(() => {
     const handleStorageChange = () => {
@@ -155,99 +132,7 @@ export default function AccountTabScreen({ activeTab, setActiveTab, onNavigate, 
         {/* Settings List */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '24px' }}>
           {/* Theme Selector Setting */}
-          <div 
-            style={{ 
-              background: '#FFFFFF', 
-              border: '1.5px solid #E2E8F0', 
-              borderRadius: '18px', 
-              padding: '16px', 
-              marginBottom: '4px'
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: '700', color: '#0F172A', fontFamily: 'Space Grotesk' }}>App Theme Appearance</div>
-                <div style={{ fontSize: '12px', color: '#64748B' }}>
-                  {themeMode === 'auto' ? 'Auto (Light in day, Dark at night)' : (themeMode === 'dark' ? 'Dark Theme (Zomato Style)' : 'Light Theme')}
-                </div>
-              </div>
-            </div>
 
-            {/* 3-Option Segmented Control */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', background: '#F1F5F9', padding: '4px', borderRadius: '14px' }}>
-              <button
-                type="button"
-                onClick={() => setThemeMode('light')}
-                style={{
-                  background: themeMode === 'light' ? '#FFFFFF' : 'transparent',
-                  color: themeMode === 'light' ? '#10B981' : '#64748B',
-                  border: 'none',
-                  borderRadius: '10px',
-                  padding: '8px 4px',
-                  fontSize: '12px',
-                  fontWeight: '800',
-                  fontFamily: 'Space Grotesk, sans-serif',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  boxShadow: themeMode === 'light' ? '0 2px 8px rgba(0,0,0,0.08)' : 'none',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                <Sun size={15} /> Light
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setThemeMode('dark')}
-                style={{
-                  background: themeMode === 'dark' ? '#0F172A' : 'transparent',
-                  color: themeMode === 'dark' ? '#F59E0B' : '#64748B',
-                  border: 'none',
-                  borderRadius: '10px',
-                  padding: '8px 4px',
-                  fontSize: '12px',
-                  fontWeight: '800',
-                  fontFamily: 'Space Grotesk, sans-serif',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  boxShadow: themeMode === 'dark' ? '0 2px 8px rgba(0,0,0,0.2)' : 'none',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                <Moon size={15} /> Dark
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setThemeMode('auto')}
-                style={{
-                  background: themeMode === 'auto' ? '#10B981' : 'transparent',
-                  color: themeMode === 'auto' ? '#FFFFFF' : '#64748B',
-                  border: 'none',
-                  borderRadius: '10px',
-                  padding: '8px 4px',
-                  fontSize: '12px',
-                  fontWeight: '800',
-                  fontFamily: 'Space Grotesk, sans-serif',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  boxShadow: themeMode === 'auto' ? '0 2px 8px rgba(16,185,129,0.3)' : 'none',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                <Monitor size={15} /> Auto
-              </button>
-            </div>
-          </div>
 
           {[
             { id: 'profile', Icon: User, title: 'Personal Details & Photo', desc: 'Manage name, phone, age & picture' },

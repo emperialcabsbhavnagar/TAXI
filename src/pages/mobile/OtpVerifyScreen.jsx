@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { verifyPhoneOTP, verifyEmailOTP, sendPhoneOTP, sendEmailOTP } from '../../services/firebaseService';
-import { ShieldCheck, Zap, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { ArrowLeft, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 const OtpVerifyGraphic = () => (
   <svg viewBox="0 0 340 240" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%', maxHeight: '240px' }}>
@@ -47,8 +47,6 @@ const OtpVerifyGraphic = () => (
   </svg>
 );
 
-const otpFallbackSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 180" fill="none"><rect width="240" height="180" rx="20" fill="%23F1F5F9"/><circle cx="120" cy="80" r="45" fill="%23ECFDF5"/><path d="M105 75L115 85L135 65" stroke="%2310B981" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><rect x="80" y="130" width="80" height="12" rx="6" fill="%23CBD5E1"/></svg>`;
-
 export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNext, onBack, authMethod, authEmail }) {
   const [verifying, setVerifying] = useState(false);
   const [resending, setResending] = useState(false);
@@ -57,12 +55,15 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
   const [countdown, setCountdown] = useState(60);
   const inputRefs = useRef([]);
 
-  // Use 6-digit OTP
   const codeLength = 6;
   const [code, setCode] = useState(Array(codeLength).fill(''));
-  const [demoCode, setDemoCode] = useState('');
 
-  const targetEmail = authEmail || localStorage.getItem('cabsy_user_email_otp_target') || 'emperialcabs@gmail.com';
+  const targetEmail = authEmail || localStorage.getItem('cabsy_user_email_otp_target') || '';
+  const cleanPhone = (phoneNumber || localStorage.getItem('cabsy_user_phone') || '').replace(/\D/g, '').slice(-10);
+
+  const displayTarget = authMethod === 'email'
+    ? (targetEmail || 'your email')
+    : `+91 ${cleanPhone}`;
 
   const handleResendOTP = async () => {
     if (countdown > 0 || resending) return;
@@ -72,47 +73,20 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
 
     try {
       if (authMethod === 'email') {
-        const res = await sendEmailOTP(targetEmail);
-        if (res?.code) setDemoCode(res.code);
+        await sendEmailOTP(targetEmail);
       } else {
-        const phone = phoneNumber || localStorage.getItem('cabsy_user_phone') || '';
-        await sendPhoneOTP(phone);
+        await sendPhoneOTP('+91' + cleanPhone);
       }
-      setResendSuccess('A new 6-digit verification code has been sent!');
+      setResendSuccess('A fresh 6-digit verification code has been sent.');
       setCountdown(60);
       setCode(Array(codeLength).fill(''));
       if (inputRefs.current[0]) inputRefs.current[0].focus();
     } catch (e) {
       console.warn('[Resend OTP Error]:', e);
-      setError('Failed to resend OTP. Please try again.');
+      setError('Failed to resend code. Please try again.');
     }
     setResending(false);
   };
-
-  // Auto-initialize Email / Phone OTP code on mount
-  useEffect(() => {
-    const initOTP = async () => {
-      try {
-        let activeCode = '';
-        if (authMethod === 'email') {
-          let raw = sessionStorage.getItem('EMPERIAL CABS_email_otp');
-          if (!raw) {
-            const res = await sendEmailOTP(targetEmail);
-            activeCode = res?.code;
-          } else {
-            activeCode = JSON.parse(raw)?.code;
-          }
-        } else {
-          const raw = sessionStorage.getItem('EMPERIAL CABS_phone_otp');
-          if (raw) activeCode = JSON.parse(raw)?.code;
-        }
-        if (activeCode && activeCode.length === codeLength) {
-          setDemoCode(activeCode);
-        }
-      } catch (e) {}
-    };
-    initOTP();
-  }, [authMethod, targetEmail]);
 
   // Countdown timer
   useEffect(() => {
@@ -145,6 +119,24 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
     }
   };
 
+  const handlePaste = (e) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, codeLength);
+    if (pastedData) {
+      const next = Array(codeLength).fill('');
+      for (let i = 0; i < pastedData.length; i++) {
+        next[i] = pastedData[i];
+      }
+      setCode(next);
+      if (pastedData.length === codeLength) {
+        handleVerify(pastedData);
+      } else {
+        const nextIdx = Math.min(pastedData.length, codeLength - 1);
+        inputRefs.current[nextIdx]?.focus();
+      }
+    }
+  };
+
   // Auto-verify when all 6 digits are entered
   useEffect(() => {
     const full = code.join('');
@@ -165,59 +157,33 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
 
     try {
       if (authMethod === 'phone') {
-        // Firebase Phone Auth verification (real SMS)
-        const result = await verifyPhoneOTP(otp);
+        const formatted = '+91' + cleanPhone;
+        const result = await verifyPhoneOTP(otp, formatted);
         if (result.success) {
-          // Save phone user data
-          const profile = {
-            uid: result.user?.uid || 'phone_' + Date.now(),
-            phone: result.user?.phone || phoneNumber,
-            name: '',
-            email: ''
-          };
-          try {
-            localStorage.setItem('cabsy_user_profile', JSON.stringify(profile));
-            localStorage.setItem('cabsy_user_phone', profile.phone);
-          } catch (e) {}
-          if (onNext) onNext();
+          if (onNext) {
+            onNext({
+              phone: formatted,
+              authMethod: 'phone',
+              uid: result.user?.uid || 'phone_' + Date.now()
+            });
+          }
         } else {
-          setError(result.error || 'Invalid OTP. Please try again.');
+          setError(result.error || 'Invalid OTP. Please check the code and try again.');
         }
       } else if (authMethod === 'email') {
-        // Email OTP verification (client-side)
-        const email = authEmail || localStorage.getItem('cabsy_user_email_otp_target') || '';
-        const result = verifyEmailOTP(email, otp);
+        const result = verifyEmailOTP(targetEmail, otp);
         if (result.success) {
-          const defaultName = email.split('@')[0].split(/[._-]/).filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-          
-          // Check if profile already exists in localStorage or Cloud DB
-          let existingProfile = null;
-          try {
-            const raw = localStorage.getItem('cabsy_user_profile');
-            if (raw) existingProfile = JSON.parse(raw);
-          } catch (e) {}
-
-          const profile = {
-            uid: existingProfile?.uid || 'email_' + Date.now(),
-            email,
-            name: existingProfile?.name || defaultName,
-            phone: existingProfile?.phone || ''
-          };
-
-          try {
-            localStorage.setItem('cabsy_user_profile', JSON.stringify(profile));
-            localStorage.setItem('EMPERIAL CABS_profile_completed', 'true');
-            localStorage.setItem('EMPERIAL CABS_onboarded', 'true');
-            localStorage.setItem('cabsy_user_email_otp_target', '');
-            window.dispatchEvent(new Event('storage'));
-          } catch (e) {}
-
-          if (onNext) onNext();
+          if (onNext) {
+            onNext({
+              email: targetEmail,
+              authMethod: 'email',
+              uid: 'email_' + Date.now()
+            });
+          }
         } else {
-          setError(result.error || 'Invalid OTP. Please try again.');
+          setError(result.error || 'Invalid verification code. Please check your email.');
         }
       } else {
-        // Fallback: just proceed (no real verification)
         if (onNext) onNext();
       }
     } catch (e) {
@@ -227,18 +193,20 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
     setVerifying(false);
   };
 
-  const displayTarget = authMethod === 'email'
-    ? (authEmail || localStorage.getItem('cabsy_user_email_otp_target') || 'your email')
-    : `+91 ${phoneNumber}`;
-
   return (
     <div className="real-mobile-app">
       <div className="white-header-nav" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <button className="header-back-arrow" onClick={onBack} style={{ background: '#F1F5F9', border: 'none', borderRadius: '12px', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#0F172A' }}>
+        <button 
+          className="header-back-arrow" 
+          onClick={onBack} 
+          style={{ background: '#F1F5F9', border: 'none', borderRadius: '12px', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#0F172A' }}
+          aria-label="Go Back"
+        >
           <ArrowLeft size={18} />
         </button>
         <h2 className="white-header-title">OTP Verification</h2>
       </div>
+
       <div className="verify-screen-body" style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
         <div style={{ textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '20px', width: '100%' }}>
           
@@ -253,13 +221,27 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
             </h3>
             <p style={{ fontFamily: 'Space Grotesk', fontSize: '14px', color: '#64748B', margin: 0, lineHeight: '1.5' }}>
               We've sent a 6-digit code to<br/>
-              <strong style={{ color: '#0F172A' }}>{displayTarget}</strong>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                <strong style={{ color: '#0F172A', fontSize: '15px' }}>{displayTarget}</strong>
+                <button
+                  type="button"
+                  onClick={onBack}
+                  style={{
+                    background: '#F1F5F9',
+                    border: 'none',
+                    borderRadius: '8px',
+                    color: '#0F172A',
+                    fontWeight: '700',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    padding: '3px 8px'
+                  }}
+                >
+                  Edit
+                </button>
+              </span>
             </p>
           </div>
-
-
-
-
 
           {/* 6-digit OTP Input Grid */}
           <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', margin: '8px 0' }}>
@@ -273,6 +255,7 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
                 value={val}
                 onChange={(e) => handleInput(e.target.value.replace(/\D/g, ''), idx)}
                 onKeyDown={(e) => handleKeyDown(e, idx)}
+                onPaste={handlePaste}
                 style={{
                   width: '46px', height: '54px', textAlign: 'center',
                   fontSize: '22px', fontWeight: '800', fontFamily: 'League Spartan',
@@ -296,22 +279,20 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
               padding: '10px 16px', borderRadius: '12px', fontSize: '13px',
               fontWeight: '600', fontFamily: 'Space Grotesk', width: '100%', boxSizing: 'border-box'
             }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="12" y1="8" x2="12" y2="12"/>
-                <line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
+              <AlertCircle size={16} color="#DC2626" />
               <span>{error}</span>
             </div>
           )}
 
+          {/* Resend Success Message */}
           {resendSuccess && (
             <div style={{
-              display: 'flex', alignItems: 'center', gap: '8px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
               background: '#ECFDF5', border: '1px solid #6EE7B7', color: '#047857',
               padding: '10px 16px', borderRadius: '12px', fontSize: '13px',
               fontWeight: '600', fontFamily: 'Space Grotesk', width: '100%', boxSizing: 'border-box'
             }}>
+              <CheckCircle2 size={16} color="#047857" />
               <span>{resendSuccess}</span>
             </div>
           )}
@@ -322,7 +303,7 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
               <>Didn't receive code? <span style={{ color: '#64748B', fontWeight: '700' }}>Resend in 00:{String(countdown).padStart(2, '0')}</span></>
             ) : (
               <>Didn't receive code? <span style={{ color: resending ? '#94A3B8' : '#10B981', fontWeight: '800', cursor: resending ? 'default' : 'pointer' }} onClick={handleResendOTP}>
-                {resending ? 'Resending...' : 'Resend OTP'}
+                {resending ? 'Resending...' : 'Resend Code'}
               </span></>
             )}
           </p>
@@ -335,10 +316,11 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
           onClick={() => handleVerify()}
           style={{
             width: '100%', marginTop: '20px',
-            opacity: (verifying || code.join('').length < codeLength) ? 0.6 : 1
+            opacity: (verifying || code.join('').length < codeLength) ? 0.6 : 1,
+            cursor: (verifying || code.join('').length < codeLength) ? 'not-allowed' : 'pointer'
           }}
         >
-          {verifying ? 'Verifying...' : 'Verify & Continue'}
+          {verifying ? 'Verifying Code...' : 'Verify & Continue'}
         </button>
       </div>
     </div>

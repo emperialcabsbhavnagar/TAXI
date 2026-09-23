@@ -23,7 +23,7 @@ export default function SelectCarScreen({
   const destPos = getCoordsForPlace(dropoffLoc || "Ahmedabad Airport (AMD)", userCoords);
   const routePolyline = generateRoutePolyline(pickupPos, destPos);
 
-  const getRouteDistanceKm = () => {
+  const getMatchedRoute = () => {
     try {
       const savedDest = localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
       if (savedDest) {
@@ -33,10 +33,19 @@ export default function SelectCarScreen({
             (pickupLoc && r.pickup && (r.pickup.toLowerCase().includes(pickupLoc.toLowerCase()) || pickupLoc.toLowerCase().includes(r.pickup.toLowerCase()))) &&
             (dropoffLoc && r.dropoff && (r.dropoff.toLowerCase().includes(dropoffLoc.toLowerCase()) || dropoffLoc.toLowerCase().includes(r.dropoff.toLowerCase())))
           );
-          if (matched && matched.distanceKm) return Number(matched.distanceKm);
+          if (matched) return matched;
         }
       }
     } catch (e) {}
+    return null;
+  };
+
+  const matchedRoute = getMatchedRoute();
+  const hasFixedPrice = matchedRoute && matchedRoute.price !== undefined && matchedRoute.price !== null && matchedRoute.price !== '';
+  const fixedPriceNum = hasFixedPrice ? Number(matchedRoute.price) : 0;
+
+  const getRouteDistanceKm = () => {
+    if (matchedRoute && matchedRoute.distanceKm) return Number(matchedRoute.distanceKm);
     return 154;
   };
 
@@ -61,17 +70,27 @@ export default function SelectCarScreen({
 
     return rawVehicles.map((v, idx) => {
       const ratePerKm = Number(v.rate || 15);
-      const totalFare = Math.round(effectiveDistanceKm * ratePerKm);
+      let totalFare = 0;
+      if (hasFixedPrice && fixedPriceNum > 0) {
+        const isSevenSeater = (v.passengers && v.passengers.includes('7')) || (v.name && v.name.toLowerCase().includes('eartice'));
+        const multiplier = isSevenSeater ? 1.3 : 1.0;
+        const oneWayFare = Math.round(fixedPriceNum * multiplier);
+        totalFare = tripType === 'round-trip' ? oneWayFare * 2 : oneWayFare;
+      } else {
+        totalFare = Math.round(effectiveDistanceKm * ratePerKm);
+      }
+
       return {
         id: v.id || idx + 1,
         name: v.name,
         passengers: v.passengers || '4 Persons',
         img: v.image || carImages[idx % carImages.length],
-        dist: `${effectiveDistanceKm} km`,
-        time: `${Math.round(effectiveDistanceKm * 1.4)} min`,
+        dist: matchedRoute?.duration || `${effectiveDistanceKm} km`,
+        time: matchedRoute?.duration || `${Math.round(effectiveDistanceKm * 1.4)} min`,
         ratePerKm,
         totalFareNum: totalFare,
-        price: `₹${totalFare.toLocaleString('en-IN')}`
+        price: `₹${totalFare.toLocaleString('en-IN')}`,
+        isFixedPrice: hasFixedPrice
       };
     });
   };
@@ -113,12 +132,14 @@ export default function SelectCarScreen({
                 <span>←</span> Back
               </button>
               <div style={{ background: '#F0FDF4', border: '1.5px solid #BBF7D0', color: '#059669', padding: '6px 14px', borderRadius: '16px', fontSize: '13px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 8px rgba(16,185,129,0.1)' }}>
-                <span>●</span> {tripType === 'round-trip' ? `Round Trip • ${effectiveDistanceKm} KM` : `One-Way • ${effectiveDistanceKm} KM`}
+                <span>●</span> {hasFixedPrice 
+                  ? (tripType === 'round-trip' ? 'Round Trip • Fixed Route' : 'One-Way • Fixed Route')
+                  : (tripType === 'round-trip' ? `Round Trip • ${effectiveDistanceKm} KM` : `One-Way • ${effectiveDistanceKm} KM`)}
               </div>
             </div>
 
             <p style={{ fontFamily: 'League Spartan', fontSize: '15px', fontWeight: '800', color: '#0F172A', letterSpacing: '0.3px', margin: '0 0 10px 0', textTransform: 'uppercase' }}>
-              SELECT FLEET VEHICLE (RATE / KM)
+              {hasFixedPrice ? 'SELECT FLEET VEHICLE (FIXED ROUTE FARE)' : 'SELECT FLEET VEHICLE (RATE / KM)'}
             </p>
             
             {/* Scrollable Car Selection Cards */}
@@ -127,7 +148,7 @@ export default function SelectCarScreen({
               gap: '12px', 
               marginBottom: '16px', 
               overflowX: 'auto', 
-              paddingBottom: '8px',
+              paddingBottom: '8px', 
               WebkitOverflowScrolling: 'touch'
             }}>
               {allVehicles.map((car) => {
@@ -157,7 +178,7 @@ export default function SelectCarScreen({
                       {car.name}
                     </span>
                     <span style={{ fontSize: '11px', color: '#64748B', fontWeight: '700', marginTop: '2px' }}>
-                      ₹{car.ratePerKm}/km
+                      {hasFixedPrice ? 'Fixed Rate' : `₹${car.ratePerKm}/km`}
                     </span>
                     <span style={{ fontSize: '13px', fontWeight: '800', color: '#22C55E', marginTop: '2px' }}>
                       {car.price}
@@ -174,7 +195,9 @@ export default function SelectCarScreen({
                   {currentCarObj.name} ({currentCarObj.passengers})
                 </h4>
                 <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748B', fontFamily: 'Space Grotesk' }}>
-                  Rate: ₹{currentCarObj.ratePerKm}/km × {effectiveDistanceKm} KM ({tripType === 'round-trip' ? 'Round Trip' : 'One-Way'})
+                  {hasFixedPrice 
+                    ? `Admin Fixed Fare (${tripType === 'round-trip' ? 'Round Trip 2×' : 'One-Way'})`
+                    : `Rate: ₹${currentCarObj.ratePerKm}/km × ${effectiveDistanceKm} KM (${tripType === 'round-trip' ? 'Round Trip' : 'One-Way'})`}
                 </p>
               </div>
               <div style={{ textAlign: 'right' }}>
@@ -188,13 +211,15 @@ export default function SelectCarScreen({
             {/* Summary Stats */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '18px' }}>
               <div style={{ background: '#F8FAFC', border: '1.5px solid #E2E8F0', borderRadius: '14px', padding: '10px 8px', textAlign: 'center', fontFamily: 'Space Grotesk', fontWeight: '700', fontSize: '13px', color: '#0F172A' }}>
-                {tripType === 'round-trip' ? `Distance: ${effectiveDistanceKm} KM (2×)` : `Distance: ${effectiveDistanceKm} KM`}
+                {hasFixedPrice 
+                  ? (matchedRoute?.duration ? `⏱️ ${matchedRoute.duration}` : 'Fixed Route')
+                  : (tripType === 'round-trip' ? `Distance: ${effectiveDistanceKm} KM (2×)` : `Distance: ${effectiveDistanceKm} KM`)}
               </div>
               <div style={{ background: '#F8FAFC', border: '1.5px solid #E2E8F0', borderRadius: '14px', padding: '10px 8px', textAlign: 'center', fontFamily: 'Space Grotesk', fontWeight: '700', fontSize: '13px', color: '#0F172A' }}>
                 Trip: {tripType === 'round-trip' ? 'Round Trip' : 'One-Way'}
               </div>
               <div style={{ background: '#F8FAFC', border: '1.5px solid #E2E8F0', borderRadius: '14px', padding: '10px 8px', textAlign: 'center', fontFamily: 'Space Grotesk', fontWeight: '700', fontSize: '13px', color: '#22C55E' }}>
-                Rate: ₹{currentCarObj.ratePerKm}/km
+                {hasFixedPrice ? 'Fixed Pricing' : `Rate: ₹${currentCarObj.ratePerKm}/km`}
               </div>
             </div>
 

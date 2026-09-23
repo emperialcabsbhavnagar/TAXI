@@ -40,12 +40,12 @@ const ALL_CITIES_AND_VILLAGES = [
 ];
 
 const DEFAULT_ROUTES = [
-  { id: 'DEST-101', name: 'Bhavnagar ➔ Railway Station', pickup: 'Bhavnagar, Gujarat', dropoff: 'Bhavnagar Railway Station', distanceKm: 18 },
-  { id: 'DEST-102', name: 'Bhavnagar ➔ Ahmedabad Airport (AMD)', pickup: 'Bhavnagar, Gujarat', dropoff: 'Ahmedabad Airport (AMD)', distanceKm: 175 },
-  { id: 'DEST-103', name: 'Bhavnagar ➔ Vadodara Central Station', pickup: 'Bhavnagar, Gujarat', dropoff: 'Vadodara Central Railway Station', distanceKm: 110 },
-  { id: 'DEST-104', name: 'Bhavnagar ➔ SG Highway IT Park', pickup: 'Bhavnagar, Gujarat', dropoff: 'SG Highway IT Park', distanceKm: 180 },
-  { id: 'DEST-105', name: 'Bhavnagar ➔ Alkapuri Hub', pickup: 'Bhavnagar, Gujarat', dropoff: 'Alkapuri Commercial Hub', distanceKm: 112 },
-  { id: 'DEST-106', name: 'Bhavnagar ➔ Ghogha Circle & Beach', pickup: 'Bhavnagar, Gujarat', dropoff: 'Ghogha Circle & Beach', distanceKm: 12 }
+  { id: 'DEST-101', name: 'Bhavnagar ➔ Railway Station', pickup: 'Bhavnagar, Gujarat', dropoff: 'Bhavnagar Railway Station', price: 270, duration: '35 min' },
+  { id: 'DEST-102', name: 'Bhavnagar ➔ Ahmedabad Airport (AMD)', pickup: 'Bhavnagar, Gujarat', dropoff: 'Ahmedabad Airport (AMD)', price: 2625, duration: '3 hr 15 min' },
+  { id: 'DEST-103', name: 'Bhavnagar ➔ Vadodara Central Station', pickup: 'Bhavnagar, Gujarat', dropoff: 'Vadodara Central Railway Station', price: 1650, duration: '2 hr 10 min' },
+  { id: 'DEST-104', name: 'Bhavnagar ➔ SG Highway IT Park', pickup: 'Bhavnagar, Gujarat', dropoff: 'SG Highway IT Park', price: 2700, duration: '3 hr 30 min' },
+  { id: 'DEST-105', name: 'Bhavnagar ➔ Alkapuri Hub', pickup: 'Bhavnagar, Gujarat', dropoff: 'Alkapuri Commercial Hub', price: 1680, duration: '2 hr 15 min' },
+  { id: 'DEST-106', name: 'Bhavnagar ➔ Ghogha Circle & Beach', pickup: 'Bhavnagar, Gujarat', dropoff: 'Ghogha Circle & Beach', price: 180, duration: '25 min' }
 ];
 
 export default function SelectLocationScreen({ 
@@ -403,7 +403,9 @@ export default function SelectLocationScreen({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {routes.map((route, idx) => {
                   const isSelected = (pickupLoc === route.pickup && dropoffLoc === route.dropoff);
-                  const estFare = Math.round((route.distanceKm || 15) * 15);
+                  const estFare = (route.price !== undefined && route.price !== null && route.price !== '') 
+                    ? Number(route.price) 
+                    : Math.round((Number(route.distanceKm) || 15) * 15);
 
                   return (
                     <div 
@@ -425,8 +427,10 @@ export default function SelectLocationScreen({
                           DIRECT ROUTE
                         </span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748B' }}>{route.distanceKm} km</span>
-                          <span style={{ fontFamily: 'League Spartan', fontSize: '18px', fontWeight: '800', color: '#22C55E' }}>₹{estFare}</span>
+                          {route.duration && (
+                            <span style={{ fontSize: '12px', fontWeight: '700', color: '#64748B' }}>⏱️ {route.duration}</span>
+                          )}
+                          <span style={{ fontFamily: 'League Spartan', fontSize: '18px', fontWeight: '800', color: '#22C55E' }}>₹{estFare.toLocaleString('en-IN')}</span>
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>

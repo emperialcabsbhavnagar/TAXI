@@ -56,6 +56,7 @@ export default function BookRide() {
   const [exactDropoffAddress, setExactDropoffAddress] = useState('');
 
   const [distanceKm, setDistanceKm] = useState(18);
+  const [fixedPrice, setFixedPrice] = useState(null);
   const [isMatchedRoute, setIsMatchedRoute] = useState(false);
   
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
@@ -136,14 +137,20 @@ export default function BookRide() {
     }
 
     const matched = destinations.find(
-      d => (d.pickup.toLowerCase().includes(fromLoc.toLowerCase()) && d.dropoff.toLowerCase().includes(toLoc.toLowerCase())) ||
-           (d.pickup.toLowerCase().includes(toLoc.toLowerCase()) && d.dropoff.toLowerCase().includes(fromLoc.toLowerCase()))
+      d => (d.pickup && d.dropoff && d.pickup.toLowerCase().includes(fromLoc.toLowerCase()) && d.dropoff.toLowerCase().includes(toLoc.toLowerCase())) ||
+           (d.pickup && d.dropoff && d.pickup.toLowerCase().includes(toLoc.toLowerCase()) && d.dropoff.toLowerCase().includes(fromLoc.toLowerCase()))
     );
 
     if (matched) {
-      setDistanceKm(Number(matched.distanceKm));
+      if (matched.price !== undefined && matched.price !== null && matched.price !== '') {
+        setFixedPrice(Number(matched.price));
+      } else {
+        setFixedPrice(null);
+      }
+      setDistanceKm(Number(matched.distanceKm) || 154);
       setIsMatchedRoute(true);
     } else {
+      setFixedPrice(null);
       setDistanceKm(175);
       setIsMatchedRoute(false);
     }
@@ -174,7 +181,15 @@ export default function BookRide() {
     ? distanceKm * 2 
     : (tripType === 'custom-trip' ? Math.max(distanceKm > 10 ? distanceKm : 175, 300 * noOfDays) : distanceKm);
 
-  const calculatedFare = (effectiveDistanceKm * ratePerKm).toFixed(2);
+  let calculatedFare = '0.00';
+  if (tripType !== 'custom-trip' && fixedPrice && fixedPrice > 0) {
+    const isSevenSeater = (currentVehicle?.passengers && currentVehicle.passengers.includes('7')) || (currentVehicle?.name && currentVehicle.name.toLowerCase().includes('eartice'));
+    const multiplier = isSevenSeater ? 1.3 : 1.0;
+    const baseFixed = fixedPrice * multiplier;
+    calculatedFare = (tripType === 'round-trip' ? baseFixed * 2 : baseFixed).toFixed(2);
+  } else {
+    calculatedFare = (effectiveDistanceKm * ratePerKm).toFixed(2);
+  }
 
   const handleSubmitBooking = (e) => {
     e.preventDefault();
@@ -495,7 +510,7 @@ export default function BookRide() {
                   {tripType === 'one-way' && (
                     <div className="route-distance-chip mt-2">
                       <span className="dot green"></span>
-                      <span>Distance: {distanceKm} KM</span>
+                      <span>{fixedPrice ? `Fixed Route Pricing: ₹${calculatedFare}` : `Distance: ${distanceKm} KM`}</span>
                     </div>
                   )}
                 </div>
@@ -654,8 +669,8 @@ export default function BookRide() {
 
                     {tripType === 'one-way' && (
                       <div className="summary-row">
-                        <span>Total Distance:</span>
-                        <strong>{effectiveDistanceKm} KM</strong>
+                        <span>{fixedPrice ? 'Route Pricing:' : 'Total Distance:'}</span>
+                        <strong>{fixedPrice ? `Fixed ₹${calculatedFare}` : `${effectiveDistanceKm} KM`}</strong>
                       </div>
                     )}
 
@@ -666,8 +681,8 @@ export default function BookRide() {
 
                     {(tripType === 'one-way' || tripType === 'custom-trip') && (
                       <div className="summary-row">
-                        <span>Rate:</span>
-                        <strong style={{ color: '#0f172a' }}>₹{currentVehicle.rate} / km</strong>
+                        <span>Rate Type:</span>
+                        <strong style={{ color: '#0f172a' }}>{fixedPrice && tripType !== 'custom-trip' ? 'Fixed Route Fare' : `₹${currentVehicle.rate} / km`}</strong>
                       </div>
                     )}
                   </div>

@@ -13,9 +13,9 @@
     },
     "GoogleAuth": {
       "scopes": ["profile", "email"],
-      "clientId": "256291841083-ueibs1i67ue9dbpjas60ak2vbn37ubc2.apps.googleusercontent.com",
-      "serverClientId": "256291841083-ueibs1i67ue9dbpjas60ak2vbn37ubc2.apps.googleusercontent.com",
-      "forceCodeForRefreshToken": true
+      "clientId": "555496247847-mhki7n17mv041nogm83nd51qqldp9vbl.apps.googleusercontent.com",
+      "serverClientId": "555496247847-mhki7n17mv041nogm83nd51qqldp9vbl.apps.googleusercontent.com",
+      "forceCodeForRefreshToken": false
     }
   }
 }
