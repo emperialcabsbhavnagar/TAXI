@@ -5,7 +5,7 @@ import {
   POPULAR_FEATURED_ROUTES, 
   slugify 
 } from '../data/seoKeywordsData';
-import { loadAllRoutesFromMySQL } from '../services/mysqlService';
+import { loadAllRoutesFromMySQL, loadAllPlacesFromMySQL } from '../services/mysqlService';
 import { 
   MapPin, 
   Search, 
@@ -21,6 +21,7 @@ import './PopularRoutes.css';
 export default function PopularRoutes() {
   const [searchQuery, setSearchQuery] = useState('');
   const [dbRoutes, setDbRoutes] = useState([]);
+  const [allCities, setAllCities] = useState(GUJARAT_PRIMARY_CITIES);
 
   useEffect(() => {
     document.title = "Gujarat Taxi Routes & Fares Directory | EMPERIAL CABS — Outstation Cab Booking";
@@ -29,15 +30,54 @@ export default function PopularRoutes() {
       metaDesc.setAttribute('content', 'Explore all direct outstation taxi routes, fixed fares, and travel times across Bhavnagar, Ahmedabad, Vadodara, Surat, Rajkot, and all Gujarat cities with EMPERIAL CABS.');
     }
 
+    // Load custom routes from MySQL
     loadAllRoutesFromMySQL().then(routes => {
       if (Array.isArray(routes) && routes.length > 0) {
         setDbRoutes(routes);
       }
     }).catch(() => {});
+
+    // Load places from MySQL and merge any new cities added by admin
+    loadAllPlacesFromMySQL().then(places => {
+      if (Array.isArray(places) && places.length > 0) {
+        const existingSlugs = new Set(GUJARAT_PRIMARY_CITIES.map(c => c.slug));
+        const customCities = places
+          .filter(p => p && typeof p === 'string' && !existingSlugs.has(slugify(p)))
+          .map(p => ({
+            name: p,
+            slug: slugify(p),
+            district: 'Service Hub',
+            hub: 'Direct Fleet Coverage'
+          }));
+        if (customCities.length > 0) {
+          setAllCities(prev => [...prev, ...customCities]);
+        }
+      }
+    }).catch(() => {});
   }, []);
 
+  // Combine static featured routes with any custom routes configured in MySQL
+  const allRoutesList = [
+    ...POPULAR_FEATURED_ROUTES,
+    ...dbRoutes
+      .filter(r => r && r.pickup && r.dropoff)
+      .filter(r => !POPULAR_FEATURED_ROUTES.some(p => 
+        p.from.toLowerCase() === r.pickup.toLowerCase() && 
+        p.to.toLowerCase() === r.dropoff.toLowerCase()
+      ))
+      .map(r => ({
+        from: r.pickup,
+        to: r.dropoff,
+        distanceKm: r.distanceKm ? Number(r.distanceKm) : 180,
+        duration: r.duration || '3 hr 30 min',
+        highway: 'Direct Highway Corridor',
+        baseFare: Number(r.price) || 2500,
+        badge: 'Direct Route'
+      }))
+  ];
+
   // Filter routes based on user search query
-  const filteredRoutes = POPULAR_FEATURED_ROUTES.filter(r => {
+  const filteredRoutes = allRoutesList.filter(r => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
     return r.from.toLowerCase().includes(q) || r.to.toLowerCase().includes(q);
@@ -143,7 +183,7 @@ export default function PopularRoutes() {
           </div>
 
           <div className="cities-directory-grid">
-            {GUJARAT_PRIMARY_CITIES.map((city, i) => {
+            {allCities.map((city, i) => {
               return (
                 <Link key={i} to={`/taxi-service-in-${city.slug}`} className="city-directory-pill">
                   <div className="city-pill-icon"><MapPin size={16} /></div>
