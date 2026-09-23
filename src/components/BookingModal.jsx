@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import db from '../services/dbService';
 import { INITIAL_VEHICLES } from '../pages/AdminPortal';
+import { loadAllVehiclesFromMySQL } from '../services/mysqlService';
 import { X, MapPin, Navigation, Car, Clock, ShieldCheck, CheckCircle } from 'lucide-react';
 import { notifyAdmin } from '../services/notificationEngine';
 import './BookingModal.css';
@@ -41,6 +42,17 @@ export default function BookingModal({ isOpen, onClose }) {
     };
 
     loadVehicles();
+
+    loadAllVehiclesFromMySQL().then(fetched => {
+      if (Array.isArray(fetched) && fetched.length > 0) {
+        const active = fetched.filter(v => v.status !== 'Inactive');
+        if (active.length > 0) {
+          setVehicles(active);
+          setVehicleId(prev => active.some(v => v.id === prev) ? prev : active[0]?.id || '');
+          try { localStorage.setItem('cabsy_vehicles', JSON.stringify(fetched)); } catch(e) {}
+        }
+      }
+    }).catch(() => {});
 
     window.addEventListener('storage', loadVehicles);
     window.addEventListener('EMPERIAL CABS_vehicles_updated', loadVehicles);

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle2, ShieldCheck, Wrench, ArrowRight, Star, MapPin, Navigation, Smartphone, Clock, Users, Package, Calendar, Briefcase, Plane } from 'lucide-react';
+import { loadAllVehiclesFromMySQL } from '../services/mysqlService';
 import './Pages.css';
 
 export default function Home({ onOpenBooking }) {
@@ -30,6 +31,13 @@ export default function Home({ onOpenBooking }) {
         }
       } catch (e) {}
     };
+
+    loadAllVehiclesFromMySQL().then(fetched => {
+      if (Array.isArray(fetched) && fetched.length > 0) {
+        setVehicles(fetched);
+        try { localStorage.setItem('cabsy_vehicles', JSON.stringify(fetched)); } catch(e) {}
+      }
+    }).catch(() => {});
 
     window.addEventListener('storage', syncVehicles);
     window.addEventListener('EMPERIAL CABS_vehicles_updated', syncVehicles);

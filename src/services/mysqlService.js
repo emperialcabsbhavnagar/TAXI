@@ -213,3 +213,29 @@ export const purgeAllDataFromMySQL = async () => {
   return res.success;
 };
 
+/**
+ * Load all fleet vehicles from Hostinger MySQL database
+ */
+export const loadAllVehiclesFromMySQL = async () => {
+  const res = await sendRequest('getVehicles');
+  return res && res.success && Array.isArray(res.vehicles) ? res.vehicles : [];
+};
+
+/**
+ * Save / Update a vehicle in Hostinger MySQL database
+ */
+export const saveVehicleToMySQL = async (vehicle) => {
+  if (!vehicle) return false;
+  const res = await sendRequest('saveVehicle', vehicle);
+  return res && res.success;
+};
+
+/**
+ * Delete a vehicle from Hostinger MySQL database
+ */
+export const deleteVehicleFromMySQL = async (vehicleId) => {
+  if (!vehicleId) return false;
+  const res = await sendRequest('deleteVehicle', { id: vehicleId });
+  return res && res.success;
+};
+

@@ -2,6 +2,7 @@ import React from 'react';
 import InteractiveMap from '../../components/InteractiveMap';
 import { getCoordsForPlace, generateRoutePolyline } from '../../utils/locationCoords';
 import { INITIAL_VEHICLES } from '../AdminPortal';
+import { loadAllVehiclesFromMySQL } from '../../services/mysqlService';
 import car1 from '../../assets/images/map/car1.png';
 import car2 from '../../assets/images/map/car2.png';
 import car3 from '../../assets/images/map/car3.png';
@@ -52,23 +53,51 @@ export default function SelectCarScreen({
   const baseDistanceKm = getRouteDistanceKm();
   const effectiveDistanceKm = tripType === 'round-trip' ? baseDistanceKm * 2 : baseDistanceKm;
 
-  const getAdminVehicles = () => {
-    let rawVehicles = [];
+  const [cloudVehicles, setCloudVehicles] = React.useState(() => {
     try {
       const saved = localStorage.getItem('cabsy_vehicles');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          rawVehicles = parsed;
-        }
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch (e) {}
+    return INITIAL_VEHICLES;
+  });
 
-    if (rawVehicles.length === 0) {
-      rawVehicles = INITIAL_VEHICLES;
-    }
+  React.useEffect(() => {
+    let isMounted = true;
+    loadAllVehiclesFromMySQL().then(fetched => {
+      if (isMounted && Array.isArray(fetched) && fetched.length > 0) {
+        setCloudVehicles(fetched);
+        try {
+          localStorage.setItem('cabsy_vehicles', JSON.stringify(fetched));
+        } catch (e) {}
+      }
+    }).catch(() => {});
 
-    return rawVehicles.map((v, idx) => {
+    const handleUpdate = () => {
+      try {
+        const saved = localStorage.getItem('cabsy_vehicles');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) setCloudVehicles(parsed);
+        }
+      } catch (e) {}
+    };
+
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('EMPERIAL CABS_vehicles_updated', handleUpdate);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('EMPERIAL CABS_vehicles_updated', handleUpdate);
+    };
+  }, []);
+
+  const getAdminVehicles = () => {
+    const rawVehicles = (Array.isArray(cloudVehicles) && cloudVehicles.length > 0) ? cloudVehicles : INITIAL_VEHICLES;
+
+    return rawVehicles.filter(v => v.status !== 'Inactive').map((v, idx) => {
       const ratePerKm = Number(v.rate || 15);
       let totalFare = 0;
       if (hasFixedPrice && fixedPriceNum > 0) {
@@ -96,7 +125,7 @@ export default function SelectCarScreen({
   };
 
   const allVehicles = getAdminVehicles();
-  const currentCarObj = allVehicles.find(c => c.id === selectedCar) || allVehicles[0];
+  const currentCarObj = allVehicles.find(c => c.id === selectedCar) || allVehicles[0] || {};
 
   return (
     <div className="real-mobile-app">

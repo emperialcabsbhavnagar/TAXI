@@ -139,3 +139,17 @@ CREATE TABLE IF NOT EXISTS `routes` (
   UNIQUE KEY `unique_route_pair` (`pickup`, `dropoff`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- --------------------------------------------------------
+-- 7. Table structure for `vehicles` (Fleet Vehicles, Rates, & Photos)
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `vehicles` (
+  `id` VARCHAR(64) NOT NULL PRIMARY KEY COMMENT 'Unique Vehicle ID (e.g. CAR-101)',
+  `name` VARCHAR(150) NOT NULL COMMENT 'Vehicle Model / Display Name',
+  `passengers` VARCHAR(50) DEFAULT '4 Persons' COMMENT 'Passenger Seating Capacity',
+  `rate` DECIMAL(10,2) NOT NULL DEFAULT 15.00 COMMENT 'Base Rate per KM (₹)',
+  `status` VARCHAR(50) DEFAULT 'Active' COMMENT 'Availability Status',
+  `image` LONGTEXT DEFAULT NULL COMMENT 'Custom Vehicle Image (Base64 data or HTTPS URL)',
+  `description` TEXT DEFAULT NULL COMMENT 'Vehicle description / perks',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+

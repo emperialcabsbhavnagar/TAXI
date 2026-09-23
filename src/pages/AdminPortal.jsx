@@ -13,6 +13,9 @@ import {
   updateInquiryStatusInMySQL,
   updateInquiryRewardInMySQL,
   saveWalletToMySQL,
+  loadAllVehiclesFromMySQL,
+  saveVehicleToMySQL,
+  deleteVehicleFromMySQL
 } from '../services/mysqlService';
 import { 
   notifyAdmin, 
@@ -711,24 +714,50 @@ export default function AdminPortal() {
   const [newDestForm, setNewDestForm] = useState({ name: '', pickup: '', dropoff: '', price: '', duration: '' });
   const [batchMatrixModal, setBatchMatrixModal] = useState({ open: false, originPlace: '', rates: {} });
 
-  const handleImageFileUpload = (e, isEdit = false) => {
+  const compressImage = (file, maxWidth = 800, maxHeight = 500, quality = 0.82) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxWidth || height > maxHeight) {
+            const ratio = Math.min(maxWidth / width, maxHeight / height);
+            width = Math.round(width * ratio);
+            height = Math.round(height * ratio);
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = () => resolve(e.target.result);
+        img.src = e.target.result;
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleImageFileUpload = async (e, isEdit = false) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (isEdit) {
-        setEditVehicleModal(prev => ({
-          ...prev,
-          vehicle: { ...prev.vehicle, image: reader.result }
-        }));
-      } else {
-        setNewVehicleForm(prev => ({
-          ...prev,
-          image: reader.result
-        }));
-      }
-    };
-    reader.readAsDataURL(file);
+    const compressed = await compressImage(file);
+    if (!compressed) return;
+
+    if (isEdit) {
+      setEditVehicleModal(prev => ({
+        ...prev,
+        vehicle: { ...prev.vehicle, image: compressed }
+      }));
+    } else {
+      setNewVehicleForm(prev => ({
+        ...prev,
+        image: compressed
+      }));
+    }
   };
 
   // ── Load real data dynamically from Hostinger MySQL Database ──
@@ -739,10 +768,22 @@ export default function AdminPortal() {
         // Auto initialize Hostinger MySQL tables and schema if not present
         initMySQLTables().catch(() => {});
 
-        const [mysqlInquiries, mysqlCustomers] = await Promise.all([
+        const [mysqlInquiries, mysqlCustomers, mysqlVehicles] = await Promise.all([
           loadAllInquiriesFromMySQL().catch(() => []),
-          loadAllCustomersFromMySQL().catch(() => [])
+          loadAllCustomersFromMySQL().catch(() => []),
+          loadAllVehiclesFromMySQL().catch(() => [])
         ]);
+
+        if (Array.isArray(mysqlVehicles) && mysqlVehicles.length > 0) {
+          setVehicles(mysqlVehicles);
+          try {
+            localStorage.setItem('cabsy_vehicles', JSON.stringify(mysqlVehicles));
+          } catch(e) {}
+        } else {
+          // If MySQL has no vehicles yet, seed current vehicles into MySQL
+          const seedList = (vehicles && vehicles.length > 0) ? vehicles : INITIAL_VEHICLES;
+          seedList.forEach(v => saveVehicleToMySQL(v).catch(() => {}));
+        }
 
         setInquiries(Array.isArray(mysqlInquiries) ? mysqlInquiries : []);
         const map = new Map();
@@ -1004,19 +1045,24 @@ export default function AdminPortal() {
       description: newVehicleForm.description || 'Executive fleet vehicle.'
     };
     setVehicles([...vehicles, created]);
+    saveVehicleToMySQL(created).catch(err => console.warn('Failed to save vehicle to MySQL:', err));
     setNewVehicleForm({ name: '', passengers: '1 - 4 Passenger', rate: '2.50', status: 'Active', image: '', description: '' });
     setAddVehicleModal(false);
   };
 
   const handleEditVehicleSubmit = (e) => {
     e.preventDefault();
-    setVehicles(vehicles.map(v => v.id === editVehicleModal.vehicle.id ? editVehicleModal.vehicle : v));
+    if (!editVehicleModal.vehicle) return;
+    const updated = editVehicleModal.vehicle;
+    setVehicles(vehicles.map(v => v.id === updated.id ? updated : v));
+    saveVehicleToMySQL(updated).catch(err => console.warn('Failed to save vehicle to MySQL:', err));
     setEditVehicleModal({ open: false, vehicle: null });
   };
 
   const handleDeleteVehicle = (id) => {
     if (window.confirm("Are you sure you want to remove this car from the fleet roster?")) {
       setVehicles(vehicles.filter(v => v.id !== id));
+      deleteVehicleFromMySQL(id).catch(err => console.warn('Failed to delete vehicle from MySQL:', err));
     }
   };
 

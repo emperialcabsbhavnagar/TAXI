@@ -14,6 +14,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { INITIAL_VEHICLES, INITIAL_PLACES, INITIAL_DESTINATIONS } from './AdminPortal';
+import { loadAllVehiclesFromMySQL } from '../services/mysqlService';
 import './Pages.css';
 
 const FALLBACK_VEHICLES = [
@@ -101,6 +102,16 @@ export default function BookRide() {
         if (finalVehicles.some(v => v.id === prev)) return prev;
         return finalVehicles[0]?.id || FALLBACK_VEHICLES[0].id;
       });
+
+      loadAllVehiclesFromMySQL().then(fetched => {
+        if (Array.isArray(fetched) && fetched.length > 0) {
+          const active = fetched.filter(v => v.status !== 'Inactive');
+          if (active.length > 0) {
+            setVehicles(active);
+            try { localStorage.setItem('cabsy_vehicles', JSON.stringify(fetched)); } catch(e) {}
+          }
+        }
+      }).catch(() => {});
     };
 
     loadDynamicData();

@@ -89,6 +89,17 @@ try {
             transactions LONGTEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS vehicles (
+            id VARCHAR(64) PRIMARY KEY,
+            name VARCHAR(150),
+            passengers VARCHAR(50) DEFAULT '4 Persons',
+            rate DECIMAL(10,2) DEFAULT 15.00,
+            status VARCHAR(50) DEFAULT 'Active',
+            image LONGTEXT,
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        );
     ");
 } catch (Exception $e) {}
 
@@ -275,6 +286,50 @@ switch ($action) {
         $stmt = $pdo->prepare("INSERT INTO customer_wallets (phone, balance, transactions) VALUES (?, ?, ?)
                                ON DUPLICATE KEY UPDATE balance = VALUES(balance), transactions = VALUES(transactions)");
         $stmt->execute([$phone, floatval($data['balance'] ?? 0), $txns]);
+        echo json_encode(['success' => true]);
+        break;
+
+    case 'getVehicles':
+        $stmt = $pdo->query("SELECT * FROM vehicles ORDER BY id ASC");
+        $rows = $stmt->fetchAll();
+        echo json_encode(['success' => true, 'vehicles' => $rows]);
+        break;
+
+    case 'saveVehicle':
+        $id = !empty($data['id']) ? $data['id'] : ('CAR-' . round(microtime(true) * 1000));
+        $name = $data['name'] ?? 'Car';
+        $passengers = $data['passengers'] ?? '4 Persons';
+        $rate = is_numeric($data['rate'] ?? null) ? floatval($data['rate']) : 15.00;
+        $status = $data['status'] ?? 'Active';
+        $image = $data['image'] ?? null;
+        $description = $data['description'] ?? '';
+
+        $stmt = $pdo->prepare("INSERT INTO vehicles (id, name, passengers, rate, status, image, description)
+                               VALUES (:id, :name, :passengers, :rate, :status, :image, :description)
+                               ON DUPLICATE KEY UPDATE
+                                   name = VALUES(name),
+                                   passengers = VALUES(passengers),
+                                   rate = VALUES(rate),
+                                   status = VALUES(status),
+                                   image = IF(VALUES(image) IS NOT NULL AND VALUES(image) != '', VALUES(image), image),
+                                   description = VALUES(description)");
+        $stmt->execute([
+            ':id' => $id,
+            ':name' => $name,
+            ':passengers' => $passengers,
+            ':rate' => $rate,
+            ':status' => $status,
+            ':image' => $image,
+            ':description' => $description
+        ]);
+        echo json_encode(['success' => true, 'id' => $id]);
+        break;
+
+    case 'deleteVehicle':
+        $id = $data['id'] ?? null;
+        if (!$id) { echo json_encode(['success' => false, 'error' => 'Missing vehicle ID']); exit(); }
+        $stmt = $pdo->prepare("DELETE FROM vehicles WHERE id = ?");
+        $stmt->execute([$id]);
         echo json_encode(['success' => true]);
         break;
 

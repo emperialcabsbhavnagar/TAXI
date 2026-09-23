@@ -146,6 +146,19 @@ async function ensureTablesExist() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    await executeQuery(`
+      CREATE TABLE IF NOT EXISTS vehicles (
+        id VARCHAR(64) PRIMARY KEY,
+        name VARCHAR(150),
+        passengers VARCHAR(50) DEFAULT '4 Persons',
+        rate DECIMAL(10,2) DEFAULT 15.00,
+        status VARCHAR(50) DEFAULT 'Active',
+        image LONGTEXT,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      );
+    `);
     tablesEnsured = true;
   } catch (err) {
     console.warn('ensureTablesExist warning:', err);
@@ -423,6 +436,45 @@ export async function handleMySQLRequest(action, data = {}) {
           await executeQuery('INSERT INTO places (name) VALUES (?) ON DUPLICATE KEY UPDATE name=VALUES(name)', [city]).catch(() => {});
         }
         return { success: true, count: gujaratCities.length };
+      }
+
+      case 'getVehicles': {
+        const [rows] = await executeQuery('SELECT * FROM vehicles ORDER BY id ASC');
+        return { success: true, vehicles: rows || [] };
+      }
+
+      case 'saveVehicle': {
+        const { id, name, passengers, rate, status, image, description } = data;
+        const vehId = id || `CAR-${Date.now()}`;
+        const numRate = (Number.isNaN(Number(rate)) || !rate) ? 15.00 : Number(rate);
+        const sql = `
+          INSERT INTO vehicles (id, name, passengers, rate, status, image, description)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            name = VALUES(name),
+            passengers = VALUES(passengers),
+            rate = VALUES(rate),
+            status = VALUES(status),
+            image = IF(VALUES(image) IS NOT NULL AND VALUES(image) != '', VALUES(image), image),
+            description = VALUES(description);
+        `;
+        await executeQuery(sql, [
+          vehId,
+          name || 'Car',
+          passengers || '4 Persons',
+          numRate,
+          status || 'Active',
+          image || null,
+          description || ''
+        ]);
+        return { success: true, id: vehId };
+      }
+
+      case 'deleteVehicle': {
+        const { id } = data;
+        if (!id) return { success: false, error: 'Missing vehicle ID' };
+        await executeQuery('DELETE FROM vehicles WHERE id = ?', [id]);
+        return { success: true };
       }
 
       default:
