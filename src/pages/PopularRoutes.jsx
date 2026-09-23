@@ -98,6 +98,9 @@ export default function PopularRoutes() {
     return r.from.toLowerCase().includes(q) || r.to.toLowerCase().includes(q);
   });
 
+  const [visibleCount, setVisibleCount] = useState(24);
+  const visibleRoutes = filteredRoutes.slice(0, visibleCount);
+
   return (
     <div className="popular-routes-page">
       {/* DIRECTORY HERO BANNER */}
@@ -128,10 +131,13 @@ export default function PopularRoutes() {
                 type="text" 
                 placeholder="Search any route (e.g. Bhavnagar, Ahmedabad, Surat, Rajkot)..." 
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setVisibleCount(24);
+                }}
               />
               {searchQuery && (
-                <button className="btn-clear-search" onClick={() => setSearchQuery('')}>✕</button>
+                <button className="btn-clear-search" onClick={() => { setSearchQuery(''); setVisibleCount(24); }}>✕</button>
               )}
             </div>
           </div>
@@ -143,14 +149,14 @@ export default function PopularRoutes() {
         <div className="container">
           <div className="section-header">
             <span className="section-badge">Top In-Demand Routes</span>
-            <h2>Popular City-to-City Taxi Connections</h2>
+            <h2>Popular City-to-City Taxi Connections ({filteredRoutes.length} Available)</h2>
             <p className="section-desc">
               Instant one-way and round-trip bookings with guaranteed on-time driver arrival.
             </p>
           </div>
 
           <div className="directory-cards-grid">
-            {filteredRoutes.map((route, idx) => {
+            {visibleRoutes.map((route, idx) => {
               const routeSlug = `${slugify(route.from)}-to-${slugify(route.to)}`;
               return (
                 <div key={idx} className="directory-route-card">
@@ -183,6 +189,29 @@ export default function PopularRoutes() {
               );
             })}
           </div>
+
+          {visibleCount < filteredRoutes.length && (
+            <div style={{ textAlign: 'center', marginTop: '2.5rem' }}>
+              <button 
+                type="button"
+                style={{
+                  padding: '0.85rem 2.2rem',
+                  fontSize: '0.95rem',
+                  fontWeight: 600,
+                  color: '#ffffff',
+                  background: '#111827',
+                  border: '1px solid #374151',
+                  borderRadius: '10px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                }}
+                onClick={() => setVisibleCount(prev => prev + 24)}
+              >
+                Load More Routes ({filteredRoutes.length - visibleCount} more)
+              </button>
+            </div>
+          )}
         </div>
       </section>
 

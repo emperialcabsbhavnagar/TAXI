@@ -2,7 +2,7 @@ import React from 'react';
 import InteractiveMap from '../../components/InteractiveMap';
 import { getCoordsForPlace, generateRoutePolyline } from '../../utils/locationCoords';
 import { INITIAL_VEHICLES } from '../AdminPortal';
-import { loadAllVehiclesFromMySQL, loadAllRoutesFromMySQL } from '../../services/mysqlService';
+import { loadAllVehiclesFromMySQL, loadAllRoutesFromMySQL, getRoutePriceFromMySQL, safeStorageSetItem } from '../../services/mysqlService';
 import car1 from '../../assets/images/map/car1.png';
 import car2 from '../../assets/images/map/car2.png';
 import car3 from '../../assets/images/map/car3.png';
@@ -88,11 +88,26 @@ export default function SelectCarScreen({
     loadAllVehiclesFromMySQL().then(fetched => {
       if (isMounted && Array.isArray(fetched) && fetched.length > 0) {
         setCloudVehicles(fetched);
-        try {
-          localStorage.setItem('cabsy_vehicles', JSON.stringify(fetched));
-        } catch (e) {}
+        safeStorageSetItem('cabsy_vehicles', fetched);
       }
     }).catch(() => {});
+
+    // Live O(1) targeted route lookup for mobile booking
+    if (pickupLoc && dropoffLoc) {
+      getRoutePriceFromMySQL(pickupLoc, dropoffLoc).then(liveRoute => {
+        if (!isMounted || !liveRoute) return;
+        const formatted = {
+          id: liveRoute.id,
+          name: `${liveRoute.pickup} → ${liveRoute.dropoff}`,
+          pickup: liveRoute.pickup,
+          dropoff: liveRoute.dropoff,
+          price: Number(liveRoute.price) || 0,
+          duration: liveRoute.duration || '',
+          car_prices: liveRoute.car_prices || {}
+        };
+        setCloudRoutes(prev => [formatted, ...prev.filter(r => r.id !== formatted.id)]);
+      }).catch(() => {});
+    }
 
     loadAllRoutesFromMySQL().then(fetchedRoutes => {
       if (isMounted && Array.isArray(fetchedRoutes) && fetchedRoutes.length > 0) {
@@ -102,13 +117,12 @@ export default function SelectCarScreen({
           pickup: r.pickup,
           dropoff: r.dropoff,
           price: Number(r.price) || 0,
-          duration: r.duration || ''
+          duration: r.duration || '',
+          car_prices: r.car_prices || {}
         }));
         setCloudRoutes(formattedRoutes);
-        try {
-          localStorage.setItem('cabsy_destinations', JSON.stringify(formattedRoutes));
-          localStorage.setItem('cabsy_routes', JSON.stringify(formattedRoutes));
-        } catch (e) {}
+        safeStorageSetItem('cabsy_destinations', formattedRoutes);
+        safeStorageSetItem('cabsy_routes', formattedRoutes);
       }
     }).catch(() => {});
 
@@ -137,13 +151,27 @@ export default function SelectCarScreen({
     return rawVehicles.filter(v => v.status !== 'Inactive').map((v, idx) => {
       const ratePerKm = Number(v.rate || 15);
       let totalFare = 0;
-      if (hasFixedPrice && fixedPriceNum > 0) {
-        const isSevenSeater = (v.passengers && v.passengers.includes('7')) || (v.name && v.name.toLowerCase().includes('eartice'));
-        const multiplier = isSevenSeater ? 1.3 : 1.0;
+      let isVehicleFixed = false;
+
+      // 1. Check exact car price configured for this vehicle on this route
+      const directCarPrice = (matchedRoute && matchedRoute.car_prices) 
+        ? (matchedRoute.car_prices[v.id] ?? matchedRoute.car_prices[v.name]) 
+        : null;
+
+      if (directCarPrice !== null && directCarPrice !== undefined && directCarPrice !== '' && !isNaN(Number(directCarPrice)) && Number(directCarPrice) > 0) {
+        const numP = Number(directCarPrice);
+        totalFare = tripType === 'round-trip' ? numP * 2 : numP;
+        isVehicleFixed = true;
+      } else if (hasFixedPrice && fixedPriceNum > 0) {
+        const isSevenSeater = (v.passengers && v.passengers.includes('7')) || (v.name && (v.name.toLowerCase().includes('ertiga') || v.name.toLowerCase().includes('innova')));
+        const isLuxury = v.name && (v.name.toLowerCase().includes('innova') || v.name.toLowerCase().includes('crysta'));
+        const multiplier = isLuxury ? 1.7 : (isSevenSeater ? 1.35 : 1.0);
         const oneWayFare = Math.round(fixedPriceNum * multiplier);
         totalFare = tripType === 'round-trip' ? oneWayFare * 2 : oneWayFare;
+        isVehicleFixed = true;
       } else {
         totalFare = Math.round(effectiveDistanceKm * ratePerKm);
+        isVehicleFixed = false;
       }
 
       return {
@@ -156,7 +184,7 @@ export default function SelectCarScreen({
         ratePerKm,
         totalFareNum: totalFare,
         price: `₹${totalFare.toLocaleString('en-IN')}`,
-        isFixedPrice: hasFixedPrice
+        isFixedPrice: isVehicleFixed
       };
     });
   };

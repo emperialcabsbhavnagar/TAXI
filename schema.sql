@@ -133,10 +133,13 @@ CREATE TABLE IF NOT EXISTS `routes` (
   `id` VARCHAR(64) NOT NULL PRIMARY KEY COMMENT 'Unique Route ID',
   `pickup` VARCHAR(150) NOT NULL COMMENT 'Origin Place',
   `dropoff` VARCHAR(150) NOT NULL COMMENT 'Destination Place',
-  `price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT 'Fixed Fare in Rupees (₹)',
+  `price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT 'Fixed Base Fare in Rupees (₹)',
   `duration` VARCHAR(100) DEFAULT '' COMMENT 'Travel Duration (e.g. 2 Hr 30 MIN)',
+  `car_prices` LONGTEXT DEFAULT NULL COMMENT 'Per-vehicle custom fixed fares JSON (e.g. {"CAR-101": 2600, "CAR-102": 3600})',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY `unique_route_pair` (`pickup`, `dropoff`)
+  UNIQUE KEY `unique_route_pair` (`pickup`, `dropoff`),
+  INDEX `idx_routes_pickup` (`pickup`),
+  INDEX `idx_routes_dropoff` (`dropoff`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
@@ -150,7 +153,9 @@ CREATE TABLE IF NOT EXISTS `vehicles` (
   `status` VARCHAR(50) DEFAULT 'Active' COMMENT 'Availability Status',
   `image` LONGTEXT DEFAULT NULL COMMENT 'Custom Vehicle Image (Base64 data or HTTPS URL)',
   `description` TEXT DEFAULT NULL COMMENT 'Vehicle description / perks',
-  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_vehicles_status` (`status`),
+  INDEX `idx_vehicles_name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------

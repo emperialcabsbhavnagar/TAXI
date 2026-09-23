@@ -167,10 +167,27 @@ async function ensureTablesExist() {
         dropoff VARCHAR(150) NOT NULL,
         price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
         duration VARCHAR(100) DEFAULT '',
+        car_prices LONGTEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY unique_route_pair (pickup, dropoff)
       );
     `);
+
+    try {
+      await executeQuery(`ALTER TABLE routes ADD COLUMN car_prices LONGTEXT`);
+    } catch (e) {}
+    try {
+      await executeQuery(`ALTER TABLE routes ADD INDEX idx_routes_pickup (pickup)`);
+    } catch (e) {}
+    try {
+      await executeQuery(`ALTER TABLE routes ADD INDEX idx_routes_dropoff (dropoff)`);
+    } catch (e) {}
+    try {
+      await executeQuery(`ALTER TABLE vehicles ADD INDEX idx_vehicles_status (status)`);
+    } catch (e) {}
+    try {
+      await executeQuery(`ALTER TABLE vehicles ADD INDEX idx_vehicles_name (name)`);
+    } catch (e) {}
 
     await executeQuery(`
       CREATE TABLE IF NOT EXISTS drivers (
@@ -536,22 +553,36 @@ export async function handleMySQLRequest(action, data = {}) {
         return { success: true, routes: rows || [] };
       }
 
+      case 'getRoute':
+      case 'getRoutePrice': {
+        const cleanPickup = String(data.pickup || '').trim();
+        const cleanDropoff = String(data.dropoff || '').trim();
+        if (!cleanPickup || !cleanDropoff) return { success: false, error: 'Pickup and dropoff are required' };
+        const [rows] = await executeQuery(
+          'SELECT * FROM routes WHERE (pickup = ? AND dropoff = ?) OR (pickup = ? AND dropoff = ?) LIMIT 1',
+          [cleanPickup, cleanDropoff, cleanDropoff, cleanPickup]
+        );
+        return { success: true, route: (rows && rows[0]) ? rows[0] : null };
+      }
+
       case 'saveRoute': {
-        const { id, pickup, dropoff, price, duration } = data;
+        const { id, pickup, dropoff, price, duration, car_prices } = data;
         const routeId = id || `DEST-${Date.now()}`;
         const cleanPickup = String(pickup || '').trim();
         const cleanDropoff = String(dropoff || '').trim();
         if (!cleanPickup || !cleanDropoff) return { success: false, error: 'Pickup and dropoff are required' };
         const numPrice = (Number.isNaN(Number(price)) || price === null || price === undefined) ? 0 : Number(price);
+        const carPricesStr = car_prices ? (typeof car_prices === 'object' ? JSON.stringify(car_prices) : String(car_prices)) : null;
 
         const sql = `
-          INSERT INTO routes (id, pickup, dropoff, price, duration)
-          VALUES (?, ?, ?, ?, ?)
+          INSERT INTO routes (id, pickup, dropoff, price, duration, car_prices)
+          VALUES (?, ?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE
             price = VALUES(price),
-            duration = VALUES(duration);
+            duration = VALUES(duration),
+            car_prices = VALUES(car_prices);
         `;
-        await executeQuery(sql, [routeId, cleanPickup, cleanDropoff, numPrice, String(duration || '').trim()]);
+        await executeQuery(sql, [routeId, cleanPickup, cleanDropoff, numPrice, String(duration || '').trim(), carPricesStr]);
         return { success: true, id: routeId };
       }
 
@@ -560,17 +591,19 @@ export async function handleMySQLRequest(action, data = {}) {
         if (!Array.isArray(routes)) return { success: false, error: 'Invalid routes array' };
         let count = 0;
         const sql = `
-          INSERT INTO routes (id, pickup, dropoff, price, duration)
-          VALUES (?, ?, ?, ?, ?)
+          INSERT INTO routes (id, pickup, dropoff, price, duration, car_prices)
+          VALUES (?, ?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE
             price = VALUES(price),
-            duration = VALUES(duration);
+            duration = VALUES(duration),
+            car_prices = VALUES(car_prices);
         `;
         for (const r of routes) {
           if (r && r.pickup && r.dropoff) {
             const rId = r.id || `DEST-${Date.now()}-${count}`;
             const numPrice = (Number.isNaN(Number(r.price)) || r.price === null || r.price === undefined) ? 0 : Number(r.price);
-            await executeQuery(sql, [rId, String(r.pickup).trim(), String(r.dropoff).trim(), numPrice, String(r.duration || '').trim()]);
+            const carPricesStr = r.car_prices ? (typeof r.car_prices === 'object' ? JSON.stringify(r.car_prices) : String(r.car_prices)) : null;
+            await executeQuery(sql, [rId, String(r.pickup).trim(), String(r.dropoff).trim(), numPrice, String(r.duration || '').trim(), carPricesStr]);
             count++;
           }
         }

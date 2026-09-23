@@ -113,6 +113,7 @@ try {
             dropoff VARCHAR(150) NOT NULL,
             price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
             duration VARCHAR(100) DEFAULT '',
+            car_prices LONGTEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             UNIQUE KEY unique_route_pair (pickup, dropoff)
         );
@@ -146,6 +147,22 @@ try {
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         );
     ");
+
+    try {
+        $pdo->exec("ALTER TABLE routes ADD COLUMN car_prices LONGTEXT");
+    } catch (Exception $e) {}
+    try {
+        $pdo->exec("ALTER TABLE routes ADD INDEX idx_routes_pickup (pickup)");
+    } catch (Exception $e) {}
+    try {
+        $pdo->exec("ALTER TABLE routes ADD INDEX idx_routes_dropoff (dropoff)");
+    } catch (Exception $e) {}
+    try {
+        $pdo->exec("ALTER TABLE vehicles ADD INDEX idx_vehicles_status (status)");
+    } catch (Exception $e) {}
+    try {
+        $pdo->exec("ALTER TABLE vehicles ADD INDEX idx_vehicles_name (name)");
+    } catch (Exception $e) {}
 } catch (Exception $e) {}
 
 // Read raw POST body
@@ -421,25 +438,47 @@ switch ($action) {
         echo json_encode(['success' => true, 'routes' => $rows]);
         break;
 
+    case 'getRoute':
+    case 'getRoutePrice':
+        $pickup = trim($data['pickup'] ?? '');
+        $dropoff = trim($data['dropoff'] ?? '');
+        if (!$pickup || !$dropoff) {
+            echo json_encode(['success' => false, 'error' => 'Pickup and dropoff are required']);
+            exit();
+        }
+        $stmt = $pdo->prepare("SELECT * FROM routes WHERE (pickup = :p1 AND dropoff = :d1) OR (pickup = :d2 AND dropoff = :p2) LIMIT 1");
+        $stmt->execute([
+            ':p1' => $pickup,
+            ':d1' => $dropoff,
+            ':d2' => $pickup,
+            ':p2' => $dropoff
+        ]);
+        $route = $stmt->fetch();
+        echo json_encode(['success' => true, 'route' => $route ?: null]);
+        break;
+
     case 'saveRoute':
         $id = !empty($data['id']) ? $data['id'] : ('DEST-' . round(microtime(true) * 1000));
         $pickup = trim($data['pickup'] ?? '');
         $dropoff = trim($data['dropoff'] ?? '');
         $price = is_numeric($data['price'] ?? null) ? floatval($data['price']) : 0.00;
         $duration = trim($data['duration'] ?? '');
+        $car_prices = isset($data['car_prices']) ? (is_array($data['car_prices']) ? json_encode($data['car_prices']) : $data['car_prices']) : null;
         if (!$pickup || !$dropoff) { echo json_encode(['success' => false, 'error' => 'Pickup and dropoff are required']); exit(); }
 
-        $stmt = $pdo->prepare("INSERT INTO routes (id, pickup, dropoff, price, duration)
-                               VALUES (:id, :pickup, :dropoff, :price, :duration)
+        $stmt = $pdo->prepare("INSERT INTO routes (id, pickup, dropoff, price, duration, car_prices)
+                               VALUES (:id, :pickup, :dropoff, :price, :duration, :car_prices)
                                ON DUPLICATE KEY UPDATE
                                    price = VALUES(price),
-                                   duration = VALUES(duration)");
+                                   duration = VALUES(duration),
+                                   car_prices = VALUES(car_prices)");
         $stmt->execute([
             ':id' => $id,
             ':pickup' => $pickup,
             ':dropoff' => $dropoff,
             ':price' => $price,
-            ':duration' => $duration
+            ':duration' => $duration,
+            ':car_prices' => $car_prices
         ]);
         echo json_encode(['success' => true, 'id' => $id]);
         break;
@@ -447,26 +486,39 @@ switch ($action) {
     case 'saveRoutesBatch':
         $routes = $data['routes'] ?? [];
         if (!is_array($routes)) { echo json_encode(['success' => false, 'error' => 'Invalid routes data']); exit(); }
-        $stmt = $pdo->prepare("INSERT INTO routes (id, pickup, dropoff, price, duration)
-                               VALUES (:id, :pickup, :dropoff, :price, :duration)
-                               ON DUPLICATE KEY UPDATE
-                                   price = VALUES(price),
-                                   duration = VALUES(duration)");
+        
         $count = 0;
-        foreach ($routes as $r) {
-            if (!empty($r['pickup']) && !empty($r['dropoff'])) {
-                $id = !empty($r['id']) ? $r['id'] : ('DEST-' . round(microtime(true) * 1000) . '-' . $count);
-                $stmt->execute([
-                    ':id' => $id,
-                    ':pickup' => trim($r['pickup']),
-                    ':dropoff' => trim($r['dropoff']),
-                    ':price' => floatval($r['price'] ?? 0),
-                    ':duration' => trim($r['duration'] ?? '')
-                ]);
-                $count++;
+        try {
+            $pdo->beginTransaction();
+            $stmt = $pdo->prepare("INSERT INTO routes (id, pickup, dropoff, price, duration, car_prices)
+                                   VALUES (:id, :pickup, :dropoff, :price, :duration, :car_prices)
+                                   ON DUPLICATE KEY UPDATE
+                                       price = VALUES(price),
+                                       duration = VALUES(duration),
+                                       car_prices = VALUES(car_prices)");
+            foreach ($routes as $r) {
+                if (!empty($r['pickup']) && !empty($r['dropoff'])) {
+                    $id = !empty($r['id']) ? $r['id'] : ('DEST-' . round(microtime(true) * 1000) . '-' . $count);
+                    $car_prices = isset($r['car_prices']) ? (is_array($r['car_prices']) ? json_encode($r['car_prices']) : $r['car_prices']) : null;
+                    $stmt->execute([
+                        ':id' => $id,
+                        ':pickup' => trim($r['pickup']),
+                        ':dropoff' => trim($r['dropoff']),
+                        ':price' => floatval($r['price'] ?? 0),
+                        ':duration' => trim($r['duration'] ?? ''),
+                        ':car_prices' => $car_prices
+                    ]);
+                    $count++;
+                }
             }
+            $pdo->commit();
+            echo json_encode(['success' => true, 'count' => $count]);
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
         }
-        echo json_encode(['success' => true, 'count' => $count]);
         break;
 
     case 'deleteRoute':

@@ -7,7 +7,7 @@ import {
   GUJARAT_PRIMARY_CITIES,
   slugify 
 } from '../data/seoKeywordsData';
-import { loadAllRoutesFromMySQL, loadAllVehiclesFromMySQL } from '../services/mysqlService';
+import { loadAllRoutesFromMySQL, loadAllVehiclesFromMySQL, getRoutePriceFromMySQL } from '../services/mysqlService';
 import { 
   Car, 
   MapPin, 
@@ -38,19 +38,29 @@ export default function RouteLandingPage({ onOpenBooking }) {
   const [openFaqIndex, setOpenFaqIndex] = useState(0);
 
   useEffect(() => {
+    // Fast O(1) single-route live lookup
+    if (from && to) {
+      getRoutePriceFromMySQL(from, to).then(liveRoute => {
+        if (liveRoute) {
+          setCustomRoutes(prev => [liveRoute, ...prev.filter(r => r.id !== liveRoute.id)]);
+        }
+      }).catch(() => {});
+    }
+
     loadAllRoutesFromMySQL().then(routes => {
       if (Array.isArray(routes) && routes.length > 0) {
         setCustomRoutes(routes);
       }
     }).catch(() => {});
-  }, []);
+  }, [from, to]);
 
   const routeDetails = calculateRouteEstimate(from, to, customRoutes);
-  const { distanceKm, duration, baseFare, highway } = routeDetails;
+  const { distanceKm, duration, baseFare, highway, car_prices = {} } = routeDetails;
 
-  const sedanFare = baseFare;
-  const suvFare = Math.round(baseFare * 1.35);
-  const luxuryFare = Math.round(baseFare * 1.75);
+  // Exact fixed fares for specific car categories if configured by Admin
+  const sedanFare = Number(car_prices['CAR-101'] ?? car_prices['Swift Dzire'] ?? car_prices['Sedan'] ?? baseFare);
+  const suvFare = Number(car_prices['CAR-102'] ?? car_prices['Maruti Ertiga'] ?? car_prices['Ertiga'] ?? Math.round(baseFare * 1.35));
+  const luxuryFare = Number(car_prices['CAR-103'] ?? car_prices['Innova Crysta'] ?? car_prices['Toyota Innova Crysta'] ?? Math.round(baseFare * 1.75));
 
   // Dynamic SEO Title, Description, and Structured Data
   useEffect(() => {

@@ -14,7 +14,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { INITIAL_VEHICLES, INITIAL_PLACES, INITIAL_DESTINATIONS } from './AdminPortal';
-import { loadAllVehiclesFromMySQL, loadAllPlacesFromMySQL, loadAllRoutesFromMySQL } from '../services/mysqlService';
+import { loadAllVehiclesFromMySQL, loadAllPlacesFromMySQL, loadAllRoutesFromMySQL, getRoutePriceFromMySQL, safeStorageSetItem } from '../services/mysqlService';
 import './Pages.css';
 
 const FALLBACK_VEHICLES = [
@@ -59,6 +59,7 @@ export default function BookRide() {
   const [distanceKm, setDistanceKm] = useState(18);
   const [fixedPrice, setFixedPrice] = useState(null);
   const [isMatchedRoute, setIsMatchedRoute] = useState(false);
+  const [matchedRouteData, setMatchedRouteData] = useState(null);
   
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
   
@@ -116,7 +117,7 @@ export default function BookRide() {
       loadAllPlacesFromMySQL().then(fetchedPlaces => {
         if (Array.isArray(fetchedPlaces) && fetchedPlaces.length > 0) {
           setPlaces(prev => Array.from(new Set([...fetchedPlaces, ...prev])));
-          try { localStorage.setItem('cabsy_places', JSON.stringify(fetchedPlaces)); } catch(e) {}
+          safeStorageSetItem('cabsy_places', fetchedPlaces);
         }
       }).catch(() => {});
 
@@ -128,10 +129,11 @@ export default function BookRide() {
             pickup: r.pickup,
             dropoff: r.dropoff,
             price: Number(r.price) || 0,
-            duration: r.duration || ''
+            duration: r.duration || '',
+            car_prices: r.car_prices || {}
           }));
           setDestinations(formatted);
-          try { localStorage.setItem('cabsy_destinations', JSON.stringify(formatted)); } catch(e) {}
+          safeStorageSetItem('cabsy_destinations', formatted);
         }
       }).catch(() => {});
     };
@@ -166,15 +168,18 @@ export default function BookRide() {
     if (fromLoc === toLoc && tripType !== 'custom-trip') {
       setDistanceKm(0);
       setIsMatchedRoute(true);
+      setMatchedRouteData(null);
       return;
     }
 
+    let isCurrent = true;
     const matched = destinations.find(
       d => (d.pickup && d.dropoff && d.pickup.toLowerCase().includes(fromLoc.toLowerCase()) && d.dropoff.toLowerCase().includes(toLoc.toLowerCase())) ||
            (d.pickup && d.dropoff && d.pickup.toLowerCase().includes(toLoc.toLowerCase()) && d.dropoff.toLowerCase().includes(fromLoc.toLowerCase()))
     );
 
     if (matched) {
+      setMatchedRouteData(matched);
       if (matched.price !== undefined && matched.price !== null && matched.price !== '') {
         setFixedPrice(Number(matched.price));
       } else {
@@ -183,10 +188,34 @@ export default function BookRide() {
       setDistanceKm(Number(matched.distanceKm) || 154);
       setIsMatchedRoute(true);
     } else {
+      setMatchedRouteData(null);
       setFixedPrice(null);
       setDistanceKm(175);
       setIsMatchedRoute(false);
     }
+
+    // High scale O(1) live backend verification for exact route pricing
+    getRoutePriceFromMySQL(fromLoc, toLoc).then(liveRoute => {
+      if (!isCurrent || !liveRoute) return;
+      const formattedLive = {
+        id: liveRoute.id,
+        name: `${liveRoute.pickup} → ${liveRoute.dropoff}`,
+        pickup: liveRoute.pickup,
+        dropoff: liveRoute.dropoff,
+        price: Number(liveRoute.price) || 0,
+        duration: liveRoute.duration || '',
+        car_prices: liveRoute.car_prices || {}
+      };
+      setMatchedRouteData(formattedLive);
+      if (formattedLive.price) {
+        setFixedPrice(formattedLive.price);
+        setIsMatchedRoute(true);
+      }
+    }).catch(() => {});
+
+    return () => {
+      isCurrent = false;
+    };
   }, [pickupLocation, dropoffDestination, pickupCity, dropoffCity, destinations, tripType]);
 
   // Swap pickup & dropoff
@@ -214,15 +243,48 @@ export default function BookRide() {
     ? distanceKm * 2 
     : (tripType === 'custom-trip' ? Math.max(distanceKm > 10 ? distanceKm : 175, 300 * noOfDays) : distanceKm);
 
-  let calculatedFare = '0.00';
-  if (tripType !== 'custom-trip' && fixedPrice && fixedPrice > 0) {
-    const isSevenSeater = (currentVehicle?.passengers && currentVehicle.passengers.includes('7')) || (currentVehicle?.name && currentVehicle.name.toLowerCase().includes('eartice'));
-    const multiplier = isSevenSeater ? 1.3 : 1.0;
-    const baseFixed = fixedPrice * multiplier;
-    calculatedFare = (tripType === 'round-trip' ? baseFixed * 2 : baseFixed).toFixed(2);
-  } else {
-    calculatedFare = (effectiveDistanceKm * ratePerKm).toFixed(2);
-  }
+  // Exact car price calculation helper: checks specific car_prices, then base fixed price, then per-km
+  const getVehicleFare = (veh) => {
+    if (!veh) return { fare: '0.00', isFixed: false };
+    if (tripType === 'custom-trip') {
+      const kmFare = (effectiveDistanceKm * parseFloat(veh.rate || 15)).toFixed(2);
+      return { fare: kmFare, isFixed: false };
+    }
+
+    // 1. Check exact car price configured for this vehicle on this route
+    if (matchedRouteData && matchedRouteData.car_prices) {
+      const directPrice = matchedRouteData.car_prices[veh.id] ?? matchedRouteData.car_prices[veh.name];
+      if (directPrice !== undefined && directPrice !== null && directPrice !== '' && !isNaN(Number(directPrice)) && Number(directPrice) > 0) {
+        const numP = Number(directPrice);
+        const total = tripType === 'round-trip' ? numP * 2 : numP;
+        return {
+          fare: total.toFixed(2),
+          isFixed: true,
+          oneWayFixed: numP
+        };
+      }
+    }
+
+    // 2. Fallback to base route fixed price with capacity multiplier
+    if (fixedPrice && fixedPrice > 0) {
+      const isSevenSeater = (veh?.passengers && veh.passengers.includes('7')) || (veh?.name && (veh.name.toLowerCase().includes('ertiga') || veh.name.toLowerCase().includes('innova')));
+      const isLuxury = veh?.name && (veh.name.toLowerCase().includes('innova') || veh.name.toLowerCase().includes('crysta'));
+      const multiplier = isLuxury ? 1.7 : (isSevenSeater ? 1.35 : 1.0);
+      const baseFixed = Math.round(fixedPrice * multiplier);
+      const total = tripType === 'round-trip' ? baseFixed * 2 : baseFixed;
+      return {
+        fare: total.toFixed(2),
+        isFixed: true,
+        oneWayFixed: baseFixed
+      };
+    }
+
+    // 3. Fallback to distance * per-km rate
+    const kmFare = (effectiveDistanceKm * parseFloat(veh.rate || 15)).toFixed(2);
+    return { fare: kmFare, isFixed: false };
+  };
+
+  const calculatedFare = getVehicleFare(currentVehicle).fare;
 
   const handleSubmitBooking = (e) => {
     e.preventDefault();
@@ -555,20 +617,36 @@ export default function BookRide() {
                   </label>
 
                   <div className="vehicle-light-grid mt-2">
-                    {vehicles.map(v => (
-                      <div 
-                        key={v.id} 
-                        className={`vehicle-light-card ${selectedVehicleId === v.id ? 'active' : ''}`}
-                        onClick={() => setSelectedVehicleId(v.id)}
-                      >
-                        <img src={v.image} alt={v.name} className="vehicle-thumb" />
-                        <div className="vehicle-info">
-                          <h4 className="m-0 text-sm font-bold">{v.name}</h4>
-                          <small className="text-muted">{v.passengers}</small>
+                    {vehicles.map(v => {
+                      const fareInfo = getVehicleFare(v);
+                      return (
+                        <div 
+                          key={v.id} 
+                          className={`vehicle-light-card ${selectedVehicleId === v.id ? 'active' : ''}`}
+                          onClick={() => setSelectedVehicleId(v.id)}
+                        >
+                          <img src={v.image} alt={v.name} className="vehicle-thumb" />
+                          <div className="vehicle-info">
+                            <h4 className="m-0 text-sm font-bold">{v.name}</h4>
+                            <small className="text-muted">{v.passengers}</small>
+                          </div>
+                          <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
+                            {fareInfo.isFixed ? (
+                              <>
+                                <span className="vehicle-price" style={{ color: '#059669', fontWeight: '800', fontSize: '1.05rem' }}>
+                                  ₹{Math.round(Number(fareInfo.fare))}
+                                </span>
+                                <span style={{ fontSize: '10px', color: '#059669', background: '#ECFDF5', padding: '1px 6px', borderRadius: '4px', fontWeight: '800' }}>
+                                  Fixed Total
+                                </span>
+                              </>
+                            ) : (
+                              <span className="vehicle-price">₹{v.rate}/km</span>
+                            )}
+                          </div>
                         </div>
-                        <span className="vehicle-price">₹{v.rate}/km</span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 

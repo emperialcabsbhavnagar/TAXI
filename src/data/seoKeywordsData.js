@@ -115,7 +115,8 @@ export const calculateRouteEstimate = (from, to, customRoutes = []) => {
         distanceKm: matched.distanceKm ? Number(matched.distanceKm) : 160,
         duration: matched.duration || '3 hr 15 min',
         baseFare: Number(matched.price),
-        highway: 'Direct Highway Corridor'
+        highway: 'Direct Highway Corridor',
+        car_prices: matched.car_prices || {}
       };
     }
   }

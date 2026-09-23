@@ -1,5 +1,5 @@
 // EMPERIAL CABS Admin Portal v1.0.4 - Live Trip Tracking & Chronological Inquiries Engine
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   saveInquiryToMySQL,
   loadAllInquiriesFromMySQL,
@@ -31,7 +31,8 @@ import {
   deleteContactMessageFromMySQL,
   updateContactMessageStatusInMySQL,
   loadSettingsFromMySQL,
-  saveSettingToMySQL
+  saveSettingToMySQL,
+  safeStorageSetItem
 } from '../services/mysqlService';
 import { 
   notifyAdmin, 
@@ -733,6 +734,17 @@ export default function AdminPortal() {
   const [newDestForm, setNewDestForm] = useState({ name: '', pickup: '', dropoff: '', price: '', duration: '' });
   const [batchMatrixModal, setBatchMatrixModal] = useState({ open: false, originPlace: '', rates: {} });
 
+  // High-Scale Pagination & Search States (10,000+ routes, 5,000+ fleet vehicles)
+  const [destSearchQuery, setDestSearchQuery] = useState('');
+  const [destCurrentPage, setDestCurrentPage] = useState(1);
+  const [destPageSize, setDestPageSize] = useState(25);
+
+  const [vehicleSearchQuery, setVehicleSearchQuery] = useState('');
+  const [vehicleCurrentPage, setVehicleCurrentPage] = useState(1);
+  const [vehiclePageSize, setVehiclePageSize] = useState(12);
+
+  const [matrixVehicleFilter, setMatrixVehicleFilter] = useState('');
+
   const compressImage = (file, maxWidth = 800, maxHeight = 500, quality = 0.82) => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -809,9 +821,7 @@ export default function AdminPortal() {
 
         if (Array.isArray(mysqlVehicles) && mysqlVehicles.length > 0) {
           setVehicles(mysqlVehicles);
-          try {
-            localStorage.setItem('cabsy_vehicles', JSON.stringify(mysqlVehicles));
-          } catch(e) {}
+          safeStorageSetItem('cabsy_vehicles', mysqlVehicles);
         } else {
           // If MySQL has no vehicles yet, seed current vehicles into MySQL
           const seedList = (vehicles && vehicles.length > 0) ? vehicles : INITIAL_VEHICLES;
@@ -820,9 +830,7 @@ export default function AdminPortal() {
 
         if (Array.isArray(mysqlPlaces) && mysqlPlaces.length > 0) {
           setPlaces(mysqlPlaces);
-          try {
-            localStorage.setItem('cabsy_places', JSON.stringify(mysqlPlaces));
-          } catch(e) {}
+          safeStorageSetItem('cabsy_places', mysqlPlaces);
         } else {
           INITIAL_PLACES.forEach(p => savePlaceToMySQL(p).catch(() => {}));
         }
@@ -834,12 +842,11 @@ export default function AdminPortal() {
             pickup: r.pickup,
             dropoff: r.dropoff,
             price: Number(r.price) || 0,
-            duration: r.duration || ''
+            duration: r.duration || '',
+            car_prices: r.car_prices || {}
           }));
           setDestinations(formattedRoutes);
-          try {
-            localStorage.setItem('cabsy_destinations', JSON.stringify(formattedRoutes));
-          } catch(e) {}
+          safeStorageSetItem('cabsy_destinations', formattedRoutes);
         } else {
           saveRoutesBatchToMySQL(INITIAL_DESTINATIONS).catch(() => {});
         }
@@ -938,18 +945,18 @@ export default function AdminPortal() {
   }, [customers]);
 
   useEffect(() => {
-    localStorage.setItem('cabsy_vehicles', JSON.stringify(vehicles));
+    safeStorageSetItem('cabsy_vehicles', vehicles);
     window.dispatchEvent(new CustomEvent('EMPERIAL CABS_vehicles_updated', { detail: vehicles }));
   }, [vehicles]);
 
   useEffect(() => {
-    localStorage.setItem('cabsy_destinations', JSON.stringify(destinations));
+    safeStorageSetItem('cabsy_destinations', destinations);
     window.dispatchEvent(new CustomEvent('EMPERIAL CABS_destinations_updated', { detail: destinations }));
     window.dispatchEvent(new Event('storage'));
   }, [destinations]);
 
   useEffect(() => {
-    localStorage.setItem('cabsy_places', JSON.stringify(places));
+    safeStorageSetItem('cabsy_places', places);
     window.dispatchEvent(new CustomEvent('EMPERIAL CABS_places_updated', { detail: places }));
     window.dispatchEvent(new Event('storage'));
   }, [places]);
@@ -995,17 +1002,25 @@ export default function AdminPortal() {
     }
 
     const durStr = formatDurationHrMin(newDestForm.hours, newDestForm.mins);
+    const carPrices = newDestForm.car_prices || {};
+    let basePrice = Number(newDestForm.price) || 0;
+    if (!basePrice) {
+      const firstCarP = Object.values(carPrices).find(p => p !== '' && !isNaN(Number(p)) && Number(p) > 0);
+      if (firstCarP) basePrice = Number(firstCarP);
+    }
+
     const created = {
       id: `DEST-${Math.floor(100 + Math.random() * 900)}`,
       name: `${pickupVal} → ${dropoffVal}`,
       pickup: pickupVal,
       dropoff: dropoffVal,
-      price: Number(newDestForm.price) || 0,
-      duration: durStr || newDestForm.duration || ''
+      price: basePrice,
+      duration: durStr || newDestForm.duration || '',
+      car_prices: carPrices
     };
     saveRouteToMySQL(created).catch(() => {});
     setDestinations([...destinations.filter(d => d && d.pickup && d.dropoff), created]);
-    setNewDestForm({ name: '', pickup: places[0] || '', dropoff: places[1] || '', price: '', hours: '', mins: '', duration: '' });
+    setNewDestForm({ name: '', pickup: places[0] || '', dropoff: places[1] || '', price: '', hours: '', mins: '', duration: '', car_prices: {} });
     setAddDestModal(false);
   };
 
@@ -1013,10 +1028,18 @@ export default function AdminPortal() {
     e.preventDefault();
     if (!editDestModal.destination) return;
     const durStr = formatDurationHrMin(editDestModal.destination.hours, editDestModal.destination.mins);
+    const carPrices = editDestModal.destination.car_prices || {};
+    let basePrice = Number(editDestModal.destination.price) || 0;
+    if (!basePrice) {
+      const firstCarP = Object.values(carPrices).find(p => p !== '' && !isNaN(Number(p)) && Number(p) > 0);
+      if (firstCarP) basePrice = Number(firstCarP);
+    }
+
     const updatedDest = {
       ...editDestModal.destination,
-      price: Number(editDestModal.destination.price) || 0,
-      duration: durStr || editDestModal.destination.duration || ''
+      price: basePrice,
+      duration: durStr || editDestModal.destination.duration || '',
+      car_prices: carPrices
     };
     saveRouteToMySQL(updatedDest).catch(() => {});
     setDestinations(destinations.map(d => d.id === updatedDest.id ? updatedDest : d));
@@ -1041,13 +1064,18 @@ export default function AdminPortal() {
       );
       if (existing) {
         const timeObj = parseDurationHrMin(existing.duration || '');
+        let carPrices = {};
+        if (existing.car_prices) {
+          carPrices = typeof existing.car_prices === 'object' ? { ...existing.car_prices } : {};
+        }
         initialRates[dest] = {
           price: existing.price !== undefined && existing.price !== null ? String(existing.price) : '',
           hours: timeObj.hours,
-          mins: timeObj.mins
+          mins: timeObj.mins,
+          carPrices: carPrices
         };
       } else {
-        initialRates[dest] = { price: '', hours: '', mins: '' };
+        initialRates[dest] = { price: '', hours: '', mins: '', carPrices: {} };
       }
     });
     setBatchMatrixModal({ open: true, originPlace: origin, rates: initialRates });
@@ -1063,13 +1091,18 @@ export default function AdminPortal() {
       );
       if (existing) {
         const timeObj = parseDurationHrMin(existing.duration || '');
+        let carPrices = {};
+        if (existing.car_prices) {
+          carPrices = typeof existing.car_prices === 'object' ? { ...existing.car_prices } : {};
+        }
         initialRates[dest] = {
           price: existing.price !== undefined && existing.price !== null ? String(existing.price) : '',
           hours: timeObj.hours,
-          mins: timeObj.mins
+          mins: timeObj.mins,
+          carPrices: carPrices
         };
       } else {
-        initialRates[dest] = { price: '', hours: '', mins: '' };
+        initialRates[dest] = { price: '', hours: '', mins: '', carPrices: {} };
       }
     });
     setBatchMatrixModal({ open: true, originPlace: newOrigin, rates: initialRates });
@@ -1081,11 +1114,36 @@ export default function AdminPortal() {
       rates: {
         ...prev.rates,
         [destPlace]: {
-          ...(prev.rates[destPlace] || { price: '', hours: '', mins: '' }),
+          ...(prev.rates[destPlace] || { price: '', hours: '', mins: '', carPrices: {} }),
           [field]: value
         }
       }
     }));
+  };
+
+  const handleBatchCarRateChange = (destPlace, carId, value) => {
+    setBatchMatrixModal(prev => {
+      const prevData = prev.rates[destPlace] || { price: '', hours: '', mins: '', carPrices: {} };
+      const updatedCarPrices = {
+        ...(prevData.carPrices || {}),
+        [carId]: value
+      };
+      let basePrice = prevData.price;
+      if (!basePrice || basePrice === '') {
+        basePrice = value;
+      }
+      return {
+        ...prev,
+        rates: {
+          ...prev.rates,
+          [destPlace]: {
+            ...prevData,
+            price: basePrice,
+            carPrices: updatedCarPrices
+          }
+        }
+      };
+    });
   };
 
   const handleSaveBatchMatrix = () => {
@@ -1097,38 +1155,48 @@ export default function AdminPortal() {
     const batchToPersist = [];
 
     Object.entries(batchMatrixModal.rates).forEach(([destPlace, rateData]) => {
-      if (rateData && rateData.price !== '' && rateData.price !== null && rateData.price !== undefined) {
-        const numPrice = Number(rateData.price);
-        if (numPrice >= 0) {
-          const existingIdx = updatedList.findIndex(d => 
-            d && d.pickup && d.dropoff &&
-            d.pickup.toLowerCase().trim() === origin.toLowerCase().trim() && 
-            d.dropoff.toLowerCase().trim() === destPlace.toLowerCase().trim()
-          );
+      if (!rateData) return;
+      const carPrices = rateData.carPrices || {};
+      const hasAnyCarPrice = Object.values(carPrices).some(val => val !== '' && val !== null && !isNaN(Number(val)) && Number(val) >= 0);
+      const hasBasePrice = rateData.price !== '' && rateData.price !== null && rateData.price !== undefined && Number(rateData.price) >= 0;
 
-          const formattedDuration = formatDurationHrMin(rateData.hours, rateData.mins);
-
-          if (existingIdx >= 0) {
-            updatedList[existingIdx] = {
-              ...updatedList[existingIdx],
-              price: numPrice,
-              duration: formattedDuration || updatedList[existingIdx].duration || ''
-            };
-            batchToPersist.push(updatedList[existingIdx]);
-          } else {
-            const newRoute = {
-              id: `DEST-${Math.floor(100 + Math.random() * 900)}`,
-              name: `${origin} → ${destPlace}`,
-              pickup: origin,
-              dropoff: destPlace,
-              price: numPrice,
-              duration: formattedDuration || ''
-            };
-            updatedList.push(newRoute);
-            batchToPersist.push(newRoute);
-          }
-          savedCount++;
+      if (hasAnyCarPrice || hasBasePrice) {
+        let numPrice = hasBasePrice ? Number(rateData.price) : 0;
+        if (!numPrice && hasAnyCarPrice) {
+          const firstVal = Object.values(carPrices).find(val => val !== '' && !isNaN(Number(val)) && Number(val) > 0);
+          if (firstVal) numPrice = Number(firstVal);
         }
+
+        const existingIdx = updatedList.findIndex(d => 
+          d && d.pickup && d.dropoff &&
+          d.pickup.toLowerCase().trim() === origin.toLowerCase().trim() && 
+          d.dropoff.toLowerCase().trim() === destPlace.toLowerCase().trim()
+        );
+
+        const formattedDuration = formatDurationHrMin(rateData.hours, rateData.mins);
+
+        if (existingIdx >= 0) {
+          updatedList[existingIdx] = {
+            ...updatedList[existingIdx],
+            price: numPrice,
+            duration: formattedDuration || updatedList[existingIdx].duration || '',
+            car_prices: carPrices
+          };
+          batchToPersist.push(updatedList[existingIdx]);
+        } else {
+          const newRoute = {
+            id: `DEST-${Math.floor(100 + Math.random() * 900)}`,
+            name: `${origin} → ${destPlace}`,
+            pickup: origin,
+            dropoff: destPlace,
+            price: numPrice,
+            duration: formattedDuration || '',
+            car_prices: carPrices
+          };
+          updatedList.push(newRoute);
+          batchToPersist.push(newRoute);
+        }
+        savedCount++;
       }
     });
 
@@ -1771,6 +1839,65 @@ export default function AdminPortal() {
       </div>
     );
   }
+
+  const activeVehicles = (vehicles && vehicles.length > 0)
+    ? vehicles.filter(v => v.status !== 'Inactive')
+    : INITIAL_VEHICLES;
+
+  // High-Scale Memoized Filtering & Pagination
+  const uniqueVehicleModels = useMemo(() => {
+    const seen = new Set();
+    return activeVehicles.filter(v => {
+      const key = v.name?.trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [activeVehicles]);
+
+  const filteredDestinations = useMemo(() => {
+    if (!destSearchQuery.trim()) return destinations;
+    const q = destSearchQuery.toLowerCase().trim();
+    return destinations.filter(d => 
+      (d.pickup && d.pickup.toLowerCase().includes(q)) ||
+      (d.dropoff && d.dropoff.toLowerCase().includes(q)) ||
+      (d.id && String(d.id).toLowerCase().includes(q))
+    );
+  }, [destinations, destSearchQuery]);
+
+  const totalDestPages = Math.max(1, Math.ceil(filteredDestinations.length / destPageSize));
+  const pagedDestinations = useMemo(() => {
+    const start = (destCurrentPage - 1) * destPageSize;
+    return filteredDestinations.slice(start, start + destPageSize);
+  }, [filteredDestinations, destCurrentPage, destPageSize]);
+
+  const filteredVehicles = useMemo(() => {
+    if (!vehicleSearchQuery.trim()) return vehicles;
+    const q = vehicleSearchQuery.toLowerCase().trim();
+    return vehicles.filter(v => 
+      (v.name && v.name.toLowerCase().includes(q)) ||
+      (v.status && v.status.toLowerCase().includes(q)) ||
+      (v.id && String(v.id).toLowerCase().includes(q)) ||
+      (v.passengers && v.passengers.toLowerCase().includes(q))
+    );
+  }, [vehicles, vehicleSearchQuery]);
+
+  const totalVehiclePages = Math.max(1, Math.ceil(filteredVehicles.length / vehiclePageSize));
+  const pagedVehicles = useMemo(() => {
+    const start = (vehicleCurrentPage - 1) * vehiclePageSize;
+    return filteredVehicles.slice(start, start + vehiclePageSize);
+  }, [filteredVehicles, vehicleCurrentPage, vehiclePageSize]);
+
+  const matrixVehicles = useMemo(() => {
+    if (!matrixVehicleFilter.trim()) {
+      return activeVehicles.length > 15 ? uniqueVehicleModels : activeVehicles;
+    }
+    const q = matrixVehicleFilter.toLowerCase().trim();
+    return activeVehicles.filter(v => 
+      v.name?.toLowerCase().includes(q) || 
+      v.id?.toLowerCase().includes(q)
+    );
+  }, [activeVehicles, uniqueVehicleModels, matrixVehicleFilter]);
 
   // AUTHENTICATED: RENDER MAIN ADMIN DASHBOARD
   return (
@@ -3212,8 +3339,39 @@ export default function AdminPortal() {
               </button>
             </div>
 
+            {/* High-Scale Vehicle Search Bar & Controls */}
+            <div className="flex flex-wrap justify-between align-center gap-3 mb-4" style={{ background: '#F8FAFC', padding: '12px 16px', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1', minWidth: '220px' }}>
+                <Search size={16} className="text-muted" />
+                <input 
+                  type="text" 
+                  placeholder="Search fleet by car model, status or capacity..." 
+                  value={vehicleSearchQuery}
+                  onChange={e => { setVehicleSearchQuery(e.target.value); setVehicleCurrentPage(1); }}
+                  style={{ width: '100%', padding: '6px 12px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.88rem' }}
+                />
+                {vehicleSearchQuery && (
+                  <button type="button" onClick={() => { setVehicleSearchQuery(''); setVehicleCurrentPage(1); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '0.82rem', color: '#64748B', fontWeight: '600' }}>
+                  Showing {filteredVehicles.length === 0 ? 0 : (vehicleCurrentPage - 1) * vehiclePageSize + 1} - {Math.min(vehicleCurrentPage * vehiclePageSize, filteredVehicles.length)} of {filteredVehicles.length}
+                </span>
+                <select 
+                  value={vehiclePageSize} 
+                  onChange={e => { setVehiclePageSize(Number(e.target.value)); setVehicleCurrentPage(1); }}
+                  style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.82rem' }}
+                >
+                  <option value={12}>12 / page</option>
+                  <option value={24}>24 / page</option>
+                  <option value={48}>48 / page</option>
+                </select>
+              </div>
+            </div>
+
             <div className="vehicles-cards-grid">
-              {vehicles.map(car => (
+              {pagedVehicles.map(car => (
                 <div key={car.id} className="vehicle-card-full card">
                   <div className="vehicle-card-image-wrap">
                     <img src={car.image} alt={car.name} className="vehicle-card-img" />
@@ -3248,6 +3406,28 @@ export default function AdminPortal() {
                 </div>
               ))}
             </div>
+
+            {totalVehiclePages > 1 && (
+              <div className="flex justify-between align-center mt-4" style={{ padding: '12px 16px', border: '1px solid #E2E8F0', borderRadius: '10px', background: '#F8FAFC' }}>
+                <button 
+                  className="btn btn-outline btn-sm" 
+                  disabled={vehicleCurrentPage <= 1}
+                  onClick={() => setVehicleCurrentPage(p => Math.max(1, p - 1))}
+                >
+                  Previous
+                </button>
+                <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#334155' }}>
+                  Page {vehicleCurrentPage} of {totalVehiclePages}
+                </span>
+                <button 
+                  className="btn btn-outline btn-sm" 
+                  disabled={vehicleCurrentPage >= totalVehiclePages}
+                  onClick={() => setVehicleCurrentPage(p => Math.min(totalVehiclePages, p + 1))}
+                >
+                  Next
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -3332,6 +3512,37 @@ export default function AdminPortal() {
                   <span className="pill-badge-sm font-bold">{destinations.length} Active Routes</span>
                 </div>
               </div>
+
+              {/* High-Scale Route Search & Filter Bar */}
+              <div className="flex flex-wrap justify-between align-center gap-2" style={{ background: '#F8FAFC', padding: '12px 16px', borderBottom: '1px solid #E2E8F0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1', minWidth: '240px' }}>
+                  <Search size={16} className="text-muted" />
+                  <input 
+                    type="text" 
+                    placeholder="Search routes by origin, destination or ID..." 
+                    value={destSearchQuery}
+                    onChange={e => { setDestSearchQuery(e.target.value); setDestCurrentPage(1); }}
+                    style={{ width: '100%', padding: '6px 12px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.88rem' }}
+                  />
+                  {destSearchQuery && (
+                    <button type="button" onClick={() => { setDestSearchQuery(''); setDestCurrentPage(1); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
+                  )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '0.82rem', color: '#64748B', fontWeight: '600' }}>
+                    Showing {filteredDestinations.length === 0 ? 0 : (destCurrentPage - 1) * destPageSize + 1} - {Math.min(destCurrentPage * destPageSize, filteredDestinations.length)} of {filteredDestinations.length}
+                  </span>
+                  <select 
+                    value={destPageSize} 
+                    onChange={e => { setDestPageSize(Number(e.target.value)); setDestCurrentPage(1); }}
+                    style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.82rem' }}
+                  >
+                    <option value={25}>25 / page</option>
+                    <option value={50}>50 / page</option>
+                    <option value={100}>100 / page</option>
+                  </select>
+                </div>
+              </div>
               
               <div className="table-responsive">
                 <table className="admin-table">
@@ -3346,7 +3557,7 @@ export default function AdminPortal() {
                     </tr>
                   </thead>
                   <tbody>
-                    {destinations.map(dest => (
+                    {pagedDestinations.map(dest => (
                       <tr key={dest.id}>
                         <td><strong>{dest.id}</strong></td>
                         <td>
@@ -3365,7 +3576,20 @@ export default function AdminPortal() {
                           <strong className="text-green text-base" style={{ fontSize: '1.05rem', fontWeight: '800' }}>
                             ₹{Number(dest.price || (dest.distanceKm * 15)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                           </strong>
-                          <small className="text-muted block text-xs">(Fixed Rate)</small>
+                          <small className="text-muted block text-xs">(Base Fixed Rate)</small>
+                          {dest.car_prices && Object.keys(dest.car_prices).length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px', maxWidth: '260px' }}>
+                              {Object.entries(dest.car_prices).filter(([_, p]) => p !== '' && p !== null && !isNaN(Number(p)) && Number(p) > 0).map(([carId, carP]) => {
+                                const vObj = activeVehicles.find(v => v.id === carId);
+                                const carName = vObj ? vObj.name : carId;
+                                return (
+                                  <span key={carId} style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '4px', fontSize: '11px', padding: '1px 5px', fontWeight: '700', color: '#166534' }}>
+                                    {carName}: ₹{carP}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
                         </td>
                         <td>
                           <span className="pill-badge-sm font-bold" style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #93C5FD' }}>
@@ -3400,7 +3624,7 @@ export default function AdminPortal() {
 
               {/* HOSTINGER ALIGNED MOBILE CARDS FOR DESTINATIONS & FIXED PRICING */}
               <div className="admin-mobile-card-list">
-                {destinations.map(dest => (
+                {pagedDestinations.map(dest => (
                   <div key={dest.id} className="hostinger-admin-card">
                     <div className="hostinger-card-top">
                       <div className="hostinger-card-id-group">
@@ -3448,6 +3672,28 @@ export default function AdminPortal() {
                   </div>
                 ))}
               </div>
+
+              {totalDestPages > 1 && (
+                <div className="flex justify-between align-center" style={{ padding: '12px 16px', borderTop: '1px solid #E2E8F0', background: '#F8FAFC' }}>
+                  <button 
+                    className="btn btn-outline btn-sm" 
+                    disabled={destCurrentPage <= 1}
+                    onClick={() => setDestCurrentPage(p => Math.max(1, p - 1))}
+                  >
+                    Previous
+                  </button>
+                  <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#334155' }}>
+                    Page {destCurrentPage} of {totalDestPages}
+                  </span>
+                  <button 
+                    className="btn btn-outline btn-sm" 
+                    disabled={destCurrentPage >= totalDestPages}
+                    onClick={() => setDestCurrentPage(p => Math.min(totalDestPages, p + 1))}
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -4838,7 +5084,7 @@ export default function AdminPortal() {
 
               <div className="form-grid-2 mt-2">
                 <div className="input-group">
-                  <label>Fixed Fare in Rupees (₹)</label>
+                  <label>Base Fixed Fare in Rupees (₹)</label>
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                     <span style={{ position: 'absolute', left: '12px', fontWeight: '800', color: '#059669', fontSize: '1.05rem' }}>₹</span>
                     <input 
@@ -4883,6 +5129,37 @@ export default function AdminPortal() {
                       <span style={{ fontWeight: '700', color: '#64748B', fontSize: '0.9rem' }}>min</span>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Specific Car Fixed Prices Grid */}
+              <div className="input-group full-width mt-3" style={{ background: '#F8FAFC', padding: '14px', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
+                <label style={{ fontWeight: '800', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', fontSize: '0.9rem' }}>
+                  <Car size={16} className="text-amber" /> Specific Car Fixed Prices (₹) (Optional - Overrides Base Fare)
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px' }}>
+                  {(activeVehicles.length > 15 ? uniqueVehicleModels : activeVehicles).map(veh => (
+                    <div key={veh.id} style={{ background: '#FFFFFF', padding: '8px 10px', borderRadius: '8px', border: '1px solid #CBD5E1' }}>
+                      <span style={{ fontSize: '0.8rem', fontWeight: '800', color: '#334155', display: 'block', marginBottom: '4px' }}>
+                        {veh.name}
+                      </span>
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <span style={{ position: 'absolute', left: '8px', fontWeight: '800', color: '#059669', fontSize: '0.85rem' }}>₹</span>
+                        <input 
+                          type="number"
+                          min="0"
+                          step="1"
+                          placeholder={newDestForm.price || "Auto"}
+                          value={newDestForm.car_prices?.[veh.id] ?? ''}
+                          onChange={e => {
+                            const updatedCarPrices = { ...(newDestForm.car_prices || {}), [veh.id]: e.target.value };
+                            setNewDestForm({ ...newDestForm, car_prices: updatedCarPrices });
+                          }}
+                          style={{ width: '100%', padding: '6px 8px 6px 20px', borderRadius: '6px', border: '1px solid #CBD5E1', fontWeight: '700', fontSize: '0.9rem' }}
+                        />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -4940,7 +5217,7 @@ export default function AdminPortal() {
 
               <div className="form-grid-2 mt-2">
                 <div className="input-group">
-                  <label>Fixed Fare in Rupees (₹)</label>
+                  <label>Base Fixed Fare in Rupees (₹)</label>
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                     <span style={{ position: 'absolute', left: '12px', fontWeight: '800', color: '#059669', fontSize: '1.05rem' }}>₹</span>
                     <input 
@@ -4997,6 +5274,40 @@ export default function AdminPortal() {
                 </div>
               </div>
 
+              {/* Specific Car Fixed Prices Grid */}
+              <div className="input-group full-width mt-3" style={{ background: '#F8FAFC', padding: '14px', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
+                <label style={{ fontWeight: '800', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', fontSize: '0.9rem' }}>
+                  <Car size={16} className="text-amber" /> Specific Car Fixed Prices (₹) (Optional - Overrides Base Fare)
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px' }}>
+                  {(activeVehicles.length > 15 ? uniqueVehicleModels : activeVehicles).map(veh => (
+                    <div key={veh.id} style={{ background: '#FFFFFF', padding: '8px 10px', borderRadius: '8px', border: '1px solid #CBD5E1' }}>
+                      <span style={{ fontSize: '0.8rem', fontWeight: '800', color: '#334155', display: 'block', marginBottom: '4px' }}>
+                        {veh.name}
+                      </span>
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <span style={{ position: 'absolute', left: '8px', fontWeight: '800', color: '#059669', fontSize: '0.85rem' }}>₹</span>
+                        <input 
+                          type="number"
+                          min="0"
+                          step="1"
+                          placeholder={editDestModal.destination.price || "Auto"}
+                          value={editDestModal.destination.car_prices?.[veh.id] ?? ''}
+                          onChange={e => {
+                            const updatedCarPrices = { ...(editDestModal.destination.car_prices || {}), [veh.id]: e.target.value };
+                            setEditDestModal({
+                              ...editDestModal,
+                              destination: { ...editDestModal.destination, car_prices: updatedCarPrices }
+                            });
+                          }}
+                          style={{ width: '100%', padding: '6px 8px 6px 20px', borderRadius: '6px', border: '1px solid #CBD5E1', fontWeight: '700', fontSize: '0.9rem' }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div className="modal-actions-flex mt-4">
                 <button type="button" className="btn btn-outline" onClick={() => setEditDestModal({ open: false, destination: null })}>Cancel</button>
                 <button type="submit" className="btn btn-primary">Save Changes</button>
@@ -5009,14 +5320,14 @@ export default function AdminPortal() {
       {/* MODAL 10B: BATCH ROUTE PRICING MATRIX - ENTER ALL AT ONCE */}
       {batchMatrixModal.open && (
         <div className="admin-modal-overlay" onClick={() => setBatchMatrixModal({ open: false, originPlace: '', rates: {} })}>
-          <div className="admin-modal-box card batch-matrix-modal" style={{ maxWidth: '820px', width: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+          <div className="admin-modal-box card batch-matrix-modal" style={{ maxWidth: '1150px', width: '96vw', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header-flex" style={{ paddingBottom: '1rem', borderBottom: '1px solid #E2E8F0' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Sparkles size={20} className="text-green" /> Batch Route Pricing Matrix (Enter All At Once)
+                  <Sparkles size={20} className="text-green" /> Batch Route Pricing Matrix (Multi-Car Rates)
                 </h3>
                 <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748B' }}>
-                  Select an origin location and set the fixed rupee (₹) fares to all destinations simultaneously in one go.
+                  Select an origin and set specific fixed rupee (₹) fares for all fleet vehicles simultaneously. Customers will see these exact prices live on web & app!
                 </p>
               </div>
               <button className="btn-modal-close" onClick={() => setBatchMatrixModal({ open: false, originPlace: '', rates: {} })}><XCircle size={22} /></button>
@@ -5040,61 +5351,90 @@ export default function AdminPortal() {
                   ))}
                 </select>
                 <span style={{ fontSize: '0.82rem', color: '#64748B', fontWeight: '700' }}>
-                  {places.filter(p => p !== batchMatrixModal.originPlace).length} Destinations Available
+                  {places.filter(p => p !== batchMatrixModal.originPlace).length} Destinations Available • {matrixVehicles.length} of {activeVehicles.length} Vehicles Displayed
                 </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
+                  <Search size={15} style={{ color: '#64748B' }} />
+                  <input 
+                    type="text"
+                    placeholder="Filter car columns..."
+                    value={matrixVehicleFilter}
+                    onChange={e => setMatrixVehicleFilter(e.target.value)}
+                    style={{ padding: '5px 10px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.82rem', width: '160px' }}
+                  />
+                  {matrixVehicleFilter && (
+                    <button type="button" onClick={() => setMatrixVehicleFilter('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
+                  )}
+                </div>
               </div>
 
-              {/* Matrix Table */}
-              <div style={{ border: '1px solid #E2E8F0', borderRadius: '14px', overflow: 'hidden' }}>
-                <table className="admin-table batch-matrix-table" style={{ margin: 0 }}>
-                  <thead style={{ background: '#F1F5F9' }}>
+              {/* Multi-Car Matrix Table */}
+              <div style={{ border: '1px solid #CBD5E1', borderRadius: '14px', overflowX: 'auto', background: '#FFFFFF' }}>
+                <table className="admin-table batch-matrix-table" style={{ minWidth: `${240 + matrixVehicles.length * 150 + 190}px`, margin: 0 }}>
+                  <thead style={{ background: '#F1F5F9', position: 'sticky', top: 0, zIndex: 10 }}>
                     <tr>
-                      <th style={{ width: '36%' }}>Drop-off Destination (To)</th>
-                      <th style={{ width: '28%' }}>Fixed Fare in Rupees (₹)</th>
-                      <th style={{ width: '36%' }}>Est. Travel Time (Hours & Mins)</th>
+                      <th style={{ width: '220px', minWidth: '200px', position: 'sticky', left: 0, background: '#F1F5F9', zIndex: 11, borderRight: '2px solid #E2E8F0' }}>
+                        Drop-off Destination (To)
+                      </th>
+                      {matrixVehicles.map((veh) => (
+                        <th key={veh.id} style={{ minWidth: '145px', textAlign: 'center' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                            <span style={{ fontWeight: '800', color: '#0F172A', fontSize: '0.88rem' }}>{veh.name}</span>
+                            <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: '700', background: '#ECFDF5', padding: '1px 6px', borderRadius: '4px' }}>
+                              Fixed ₹ ({veh.passengers || '4 Seats'})
+                            </span>
+                          </div>
+                        </th>
+                      ))}
+                      <th style={{ width: '190px', minWidth: '180px', textAlign: 'center' }}>Est. Travel Time</th>
                     </tr>
                   </thead>
                   <tbody>
                     {places.filter(p => p !== batchMatrixModal.originPlace).map((destPlace, idx) => {
-                      const currentData = batchMatrixModal.rates[destPlace] || { price: '', hours: '', mins: '' };
+                      const currentData = batchMatrixModal.rates[destPlace] || { price: '', hours: '', mins: '', carPrices: {} };
                       return (
                         <tr key={idx}>
-                          <td>
+                          <td style={{ position: 'sticky', left: 0, background: '#FFFFFF', zIndex: 5, borderRight: '2px solid #E2E8F0' }}>
                             <div className="route-place-cell">
                               <span className="dot-indicator red"></span>
-                              <strong className="place-name-text" style={{ fontSize: '0.95rem' }}>{destPlace}</strong>
+                              <strong className="place-name-text" style={{ fontSize: '0.92rem' }}>{destPlace}</strong>
                             </div>
                           </td>
-                          <td>
-                            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                              <span style={{ position: 'absolute', left: '12px', fontWeight: '800', color: '#059669', fontSize: '1rem' }}>₹</span>
-                              <input 
-                                type="number"
-                                min="0"
-                                step="1"
-                                placeholder="Fixed ₹ price"
-                                value={currentData.price}
-                                onChange={e => handleBatchRateChange(destPlace, 'price', e.target.value)}
-                                style={{
-                                  width: '100%',
-                                  padding: '8px 12px 8px 28px',
-                                  borderRadius: '10px',
-                                  border: '1.5px solid #CBD5E1',
-                                  fontWeight: '700',
-                                  fontSize: '0.95rem',
-                                  outline: 'none',
-                                  background: currentData.price ? '#ECFDF5' : '#FFFFFF',
-                                  borderColor: currentData.price ? '#10B981' : '#CBD5E1',
-                                  color: '#0F172A'
-                                }}
-                              />
-                            </div>
-                          </td>
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }}>
+                          {matrixVehicles.map((veh) => {
+                            const carVal = currentData.carPrices?.[veh.id] ?? '';
+                            return (
+                              <td key={veh.id} style={{ padding: '6px 8px' }}>
+                                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                  <span style={{ position: 'absolute', left: '10px', fontWeight: '800', color: '#059669', fontSize: '0.9rem' }}>₹</span>
+                                  <input 
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    placeholder={currentData.price || "Auto"}
+                                    value={carVal}
+                                    onChange={e => handleBatchCarRateChange(destPlace, veh.id, e.target.value)}
+                                    style={{
+                                      width: '100%',
+                                      padding: '8px 8px 8px 24px',
+                                      borderRadius: '8px',
+                                      border: '1.5px solid #CBD5E1',
+                                      fontWeight: '700',
+                                      fontSize: '0.9rem',
+                                      outline: 'none',
+                                      background: carVal ? '#ECFDF5' : '#FFFFFF',
+                                      borderColor: carVal ? '#10B981' : '#CBD5E1',
+                                      color: '#0F172A'
+                                    }}
+                                  />
+                                </div>
+                              </td>
+                            );
+                          })}
+                          <td style={{ padding: '6px 8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '3px', flex: 1 }}>
                                 <input 
-                                  type="number"
+                                  type="number" 
                                   min="0"
                                   max="48"
                                   placeholder="0"
@@ -5102,11 +5442,11 @@ export default function AdminPortal() {
                                   onChange={e => handleBatchRateChange(destPlace, 'hours', e.target.value)}
                                   style={{
                                     width: '100%',
-                                    padding: '8px 8px',
-                                    borderRadius: '10px',
+                                    padding: '7px 4px',
+                                    borderRadius: '8px',
                                     border: '1.5px solid #CBD5E1',
                                     fontWeight: '700',
-                                    fontSize: '0.9rem',
+                                    fontSize: '0.85rem',
                                     textAlign: 'center',
                                     outline: 'none',
                                     background: currentData.hours ? '#F0FDF4' : '#FFFFFF',
@@ -5114,11 +5454,11 @@ export default function AdminPortal() {
                                     color: '#0F172A'
                                   }}
                                 />
-                                <span style={{ fontWeight: '700', fontSize: '0.82rem', color: '#64748B' }}>hr</span>
+                                <span style={{ fontWeight: '700', fontSize: '0.78rem', color: '#64748B' }}>hr</span>
                               </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '3px', flex: 1 }}>
                                 <input 
-                                  type="number"
+                                  type="number" 
                                   min="0"
                                   max="59"
                                   step="5"
@@ -5127,11 +5467,11 @@ export default function AdminPortal() {
                                   onChange={e => handleBatchRateChange(destPlace, 'mins', e.target.value)}
                                   style={{
                                     width: '100%',
-                                    padding: '8px 8px',
-                                    borderRadius: '10px',
+                                    padding: '7px 4px',
+                                    borderRadius: '8px',
                                     border: '1.5px solid #CBD5E1',
                                     fontWeight: '700',
-                                    fontSize: '0.9rem',
+                                    fontSize: '0.85rem',
                                     textAlign: 'center',
                                     outline: 'none',
                                     background: currentData.mins ? '#F0FDF4' : '#FFFFFF',
@@ -5139,7 +5479,7 @@ export default function AdminPortal() {
                                     color: '#0F172A'
                                   }}
                                 />
-                                <span style={{ fontWeight: '700', fontSize: '0.82rem', color: '#64748B' }}>min</span>
+                                <span style={{ fontWeight: '700', fontSize: '0.78rem', color: '#64748B' }}>min</span>
                               </div>
                             </div>
                           </td>
@@ -5155,10 +5495,10 @@ export default function AdminPortal() {
               <button type="button" className="btn btn-outline" onClick={() => setBatchMatrixModal({ open: false, originPlace: '', rates: {} })}>
                 Cancel
               </button>
-              <button 
-                type="button" 
-                className="btn btn-primary" 
-                onClick={handleSaveBatchMatrix} 
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleSaveBatchMatrix}
                 style={{ minWidth: '240px', fontWeight: '800' }}
               >
                 Save All Route Rates
