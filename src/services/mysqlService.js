@@ -239,3 +239,120 @@ export const deleteVehicleFromMySQL = async (vehicleId) => {
   return res && res.success;
 };
 
+/**
+ * Places Management
+ */
+export const loadAllPlacesFromMySQL = async () => {
+  const res = await sendRequest('getPlaces');
+  return res && res.success && Array.isArray(res.places) ? res.places : [];
+};
+
+export const savePlaceToMySQL = async (name) => {
+  if (!name) return false;
+  const res = await sendRequest('savePlace', { name });
+  return res && res.success;
+};
+
+export const deletePlaceFromMySQL = async (name) => {
+  if (!name) return false;
+  const res = await sendRequest('deletePlace', { name });
+  return res && res.success;
+};
+
+export const seedGujaratPlacesToMySQL = async () => {
+  const res = await sendRequest('seedGujaratPlaces');
+  return res && res.success;
+};
+
+/**
+ * Routes / Destinations Management
+ */
+export const loadAllRoutesFromMySQL = async () => {
+  const res = await sendRequest('getRoutes');
+  return res && res.success && Array.isArray(res.routes) ? res.routes : [];
+};
+
+export const saveRouteToMySQL = async (route) => {
+  if (!route) return false;
+  const res = await sendRequest('saveRoute', route);
+  return res && res.success;
+};
+
+export const saveRoutesBatchToMySQL = async (routes) => {
+  if (!Array.isArray(routes) || routes.length === 0) return false;
+  const res = await sendRequest('saveRoutesBatch', { routes });
+  return res && res.success;
+};
+
+export const deleteRouteFromMySQL = async (routeIdOrPickup, dropoff) => {
+  let payload = {};
+  if (dropoff) {
+    payload = { pickup: routeIdOrPickup, dropoff };
+  } else {
+    payload = { id: routeIdOrPickup };
+  }
+  const res = await sendRequest('deleteRoute', payload);
+  return res && res.success;
+};
+
+/**
+ * Drivers Management
+ */
+export const loadAllDriversFromMySQL = async () => {
+  const res = await sendRequest('getDrivers');
+  return res && res.success && Array.isArray(res.drivers) ? res.drivers : [];
+};
+
+export const saveDriverToMySQL = async (driver) => {
+  if (!driver) return false;
+  const res = await sendRequest('saveDriver', driver);
+  return res && res.success;
+};
+
+export const deleteDriverFromMySQL = async (driverId) => {
+  if (!driverId) return false;
+  const res = await sendRequest('deleteDriver', { id: driverId });
+  return res && res.success;
+};
+
+/**
+ * Contact Messages Management
+ */
+export const loadAllContactMessagesFromMySQL = async () => {
+  const res = await sendRequest('getContactMessages');
+  return res && res.success && Array.isArray(res.messages) ? res.messages : [];
+};
+
+export const saveContactMessageToMySQL = async (message) => {
+  if (!message) return false;
+  const res = await sendRequest('saveContactMessage', message);
+  return res && res.success;
+};
+
+export const deleteContactMessageFromMySQL = async (messageId) => {
+  if (!messageId) return false;
+  const res = await sendRequest('deleteContactMessage', { id: messageId });
+  return res && res.success;
+};
+
+export const updateContactMessageStatusInMySQL = async (messageId, status) => {
+  if (!messageId) return false;
+  const res = await sendRequest('updateContactMessageStatus', { id: messageId, status });
+  return res && res.success;
+};
+
+/**
+ * Settings & CMS Management
+ */
+export const loadSettingsFromMySQL = async () => {
+  const res = await sendRequest('getSettings');
+  return res && res.success && res.settings ? res.settings : null;
+};
+
+export const saveSettingToMySQL = async (key, value) => {
+  if (!key) return false;
+  const res = await sendRequest('saveSettings', { key, value });
+  return res && res.success;
+};
+
+

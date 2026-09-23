@@ -100,6 +100,51 @@ try {
             description TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS places (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(150) NOT NULL UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS routes (
+            id VARCHAR(64) PRIMARY KEY,
+            pickup VARCHAR(150) NOT NULL,
+            dropoff VARCHAR(150) NOT NULL,
+            price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+            duration VARCHAR(100) DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_route_pair (pickup, dropoff)
+        );
+
+        CREATE TABLE IF NOT EXISTS drivers (
+            id VARCHAR(64) PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            phone VARCHAR(64) NOT NULL,
+            vehicle VARCHAR(100) DEFAULT NULL,
+            plate VARCHAR(64) DEFAULT NULL,
+            status VARCHAR(64) DEFAULT 'Active',
+            rating DECIMAL(3,2) DEFAULT 5.00,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS contact_messages (
+            id VARCHAR(64) PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            email VARCHAR(255) NOT NULL,
+            category VARCHAR(100) DEFAULT 'Support',
+            message TEXT NOT NULL,
+            date VARCHAR(100) DEFAULT NULL,
+            timestamp BIGINT DEFAULT NULL,
+            status VARCHAR(64) DEFAULT 'Unread',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS settings (
+            key_name VARCHAR(100) PRIMARY KEY,
+            key_value LONGTEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        );
     ");
 } catch (Exception $e) {}
 
@@ -330,6 +375,230 @@ switch ($action) {
         if (!$id) { echo json_encode(['success' => false, 'error' => 'Missing vehicle ID']); exit(); }
         $stmt = $pdo->prepare("DELETE FROM vehicles WHERE id = ?");
         $stmt->execute([$id]);
+        echo json_encode(['success' => true]);
+        break;
+
+    case 'getPlaces':
+        $stmt = $pdo->query("SELECT name FROM places ORDER BY name ASC");
+        $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        if (empty($rows)) {
+            $gujaratCities = [
+                'Ahmedabad', 'Surat', 'Vadodara (Baroda)', 'Rajkot', 'Bhavnagar',
+                'Jamnagar', 'Junagadh', 'Gandhinagar', 'Anand', 'Bharuch',
+                'Navsari', 'Morbi', 'Surendranagar', 'Gandhidham', 'Nadiad',
+                'Porbandar', 'Mehsana', 'Bhuj', 'Veraval', 'Vapi',
+                'Valsad', 'Godhra', 'Palanpur', 'Patan', 'Botad',
+                'Amreli', 'Gondal', 'Dahod', 'Himmatnagar', 'Ankleshwar'
+            ];
+            $ins = $pdo->prepare("INSERT IGNORE INTO places (name) VALUES (?)");
+            foreach ($gujaratCities as $city) {
+                $ins->execute([$city]);
+            }
+            $rows = $gujaratCities;
+        }
+        echo json_encode(['success' => true, 'places' => $rows]);
+        break;
+
+    case 'savePlace':
+        $name = trim($data['name'] ?? '');
+        if (!$name) { echo json_encode(['success' => false, 'error' => 'Missing place name']); exit(); }
+        $stmt = $pdo->prepare("INSERT IGNORE INTO places (name) VALUES (?)");
+        $stmt->execute([$name]);
+        echo json_encode(['success' => true]);
+        break;
+
+    case 'deletePlace':
+        $name = trim($data['name'] ?? '');
+        if (!$name) { echo json_encode(['success' => false, 'error' => 'Missing place name']); exit(); }
+        $stmt = $pdo->prepare("DELETE FROM places WHERE name = ?");
+        $stmt->execute([$name]);
+        echo json_encode(['success' => true]);
+        break;
+
+    case 'getRoutes':
+        $stmt = $pdo->query("SELECT * FROM routes ORDER BY pickup ASC, dropoff ASC");
+        $rows = $stmt->fetchAll();
+        echo json_encode(['success' => true, 'routes' => $rows]);
+        break;
+
+    case 'saveRoute':
+        $id = !empty($data['id']) ? $data['id'] : ('DEST-' . round(microtime(true) * 1000));
+        $pickup = trim($data['pickup'] ?? '');
+        $dropoff = trim($data['dropoff'] ?? '');
+        $price = is_numeric($data['price'] ?? null) ? floatval($data['price']) : 0.00;
+        $duration = trim($data['duration'] ?? '');
+        if (!$pickup || !$dropoff) { echo json_encode(['success' => false, 'error' => 'Pickup and dropoff are required']); exit(); }
+
+        $stmt = $pdo->prepare("INSERT INTO routes (id, pickup, dropoff, price, duration)
+                               VALUES (:id, :pickup, :dropoff, :price, :duration)
+                               ON DUPLICATE KEY UPDATE
+                                   price = VALUES(price),
+                                   duration = VALUES(duration)");
+        $stmt->execute([
+            ':id' => $id,
+            ':pickup' => $pickup,
+            ':dropoff' => $dropoff,
+            ':price' => $price,
+            ':duration' => $duration
+        ]);
+        echo json_encode(['success' => true, 'id' => $id]);
+        break;
+
+    case 'saveRoutesBatch':
+        $routes = $data['routes'] ?? [];
+        if (!is_array($routes)) { echo json_encode(['success' => false, 'error' => 'Invalid routes data']); exit(); }
+        $stmt = $pdo->prepare("INSERT INTO routes (id, pickup, dropoff, price, duration)
+                               VALUES (:id, :pickup, :dropoff, :price, :duration)
+                               ON DUPLICATE KEY UPDATE
+                                   price = VALUES(price),
+                                   duration = VALUES(duration)");
+        $count = 0;
+        foreach ($routes as $r) {
+            if (!empty($r['pickup']) && !empty($r['dropoff'])) {
+                $id = !empty($r['id']) ? $r['id'] : ('DEST-' . round(microtime(true) * 1000) . '-' . $count);
+                $stmt->execute([
+                    ':id' => $id,
+                    ':pickup' => trim($r['pickup']),
+                    ':dropoff' => trim($r['dropoff']),
+                    ':price' => floatval($r['price'] ?? 0),
+                    ':duration' => trim($r['duration'] ?? '')
+                ]);
+                $count++;
+            }
+        }
+        echo json_encode(['success' => true, 'count' => $count]);
+        break;
+
+    case 'deleteRoute':
+        $id = $data['id'] ?? null;
+        $pickup = $data['pickup'] ?? null;
+        $dropoff = $data['dropoff'] ?? null;
+        if ($id) {
+            $stmt = $pdo->prepare("DELETE FROM routes WHERE id = ?");
+            $stmt->execute([$id]);
+        } else if ($pickup && $dropoff) {
+            $stmt = $pdo->prepare("DELETE FROM routes WHERE pickup = ? AND dropoff = ?");
+            $stmt->execute([$pickup, $dropoff]);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Missing route identification']);
+            exit();
+        }
+        echo json_encode(['success' => true]);
+        break;
+
+    case 'getDrivers':
+        $stmt = $pdo->query("SELECT * FROM drivers ORDER BY id ASC");
+        $rows = $stmt->fetchAll();
+        echo json_encode(['success' => true, 'drivers' => $rows]);
+        break;
+
+    case 'saveDriver':
+        $id = !empty($data['id']) ? $data['id'] : ('DRV-' . round(microtime(true) * 1000));
+        $name = trim($data['name'] ?? 'Driver');
+        $phone = trim($data['phone'] ?? '');
+        $vehicle = $data['vehicle'] ?? ($data['vehicleModel'] ?? '');
+        $plate = $data['plate'] ?? ($data['vehicleNo'] ?? '');
+        $status = $data['status'] ?? 'Active';
+        $rating = is_numeric($data['rating'] ?? null) ? floatval($data['rating']) : 5.00;
+
+        $stmt = $pdo->prepare("INSERT INTO drivers (id, name, phone, vehicle, plate, status, rating)
+                               VALUES (:id, :name, :phone, :vehicle, :plate, :status, :rating)
+                               ON DUPLICATE KEY UPDATE
+                                   name = VALUES(name),
+                                   phone = VALUES(phone),
+                                   vehicle = VALUES(vehicle),
+                                   plate = VALUES(plate),
+                                   status = VALUES(status),
+                                   rating = VALUES(rating)");
+        $stmt->execute([
+            ':id' => $id,
+            ':name' => $name,
+            ':phone' => $phone,
+            ':vehicle' => $vehicle,
+            ':plate' => $plate,
+            ':status' => $status,
+            ':rating' => $rating
+        ]);
+        echo json_encode(['success' => true, 'id' => $id]);
+        break;
+
+    case 'deleteDriver':
+        $id = $data['id'] ?? null;
+        if (!$id) { echo json_encode(['success' => false, 'error' => 'Missing driver ID']); exit(); }
+        $stmt = $pdo->prepare("DELETE FROM drivers WHERE id = ?");
+        $stmt->execute([$id]);
+        echo json_encode(['success' => true]);
+        break;
+
+    case 'getContactMessages':
+        $stmt = $pdo->query("SELECT * FROM contact_messages ORDER BY timestamp DESC, created_at DESC");
+        $rows = $stmt->fetchAll();
+        echo json_encode(['success' => true, 'messages' => $rows]);
+        break;
+
+    case 'saveContactMessage':
+        $id = !empty($data['id']) ? $data['id'] : ('MSG-' . round(microtime(true) * 1000));
+        $name = trim($data['name'] ?? '');
+        $email = trim($data['email'] ?? '');
+        $category = trim($data['category'] ?? 'Support');
+        $message = trim($data['message'] ?? '');
+        $date = $data['date'] ?? date('M j, Y, g:i A');
+        $timestamp = is_numeric($data['timestamp'] ?? null) ? intval($data['timestamp']) : round(microtime(true) * 1000);
+        $status = $data['status'] ?? 'Unread';
+
+        $stmt = $pdo->prepare("INSERT INTO contact_messages (id, name, email, category, message, date, timestamp, status)
+                               VALUES (:id, :name, :email, :category, :message, :date, :timestamp, :status)
+                               ON DUPLICATE KEY UPDATE status = VALUES(status)");
+        $stmt->execute([
+            ':id' => $id,
+            ':name' => $name,
+            ':email' => $email,
+            ':category' => $category,
+            ':message' => $message,
+            ':date' => $date,
+            ':timestamp' => $timestamp,
+            ':status' => $status
+        ]);
+        echo json_encode(['success' => true, 'id' => $id]);
+        break;
+
+    case 'deleteContactMessage':
+        $id = $data['id'] ?? null;
+        if (!$id) { echo json_encode(['success' => false, 'error' => 'Missing message ID']); exit(); }
+        $stmt = $pdo->prepare("DELETE FROM contact_messages WHERE id = ?");
+        $stmt->execute([$id]);
+        echo json_encode(['success' => true]);
+        break;
+
+    case 'updateContactMessageStatus':
+        $id = $data['id'] ?? null;
+        $status = $data['status'] ?? 'Read';
+        if (!$id) { echo json_encode(['success' => false, 'error' => 'Missing message ID']); exit(); }
+        $stmt = $pdo->prepare("UPDATE contact_messages SET status = ? WHERE id = ?");
+        $stmt->execute([$status, $id]);
+        echo json_encode(['success' => true]);
+        break;
+
+    case 'getSettings':
+        $stmt = $pdo->query("SELECT key_name, key_value FROM settings");
+        $rows = $stmt->fetchAll();
+        $settings = [];
+        foreach ($rows as $r) {
+            $val = $r['key_value'];
+            $decoded = json_decode($val, true);
+            $settings[$r['key_name']] = ($decoded !== null && (is_array($decoded) || is_numeric($decoded))) ? $decoded : $val;
+        }
+        echo json_encode(['success' => true, 'settings' => $settings]);
+        break;
+
+    case 'saveSettings':
+        $key = trim($data['key'] ?? ($data['key_name'] ?? ''));
+        $value = $data['value'] ?? ($data['key_value'] ?? '');
+        if (!$key) { echo json_encode(['success' => false, 'error' => 'Missing setting key']); exit(); }
+        $valStr = is_string($value) ? $value : json_encode($value);
+        $stmt = $pdo->prepare("INSERT INTO settings (key_name, key_value) VALUES (?, ?)
+                               ON DUPLICATE KEY UPDATE key_value = VALUES(key_value)");
+        $stmt->execute([$key, $valStr]);
         echo json_encode(['success' => true]);
         break;
 

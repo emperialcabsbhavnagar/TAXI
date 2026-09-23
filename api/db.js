@@ -159,6 +159,53 @@ async function ensureTablesExist() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       );
     `);
+
+    await executeQuery(`
+      CREATE TABLE IF NOT EXISTS routes (
+        id VARCHAR(64) PRIMARY KEY,
+        pickup VARCHAR(150) NOT NULL,
+        dropoff VARCHAR(150) NOT NULL,
+        price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        duration VARCHAR(100) DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_route_pair (pickup, dropoff)
+      );
+    `);
+
+    await executeQuery(`
+      CREATE TABLE IF NOT EXISTS drivers (
+        id VARCHAR(64) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        phone VARCHAR(64) NOT NULL,
+        vehicle VARCHAR(100) DEFAULT NULL,
+        plate VARCHAR(64) DEFAULT NULL,
+        status VARCHAR(64) DEFAULT 'Active',
+        rating DECIMAL(3,2) DEFAULT 5.00,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      );
+    `);
+
+    await executeQuery(`
+      CREATE TABLE IF NOT EXISTS contact_messages (
+        id VARCHAR(64) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        category VARCHAR(100) DEFAULT 'Support',
+        message TEXT NOT NULL,
+        date VARCHAR(100) DEFAULT NULL,
+        timestamp BIGINT DEFAULT NULL,
+        status VARCHAR(64) DEFAULT 'Unread',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await executeQuery(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key_name VARCHAR(100) PRIMARY KEY,
+        key_value LONGTEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      );
+    `);
     tablesEnsured = true;
   } catch (err) {
     console.warn('ensureTablesExist warning:', err);
@@ -474,6 +521,178 @@ export async function handleMySQLRequest(action, data = {}) {
         const { id } = data;
         if (!id) return { success: false, error: 'Missing vehicle ID' };
         await executeQuery('DELETE FROM vehicles WHERE id = ?', [id]);
+        return { success: true };
+      }
+
+      case 'deletePlace': {
+        const { name } = data;
+        if (!name) return { success: false, error: 'Missing place name' };
+        await executeQuery('DELETE FROM places WHERE name = ?', [String(name).trim()]);
+        return { success: true };
+      }
+
+      case 'getRoutes': {
+        const [rows] = await executeQuery('SELECT * FROM routes ORDER BY pickup ASC, dropoff ASC');
+        return { success: true, routes: rows || [] };
+      }
+
+      case 'saveRoute': {
+        const { id, pickup, dropoff, price, duration } = data;
+        const routeId = id || `DEST-${Date.now()}`;
+        const cleanPickup = String(pickup || '').trim();
+        const cleanDropoff = String(dropoff || '').trim();
+        if (!cleanPickup || !cleanDropoff) return { success: false, error: 'Pickup and dropoff are required' };
+        const numPrice = (Number.isNaN(Number(price)) || price === null || price === undefined) ? 0 : Number(price);
+
+        const sql = `
+          INSERT INTO routes (id, pickup, dropoff, price, duration)
+          VALUES (?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            price = VALUES(price),
+            duration = VALUES(duration);
+        `;
+        await executeQuery(sql, [routeId, cleanPickup, cleanDropoff, numPrice, String(duration || '').trim()]);
+        return { success: true, id: routeId };
+      }
+
+      case 'saveRoutesBatch': {
+        const routes = data.routes || [];
+        if (!Array.isArray(routes)) return { success: false, error: 'Invalid routes array' };
+        let count = 0;
+        const sql = `
+          INSERT INTO routes (id, pickup, dropoff, price, duration)
+          VALUES (?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            price = VALUES(price),
+            duration = VALUES(duration);
+        `;
+        for (const r of routes) {
+          if (r && r.pickup && r.dropoff) {
+            const rId = r.id || `DEST-${Date.now()}-${count}`;
+            const numPrice = (Number.isNaN(Number(r.price)) || r.price === null || r.price === undefined) ? 0 : Number(r.price);
+            await executeQuery(sql, [rId, String(r.pickup).trim(), String(r.dropoff).trim(), numPrice, String(r.duration || '').trim()]);
+            count++;
+          }
+        }
+        return { success: true, count };
+      }
+
+      case 'deleteRoute': {
+        const { id, pickup, dropoff } = data;
+        if (id) {
+          await executeQuery('DELETE FROM routes WHERE id = ?', [id]);
+        } else if (pickup && dropoff) {
+          await executeQuery('DELETE FROM routes WHERE pickup = ? AND dropoff = ?', [String(pickup).trim(), String(dropoff).trim()]);
+        } else {
+          return { success: false, error: 'Missing route identification' };
+        }
+        return { success: true };
+      }
+
+      case 'getDrivers': {
+        const [rows] = await executeQuery('SELECT * FROM drivers ORDER BY id ASC');
+        return { success: true, drivers: rows || [] };
+      }
+
+      case 'saveDriver': {
+        const { id, name, phone, vehicle, plate, status, rating } = data;
+        const drvId = id || `DRV-${Date.now()}`;
+        const numRating = (Number.isNaN(Number(rating)) || !rating) ? 5.00 : Number(rating);
+        const sql = `
+          INSERT INTO drivers (id, name, phone, vehicle, plate, status, rating)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            name = VALUES(name),
+            phone = VALUES(phone),
+            vehicle = VALUES(vehicle),
+            plate = VALUES(plate),
+            status = VALUES(status),
+            rating = VALUES(rating);
+        `;
+        await executeQuery(sql, [
+          drvId,
+          String(name || 'Driver').trim(),
+          String(phone || '').trim(),
+          String(vehicle || '').trim(),
+          String(plate || '').trim(),
+          String(status || 'Active').trim(),
+          numRating
+        ]);
+        return { success: true, id: drvId };
+      }
+
+      case 'deleteDriver': {
+        const { id } = data;
+        if (!id) return { success: false, error: 'Missing driver ID' };
+        await executeQuery('DELETE FROM drivers WHERE id = ?', [id]);
+        return { success: true };
+      }
+
+      case 'getContactMessages': {
+        const [rows] = await executeQuery('SELECT * FROM contact_messages ORDER BY timestamp DESC, created_at DESC');
+        return { success: true, messages: rows || [] };
+      }
+
+      case 'saveContactMessage': {
+        const { id, name, email, category, message, date, timestamp, status } = data;
+        const msgId = id || `MSG-${Date.now()}`;
+        const numTs = Number(timestamp) || Date.now();
+        const sql = `
+          INSERT INTO contact_messages (id, name, email, category, message, date, timestamp, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE status = VALUES(status);
+        `;
+        await executeQuery(sql, [
+          msgId,
+          String(name || '').trim(),
+          String(email || '').trim(),
+          String(category || 'Support').trim(),
+          String(message || '').trim(),
+          date || new Date().toLocaleString('en-IN'),
+          numTs,
+          status || 'Unread'
+        ]);
+        return { success: true, id: msgId };
+      }
+
+      case 'deleteContactMessage': {
+        const { id } = data;
+        if (!id) return { success: false, error: 'Missing message ID' };
+        await executeQuery('DELETE FROM contact_messages WHERE id = ?', [id]);
+        return { success: true };
+      }
+
+      case 'updateContactMessageStatus': {
+        const { id, status } = data;
+        if (!id) return { success: false, error: 'Missing message ID' };
+        await executeQuery('UPDATE contact_messages SET status = ? WHERE id = ?', [status || 'Read', id]);
+        return { success: true };
+      }
+
+      case 'getSettings': {
+        const [rows] = await executeQuery('SELECT key_name, key_value FROM settings');
+        const settings = {};
+        (rows || []).forEach(r => {
+          try {
+            settings[r.key_name] = JSON.parse(r.key_value);
+          } catch (e) {
+            settings[r.key_name] = r.key_value;
+          }
+        });
+        return { success: true, settings };
+      }
+
+      case 'saveSettings': {
+        const key = data.key || data.key_name;
+        const val = data.value !== undefined ? data.value : data.key_value;
+        if (!key) return { success: false, error: 'Missing setting key' };
+        const valStr = typeof val === 'string' ? val : JSON.stringify(val);
+        const sql = `
+          INSERT INTO settings (key_name, key_value)
+          VALUES (?, ?)
+          ON DUPLICATE KEY UPDATE key_value = VALUES(key_value);
+        `;
+        await executeQuery(sql, [String(key).trim(), valStr]);
         return { success: true };
       }
 

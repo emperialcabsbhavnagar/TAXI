@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getBestLiveLocation } from '../../services/liveLocationService';
 import { getCoordsForPlace, calculateDistanceKm } from '../../utils/locationCoords';
+import { loadAllPlacesFromMySQL, loadAllRoutesFromMySQL } from '../../services/mysqlService';
 import { Navigation, MapPin, ArrowLeft, ArrowRight, Compass, Sparkles, Calendar, Clock, Plus, Minus, CheckCircle, Car } from 'lucide-react';
 
 const DEFAULT_PLACES = [
@@ -102,12 +103,37 @@ export default function SelectLocationScreen({
         const parsedD = JSON.parse(savedDestinations);
         if (Array.isArray(parsedD) && parsedD.length > 0) {
           setRoutes(parsedD);
-          return;
         }
       }
     } catch (e) {
       console.warn("Failed to load admin routes:", e);
     }
+
+    // Direct Hostinger MySQL central database sync
+    loadAllPlacesFromMySQL().then(mysqlPlaces => {
+      if (Array.isArray(mysqlPlaces) && mysqlPlaces.length > 0) {
+        setPlaces(mysqlPlaces);
+        try { localStorage.setItem('cabsy_places', JSON.stringify(mysqlPlaces)); } catch (e) {}
+      }
+    }).catch(() => {});
+
+    loadAllRoutesFromMySQL().then(mysqlRoutes => {
+      if (Array.isArray(mysqlRoutes) && mysqlRoutes.length > 0) {
+        const formattedRoutes = mysqlRoutes.map(r => ({
+          id: r.id,
+          name: `${r.pickup} → ${r.dropoff}`,
+          pickup: r.pickup,
+          dropoff: r.dropoff,
+          price: Number(r.price) || 0,
+          duration: r.duration || ''
+        }));
+        setRoutes(formattedRoutes);
+        try {
+          localStorage.setItem('cabsy_destinations', JSON.stringify(formattedRoutes));
+          localStorage.setItem('cabsy_routes', JSON.stringify(formattedRoutes));
+        } catch (e) {}
+      }
+    }).catch(() => {});
   };
 
   useEffect(() => {

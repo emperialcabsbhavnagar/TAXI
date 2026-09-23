@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MapPin, Phone, Mail, Facebook, Twitter, Instagram, Youtube, CheckCircle } from 'lucide-react';
 import { notifyAdmin } from '../services/notificationEngine';
+import { saveContactMessageToMySQL } from '../services/mysqlService';
 import './Pages.css';
 
 export default function Contact() {
@@ -28,11 +29,15 @@ export default function Contact() {
       status: 'Unread'
     };
 
-    // Save to localStorage cabsy_messages
+    // Save directly to Hostinger MySQL Database
+    saveContactMessageToMySQL(newMessage).catch(() => {});
+
+    // Save to localStorage cabsy_messages as fast local preview
     try {
       const existing = JSON.parse(localStorage.getItem('cabsy_messages') || '[]');
       const updated = [newMessage, ...existing];
       localStorage.setItem('cabsy_messages', JSON.stringify(updated));
+      localStorage.setItem('cabsy_contact_messages', JSON.stringify(updated));
       window.dispatchEvent(new CustomEvent('EMPERIAL CABS_messages_updated', { detail: updated }));
       window.dispatchEvent(new Event('storage'));
     } catch (err) {}
@@ -40,7 +45,7 @@ export default function Contact() {
     // Send push / notification to Admin
     notifyAdmin({
       type: 'message',
-      title: '📬 New Contact Message Received!',
+      title: 'New Contact Message Received',
       body: `Message from ${formData.name} (${formData.email}): "${formData.message.slice(0, 50)}..."`
     });
 

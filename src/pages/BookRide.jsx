@@ -14,7 +14,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { INITIAL_VEHICLES, INITIAL_PLACES, INITIAL_DESTINATIONS } from './AdminPortal';
-import { loadAllVehiclesFromMySQL } from '../services/mysqlService';
+import { loadAllVehiclesFromMySQL, loadAllPlacesFromMySQL, loadAllRoutesFromMySQL } from '../services/mysqlService';
 import './Pages.css';
 
 const FALLBACK_VEHICLES = [
@@ -110,6 +110,28 @@ export default function BookRide() {
             setVehicles(active);
             try { localStorage.setItem('cabsy_vehicles', JSON.stringify(fetched)); } catch(e) {}
           }
+        }
+      }).catch(() => {});
+
+      loadAllPlacesFromMySQL().then(fetchedPlaces => {
+        if (Array.isArray(fetchedPlaces) && fetchedPlaces.length > 0) {
+          setPlaces(prev => Array.from(new Set([...fetchedPlaces, ...prev])));
+          try { localStorage.setItem('cabsy_places', JSON.stringify(fetchedPlaces)); } catch(e) {}
+        }
+      }).catch(() => {});
+
+      loadAllRoutesFromMySQL().then(fetchedRoutes => {
+        if (Array.isArray(fetchedRoutes) && fetchedRoutes.length > 0) {
+          const formatted = fetchedRoutes.map(r => ({
+            id: r.id,
+            name: `${r.pickup} → ${r.dropoff}`,
+            pickup: r.pickup,
+            dropoff: r.dropoff,
+            price: Number(r.price) || 0,
+            duration: r.duration || ''
+          }));
+          setDestinations(formatted);
+          try { localStorage.setItem('cabsy_destinations', JSON.stringify(formatted)); } catch(e) {}
         }
       }).catch(() => {});
     };

@@ -2,7 +2,7 @@ import React from 'react';
 import InteractiveMap from '../../components/InteractiveMap';
 import { getCoordsForPlace, generateRoutePolyline } from '../../utils/locationCoords';
 import { INITIAL_VEHICLES } from '../AdminPortal';
-import { loadAllVehiclesFromMySQL } from '../../services/mysqlService';
+import { loadAllVehiclesFromMySQL, loadAllRoutesFromMySQL } from '../../services/mysqlService';
 import car1 from '../../assets/images/map/car1.png';
 import car2 from '../../assets/images/map/car2.png';
 import car3 from '../../assets/images/map/car3.png';
@@ -24,8 +24,27 @@ export default function SelectCarScreen({
   const destPos = getCoordsForPlace(dropoffLoc || "Ahmedabad Airport (AMD)", userCoords);
   const routePolyline = generateRoutePolyline(pickupPos, destPos);
 
+  const [cloudRoutes, setCloudRoutes] = React.useState(() => {
+    try {
+      const savedDest = localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
+      if (savedDest) {
+        const parsedD = JSON.parse(savedDest);
+        if (Array.isArray(parsedD) && parsedD.length > 0) return parsedD;
+      }
+    } catch (e) {}
+    return [];
+  });
+
   const getMatchedRoute = () => {
     try {
+      const routesList = (Array.isArray(cloudRoutes) && cloudRoutes.length > 0) ? cloudRoutes : [];
+      if (routesList.length > 0) {
+        const matched = routesList.find(r => 
+          (pickupLoc && r.pickup && (r.pickup.toLowerCase().includes(pickupLoc.toLowerCase()) || pickupLoc.toLowerCase().includes(r.pickup.toLowerCase()))) &&
+          (dropoffLoc && r.dropoff && (r.dropoff.toLowerCase().includes(dropoffLoc.toLowerCase()) || dropoffLoc.toLowerCase().includes(r.dropoff.toLowerCase())))
+        );
+        if (matched) return matched;
+      }
       const savedDest = localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
       if (savedDest) {
         const parsedD = JSON.parse(savedDest);
@@ -71,6 +90,24 @@ export default function SelectCarScreen({
         setCloudVehicles(fetched);
         try {
           localStorage.setItem('cabsy_vehicles', JSON.stringify(fetched));
+        } catch (e) {}
+      }
+    }).catch(() => {});
+
+    loadAllRoutesFromMySQL().then(fetchedRoutes => {
+      if (isMounted && Array.isArray(fetchedRoutes) && fetchedRoutes.length > 0) {
+        const formattedRoutes = fetchedRoutes.map(r => ({
+          id: r.id,
+          name: `${r.pickup} → ${r.dropoff}`,
+          pickup: r.pickup,
+          dropoff: r.dropoff,
+          price: Number(r.price) || 0,
+          duration: r.duration || ''
+        }));
+        setCloudRoutes(formattedRoutes);
+        try {
+          localStorage.setItem('cabsy_destinations', JSON.stringify(formattedRoutes));
+          localStorage.setItem('cabsy_routes', JSON.stringify(formattedRoutes));
         } catch (e) {}
       }
     }).catch(() => {});

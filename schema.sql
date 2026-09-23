@@ -153,3 +153,28 @@ CREATE TABLE IF NOT EXISTS `vehicles` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- --------------------------------------------------------
+-- 8. Table structure for `contact_messages` (Inbound Customer Inquiries)
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `contact_messages` (
+  `id` VARCHAR(64) NOT NULL PRIMARY KEY COMMENT 'Message ID (e.g. MSG-1234)',
+  `name` VARCHAR(255) NOT NULL COMMENT 'Sender Name',
+  `email` VARCHAR(255) NOT NULL COMMENT 'Sender Email',
+  `category` VARCHAR(100) DEFAULT 'Support' COMMENT 'Message Category',
+  `message` TEXT NOT NULL COMMENT 'Message Body',
+  `date` VARCHAR(100) DEFAULT NULL COMMENT 'Formatted Date',
+  `timestamp` BIGINT DEFAULT NULL COMMENT 'Unix Timestamp in ms',
+  `status` VARCHAR(64) DEFAULT 'Unread' COMMENT 'Read Status (Unread, Read)',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- --------------------------------------------------------
+-- 9. Table structure for `settings` (Dynamic Website & CMS Settings)
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `settings` (
+  `key_name` VARCHAR(100) NOT NULL PRIMARY KEY COMMENT 'Setting Identifier Key',
+  `key_value` LONGTEXT NOT NULL COMMENT 'JSON or string setting value',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+

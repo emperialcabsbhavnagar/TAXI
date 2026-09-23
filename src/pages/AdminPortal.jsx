@@ -15,7 +15,23 @@ import {
   saveWalletToMySQL,
   loadAllVehiclesFromMySQL,
   saveVehicleToMySQL,
-  deleteVehicleFromMySQL
+  deleteVehicleFromMySQL,
+  loadAllPlacesFromMySQL,
+  savePlaceToMySQL,
+  deletePlaceFromMySQL,
+  loadAllRoutesFromMySQL,
+  saveRouteToMySQL,
+  saveRoutesBatchToMySQL,
+  deleteRouteFromMySQL,
+  loadAllDriversFromMySQL,
+  saveDriverToMySQL,
+  deleteDriverFromMySQL,
+  loadAllContactMessagesFromMySQL,
+  saveContactMessageToMySQL,
+  deleteContactMessageFromMySQL,
+  updateContactMessageStatusInMySQL,
+  loadSettingsFromMySQL,
+  saveSettingToMySQL
 } from '../services/mysqlService';
 import { 
   notifyAdmin, 
@@ -506,15 +522,18 @@ export default function AdminPortal() {
   }, []);
 
   const handleMarkMessageRead = (msgId) => {
-    setContactMessages(prev => prev.map(m => m.id === msgId ? { ...m, status: m.status === 'Unread' ? 'Read' : m.status } : m));
+    updateContactMessageStatusInMySQL(msgId, 'Read').catch(() => {});
+    setContactMessages(prev => prev.map(m => m.id === msgId ? { ...m, status: 'Read' } : m));
   };
 
   const handleToggleMessageStatus = (msgId, newStatus) => {
+    updateContactMessageStatusInMySQL(msgId, newStatus).catch(() => {});
     setContactMessages(prev => prev.map(m => m.id === msgId ? { ...m, status: newStatus } : m));
   };
 
   const handleDeleteMessage = (msgId) => {
     if (window.confirm("Are you sure you want to delete this contact message?")) {
+      deleteContactMessageFromMySQL(msgId).catch(() => {});
       setContactMessages(prev => prev.filter(m => m.id !== msgId));
     }
   };
@@ -768,10 +787,24 @@ export default function AdminPortal() {
         // Auto initialize Hostinger MySQL tables and schema if not present
         initMySQLTables().catch(() => {});
 
-        const [mysqlInquiries, mysqlCustomers, mysqlVehicles] = await Promise.all([
+        const [
+          mysqlInquiries,
+          mysqlCustomers,
+          mysqlVehicles,
+          mysqlPlaces,
+          mysqlRoutes,
+          mysqlDrivers,
+          mysqlMessages,
+          mysqlSettings
+        ] = await Promise.all([
           loadAllInquiriesFromMySQL().catch(() => []),
           loadAllCustomersFromMySQL().catch(() => []),
-          loadAllVehiclesFromMySQL().catch(() => [])
+          loadAllVehiclesFromMySQL().catch(() => []),
+          loadAllPlacesFromMySQL().catch(() => []),
+          loadAllRoutesFromMySQL().catch(() => []),
+          loadAllDriversFromMySQL().catch(() => []),
+          loadAllContactMessagesFromMySQL().catch(() => []),
+          loadSettingsFromMySQL().catch(() => null)
         ]);
 
         if (Array.isArray(mysqlVehicles) && mysqlVehicles.length > 0) {
@@ -783,6 +816,67 @@ export default function AdminPortal() {
           // If MySQL has no vehicles yet, seed current vehicles into MySQL
           const seedList = (vehicles && vehicles.length > 0) ? vehicles : INITIAL_VEHICLES;
           seedList.forEach(v => saveVehicleToMySQL(v).catch(() => {}));
+        }
+
+        if (Array.isArray(mysqlPlaces) && mysqlPlaces.length > 0) {
+          setPlaces(mysqlPlaces);
+          try {
+            localStorage.setItem('cabsy_places', JSON.stringify(mysqlPlaces));
+          } catch(e) {}
+        } else {
+          INITIAL_PLACES.forEach(p => savePlaceToMySQL(p).catch(() => {}));
+        }
+
+        if (Array.isArray(mysqlRoutes) && mysqlRoutes.length > 0) {
+          const formattedRoutes = mysqlRoutes.map(r => ({
+            id: r.id,
+            name: `${r.pickup} → ${r.dropoff}`,
+            pickup: r.pickup,
+            dropoff: r.dropoff,
+            price: Number(r.price) || 0,
+            duration: r.duration || ''
+          }));
+          setDestinations(formattedRoutes);
+          try {
+            localStorage.setItem('cabsy_destinations', JSON.stringify(formattedRoutes));
+          } catch(e) {}
+        } else {
+          saveRoutesBatchToMySQL(INITIAL_DESTINATIONS).catch(() => {});
+        }
+
+        if (Array.isArray(mysqlDrivers) && mysqlDrivers.length > 0) {
+          setDrivers(mysqlDrivers);
+          try {
+            localStorage.setItem('cabsy_drivers', JSON.stringify(mysqlDrivers));
+          } catch(e) {}
+        } else {
+          INITIAL_DRIVERS.forEach(d => saveDriverToMySQL(d).catch(() => {}));
+        }
+
+        if (Array.isArray(mysqlMessages)) {
+          setContactMessages(mysqlMessages);
+          try {
+            localStorage.setItem('cabsy_contact_messages', JSON.stringify(mysqlMessages));
+            localStorage.setItem('cabsy_messages', JSON.stringify(mysqlMessages));
+          } catch(e) {}
+        }
+
+        if (mysqlSettings) {
+          if (mysqlSettings.website_settings) {
+            setSettings(mysqlSettings.website_settings);
+            try {
+              localStorage.setItem('cabsy_website_settings', JSON.stringify(mysqlSettings.website_settings));
+            } catch(e) {}
+          }
+          if (mysqlSettings.company_share !== undefined) {
+            const cs = Number(mysqlSettings.company_share);
+            if (!isNaN(cs)) {
+              setCompanyShare(cs);
+              try {
+                localStorage.setItem('cabsy_company_share', String(cs));
+              } catch(e) {}
+            }
+          }
         }
 
         setInquiries(Array.isArray(mysqlInquiries) ? mysqlInquiries : []);
@@ -872,6 +966,7 @@ export default function AdminPortal() {
       if (!updated.includes(c)) {
         updated.push(c);
         added.push(c);
+        savePlaceToMySQL(c).catch(() => {});
       }
     });
     if (added.length === 0) {
@@ -884,6 +979,7 @@ export default function AdminPortal() {
 
   const handleDeletePlace = (placeName) => {
     if (window.confirm(`Delete place "${placeName}" from location list?`)) {
+      deletePlaceFromMySQL(placeName).catch(() => {});
       setPlaces(places.filter(p => p !== placeName));
     }
   };
@@ -907,6 +1003,7 @@ export default function AdminPortal() {
       price: Number(newDestForm.price) || 0,
       duration: durStr || newDestForm.duration || ''
     };
+    saveRouteToMySQL(created).catch(() => {});
     setDestinations([...destinations.filter(d => d && d.pickup && d.dropoff), created]);
     setNewDestForm({ name: '', pickup: places[0] || '', dropoff: places[1] || '', price: '', hours: '', mins: '', duration: '' });
     setAddDestModal(false);
@@ -921,12 +1018,14 @@ export default function AdminPortal() {
       price: Number(editDestModal.destination.price) || 0,
       duration: durStr || editDestModal.destination.duration || ''
     };
+    saveRouteToMySQL(updatedDest).catch(() => {});
     setDestinations(destinations.map(d => d.id === updatedDest.id ? updatedDest : d));
     setEditDestModal({ open: false, destination: null });
   };
 
   const handleDeleteDest = (id) => {
     if (window.confirm("Are you sure you want to remove this route destination?")) {
+      deleteRouteFromMySQL(id).catch(() => {});
       setDestinations(destinations.filter(d => d.id !== id));
     }
   };
@@ -995,6 +1094,7 @@ export default function AdminPortal() {
 
     let updatedList = [...destinations];
     let savedCount = 0;
+    const batchToPersist = [];
 
     Object.entries(batchMatrixModal.rates).forEach(([destPlace, rateData]) => {
       if (rateData && rateData.price !== '' && rateData.price !== null && rateData.price !== undefined) {
@@ -1014,20 +1114,27 @@ export default function AdminPortal() {
               price: numPrice,
               duration: formattedDuration || updatedList[existingIdx].duration || ''
             };
+            batchToPersist.push(updatedList[existingIdx]);
           } else {
-            updatedList.push({
+            const newRoute = {
               id: `DEST-${Math.floor(100 + Math.random() * 900)}`,
               name: `${origin} → ${destPlace}`,
               pickup: origin,
               dropoff: destPlace,
               price: numPrice,
               duration: formattedDuration || ''
-            });
+            };
+            updatedList.push(newRoute);
+            batchToPersist.push(newRoute);
           }
           savedCount++;
         }
       }
     });
+
+    if (batchToPersist.length > 0) {
+      saveRoutesBatchToMySQL(batchToPersist).catch(() => {});
+    }
 
     setDestinations(updatedList);
     setBatchMatrixModal({ open: false, originPlace: '', rates: {} });
@@ -1471,6 +1578,7 @@ export default function AdminPortal() {
       trips: 0,
       earnings: 0.00
     };
+    saveDriverToMySQL(createdDriver).catch(() => {});
     setDrivers([createdDriver, ...drivers]);
     setNewDriverForm({ name: '', phone: '', vehicle: 'Empire Regular', plate: '' });
     setAddDriverModal(false);
@@ -1479,6 +1587,7 @@ export default function AdminPortal() {
   // Delete Driver
   const handleDeleteDriver = (driverId) => {
     if (window.confirm('Are you sure you want to remove this driver from the fleet?')) {
+      deleteDriverFromMySQL(driverId).catch(() => {});
       setDrivers(drivers.filter(d => d.id !== driverId));
     }
   };
@@ -1545,7 +1654,11 @@ export default function AdminPortal() {
   // Save Website Settings
   const handleSaveSettings = (e) => {
     e.preventDefault();
-    alert('Website Settings updated successfully! Changes saved to production state.');
+    saveSettingToMySQL('website_settings', settings).catch(() => {});
+    try {
+      localStorage.setItem('cabsy_website_settings', JSON.stringify(settings));
+    } catch (e) {}
+    alert('Website Settings updated successfully! Changes saved to production database.');
   };
 
   // Database Wipe / Purge Handlers
@@ -5133,7 +5246,10 @@ export default function AdminPortal() {
                   className="btn btn-primary"
                   style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)' }}
                   onClick={() => {
-                    localStorage.setItem('cabsy_company_share', companyShare);
+                    saveSettingToMySQL('company_share', companyShare).catch(() => {});
+                    try {
+                      localStorage.setItem('cabsy_company_share', String(companyShare));
+                    } catch (e) {}
                     setCommissionModal(false);
                   }}
                 >
