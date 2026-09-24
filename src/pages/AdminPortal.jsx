@@ -42,7 +42,6 @@ import {
   requestNotificationPermission 
 } from '../services/notificationEngine';
 import db from '../services/dbService';
-import { loadAllInquiriesFromFirestore, subscribeToInquiriesFirestore, updateInquiryStatus, deleteInquiryFromFirestore } from '../services/firebaseService';
 import { 
   LayoutDashboard, 
   Inbox, 
@@ -204,23 +203,7 @@ const INITIAL_CUSTOMERS = [
   { id: 'CUST-305', name: 'empire rider', phone: '+91 98765 06393', email: 'batman063939@gmail.com', totalRides: 5, totalSpent: 9200, joined: '2026-05-01' }
 ];
 
-export const INITIAL_DESTINATIONS = [
-  { id: 'DEST-102', name: 'Bhavnagar → Ahmedabad Airport (AMD)', pickup: 'Bhavnagar, Gujarat', dropoff: 'Ahmedabad Airport (AMD)', distanceKm: 175, price: 2625, duration: '3 hr 15 min', tag: 'HOT ROUTE', isHot: true },
-  { id: 'DEST-103', name: 'Bhavnagar → Vadodara Central Station', pickup: 'Bhavnagar, Gujarat', dropoff: 'Vadodara Central Railway Station', distanceKm: 205, price: 1650, duration: '2 hr 10 min', tag: 'HOT ROUTE', isHot: true },
-  { id: 'DEST-108', name: 'Bhavnagar → Surat Textile Hub', pickup: 'Bhavnagar, Gujarat', dropoff: 'Surat Textile Hub', distanceKm: 340, price: 4500, duration: '5 hr 30 min', tag: 'HOT ROUTE', isHot: true },
-  { id: 'DEST-107', name: 'Bhavnagar → Mumbai Central Airport', pickup: 'Bhavnagar, Gujarat', dropoff: 'Mumbai Central Airport (BOM)', distanceKm: 610, price: 8100, duration: '10 hr 30 min', tag: 'HOT ROUTE', isHot: true },
-  { id: 'DEST-109', name: 'Bhavnagar → Rajkot Trikon Baug', pickup: 'Bhavnagar, Gujarat', dropoff: 'Rajkot Trikon Baug', distanceKm: 175, price: 2400, duration: '3 hr 10 min', tag: 'POPULAR', isPopular: true },
-  { id: 'DEST-110', name: 'Bhavnagar → Somnath Temple', pickup: 'Bhavnagar, Gujarat', dropoff: 'Somnath Temple', distanceKm: 260, price: 3900, duration: '5 hr 15 min', tag: 'HOT ROUTE', isHot: true },
-  { id: 'DEST-111', name: 'Bhavnagar → Palitana Temples', pickup: 'Bhavnagar, Gujarat', dropoff: 'Palitana Bus Stand', distanceKm: 55, price: 950, duration: '1 hr 15 min', tag: 'HOT ROUTE', isHot: true },
-  { id: 'DEST-104', name: 'Bhavnagar → SG Highway IT Park', pickup: 'Bhavnagar, Gujarat', dropoff: 'SG Highway IT Park', distanceKm: 185, price: 2700, duration: '3 hr 30 min', tag: 'POPULAR', isPopular: true },
-  { id: 'DEST-112', name: 'Bhavnagar → Dholera SIR Smart City', pickup: 'Bhavnagar, Gujarat', dropoff: 'Dholera SIR Smart City', distanceKm: 70, price: 1200, duration: '1 hr 10 min', tag: 'HOT ROUTE', isHot: true },
-  { id: 'DEST-113', name: 'Bhavnagar → Dwarka Jagat Mandir', pickup: 'Bhavnagar, Gujarat', dropoff: 'Dwarka Jagat Mandir', distanceKm: 390, price: 5800, duration: '7 hr 30 min', tag: 'POPULAR', isPopular: true },
-  { id: 'DEST-101', name: 'Bhavnagar → Railway Station', pickup: 'Bhavnagar, Gujarat', dropoff: 'Bhavnagar Railway Station', distanceKm: 8, price: 270, duration: '35 min', tag: 'LOCAL' },
-  { id: 'DEST-105', name: 'Bhavnagar → Alkapuri Hub', pickup: 'Bhavnagar, Gujarat', dropoff: 'Alkapuri Commercial Hub', distanceKm: 210, price: 1680, duration: '2 hr 15 min', tag: 'POPULAR', isPopular: true },
-  { id: 'DEST-106', name: 'Bhavnagar → Ghogha Circle & Beach', pickup: 'Bhavnagar, Gujarat', dropoff: 'Ghogha Circle & Beach', distanceKm: 22, price: 180, duration: '25 min', tag: 'LOCAL' },
-  { id: 'DEST-114', name: 'Ahmedabad Airport (AMD) → Bhavnagar', pickup: 'Ahmedabad Airport (AMD)', dropoff: 'Bhavnagar, Gujarat', distanceKm: 175, price: 2625, duration: '3 hr 15 min', tag: 'HOT ROUTE', isHot: true },
-  { id: 'DEST-115', name: 'Vadodara Central → Bhavnagar', pickup: 'Vadodara Central Railway Station', dropoff: 'Bhavnagar, Gujarat', distanceKm: 205, price: 1650, duration: '2 hr 10 min', tag: 'POPULAR', isPopular: true }
-];
+export const INITIAL_DESTINATIONS = [];
 
 export const parseDurationHrMin = (str) => {
   if (!str || typeof str !== 'string') return { hours: '', mins: '' };
@@ -429,13 +412,20 @@ export default function AdminPortal() {
 
   const [destinations, setDestinations] = useState(() => {
     const saved = localStorage.getItem('cabsy_destinations');
-    const parsed = saved ? JSON.parse(saved) : INITIAL_DESTINATIONS;
-    return parsed.filter(d => d && d.pickup && d.dropoff).map(d => ({
-      ...d,
-      price: (d.price !== undefined && d.price !== null && d.price !== '') 
-        ? Number(d.price) 
-        : Math.round((Number(d.distanceKm) || 15) * 15)
-    }));
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.filter(d => d && d.pickup && d.dropoff).map(d => ({
+            ...d,
+            price: (d.price !== undefined && d.price !== null && d.price !== '') 
+              ? Number(d.price) 
+              : Math.round((Number(d.distanceKm) || 15) * 15)
+          }));
+        }
+      } catch (e) {}
+    }
+    return [];
   });
 
   const [places, setPlaces] = useState(() => {
@@ -622,16 +612,13 @@ export default function AdminPortal() {
       try {
         if (isInitial) setFirestoreLoading(true);
 
-        // 1. Fetch Inquiries from Hostinger MySQL, Firestore & LocalStorage in parallel
-        const [mysqlInquiries, firestoreInquiries] = await Promise.all([
-          loadAllInquiriesFromMySQL().catch(() => []),
-          loadAllInquiriesFromFirestore().catch(() => [])
-        ]);
+        // 1. Fetch Inquiries strictly from Hostinger MySQL
+        const mysqlInquiries = await loadAllInquiriesFromMySQL().catch(() => []);
         const localInquiries = db.getInquiries() || [];
         
-        // Merge Local Storage + MySQL + Firestore inquiries
+        // Merge Local Storage + MySQL inquiries
         const inqMap = new Map();
-        [...localInquiries, ...mysqlInquiries, ...firestoreInquiries].forEach(item => {
+        [...localInquiries, ...mysqlInquiries].forEach(item => {
           if (item && item.id) {
             inqMap.set(item.id, { ...inqMap.get(item.id), ...item });
           }
@@ -686,21 +673,6 @@ export default function AdminPortal() {
     window.addEventListener('EMPERIAL CABS_admin_notif', syncAdminNotifs);
     window.addEventListener('EMPERIAL CABS_db_sync', syncAdminNotifs);
     window.addEventListener('storage', syncAdminNotifs);
-
-    // Subscribe to live real-time Firestore inquiry snapshots
-    const unsubscribeFirestore = subscribeToInquiriesFirestore((firestoreInquiries) => {
-      if (Array.isArray(firestoreInquiries) && firestoreInquiries.length > 0) {
-        setInquiries(prev => {
-          const inqMap = new Map();
-          [...prev, ...firestoreInquiries].forEach(item => {
-            if (item && item.id) {
-              inqMap.set(item.id, { ...inqMap.get(item.id), ...item });
-            }
-          });
-          return Array.from(inqMap.values());
-        });
-      }
-    });
     
     // Poll Hostinger MySQL silently in background every 12s (prevents DB connection exhaustion)
     const interval = setInterval(() => fetchAllData(false), 12000);
@@ -710,7 +682,6 @@ export default function AdminPortal() {
       window.removeEventListener('EMPERIAL CABS_db_sync', syncAdminNotifs);
       window.removeEventListener('storage', syncAdminNotifs);
       clearInterval(interval);
-      if (typeof unsubscribeFirestore === 'function') unsubscribeFirestore();
     };
   }, []);
 
@@ -902,7 +873,7 @@ export default function AdminPortal() {
           INITIAL_PLACES.forEach(p => savePlaceToMySQL(p).catch(() => {}));
         }
 
-        if (Array.isArray(mysqlRoutes) && mysqlRoutes.length > 0) {
+        if (Array.isArray(mysqlRoutes)) {
           const formattedRoutes = mysqlRoutes.map(r => ({
             id: r.id,
             name: `${r.pickup} → ${r.dropoff}`,
@@ -914,8 +885,6 @@ export default function AdminPortal() {
           }));
           setDestinations(formattedRoutes);
           safeStorageSetItem('cabsy_destinations', formattedRoutes);
-        } else {
-          saveRoutesBatchToMySQL(INITIAL_DESTINATIONS).catch(() => {});
         }
 
         if (Array.isArray(mysqlDrivers) && mysqlDrivers.length > 0) {
@@ -1668,7 +1637,6 @@ export default function AdminPortal() {
       setActionLoadingId(actionKey);
 
       deleteInquiryFromMySQL(inquiryId).catch(() => {});
-      deleteInquiryFromFirestore(inquiryId).catch(() => {});
       setInquiries(prev => {
         const filtered = prev.filter(i => i.id !== inquiryId);
         localStorage.setItem('cabsy_inquiries', JSON.stringify(filtered));

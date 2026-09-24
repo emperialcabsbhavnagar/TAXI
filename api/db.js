@@ -40,17 +40,9 @@ async function executeQuery(sql, params = []) {
                          errCode === 'ETIMEDOUT' || 
                          errCode === 'ECONNRESET';
 
-      if ((isConnectionLimit || isConnLost) && retries > 0) {
+      if (isConnLost && retries > 0) {
         retries--;
-        // Wait 350ms to allow Hostinger serverless connections to close naturally
-        await new Promise(r => setTimeout(r, 350));
-        try {
-          if (global._mysqlPool) {
-            await global._mysqlPool.end().catch(() => {});
-          }
-        } catch (e) {}
-        global._mysqlPool = mysql.createPool(poolConfig);
-        pool = global._mysqlPool;
+        await new Promise(r => setTimeout(r, 500));
       } else {
         throw err;
       }
@@ -231,12 +223,12 @@ async function ensureTablesExist() {
 
 export async function handleMySQLRequest(action, data = {}) {
   try {
-    await ensureTablesExist();
+    if (action === 'init') {
+      await ensureTablesExist();
+      return { success: true, message: 'Hostinger MySQL database initialized successfully.' };
+    }
 
     switch (action) {
-      case 'init': {
-        return { success: true, message: 'Hostinger MySQL database initialized successfully.' };
-      }
 
       case 'getInquiries': {
         const [rows] = await executeQuery('SELECT * FROM inquiries ORDER BY created_at DESC');

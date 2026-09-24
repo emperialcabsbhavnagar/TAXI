@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 import './MobileAppView.css';
 import { db } from '../services/dbService';
 import { saveInquiryToMySQL, saveCustomerToMySQL, loadAllCustomersFromMySQL, loadAllInquiriesFromMySQL } from '../services/mysqlService';
-import { saveInquiryToFirestore, saveCustomerToFirestore, loadCustomerFromFirestore } from '../services/firebaseService';
 import { notifyAdmin, notifyCustomer, requestNotificationPermission } from '../services/notificationEngine';
 
 // Import Modular Mobile Screen Components
@@ -403,13 +402,10 @@ export default function MobileAppView() {
         ]);
       };
 
-      // 3. Check Hostinger MySQL database customers and Firestore in parallel
+      // 3. Check Hostinger MySQL database customers
       if (!foundProfile) {
         try {
-          const [mysqlCustomers, firestoreCust] = await Promise.all([
-            withTimeout(loadAllCustomersFromMySQL().catch(() => []), 2000),
-            withTimeout((activeEmail || cleanPhone) ? loadCustomerFromFirestore(activeEmail, cleanPhone).catch(() => null) : Promise.resolve(null), 2000)
-          ]);
+          const mysqlCustomers = await withTimeout(loadAllCustomersFromMySQL().catch(() => []), 2000);
 
           if (mysqlCustomers && Array.isArray(mysqlCustomers)) {
             const match = mysqlCustomers.find(c => {
@@ -432,20 +428,6 @@ export default function MobileAppView() {
                 status: 'Active'
               };
             }
-          }
-
-          if (!foundProfile && firestoreCust && firestoreCust.name) {
-            foundProfile = {
-              id: firestoreCust.id || ('CUST-' + Math.floor(10000 + Math.random() * 89999)),
-              name: firestoreCust.name,
-              email: firestoreCust.email || activeEmail,
-              phone: firestoreCust.phone || (cleanPhone ? `+91 ${cleanPhone}` : ''),
-              photoURL: firestoreCust.photoURL || null,
-              profession: firestoreCust.profession || '',
-              area: firestoreCust.area || '',
-              age: firestoreCust.age || '',
-              status: 'Active'
-            };
           }
         } catch (e) {}
       }
@@ -483,7 +465,6 @@ export default function MobileAppView() {
 
         db.saveCustomer(finalProfile);
         saveCustomerToMySQL(finalProfile).catch(() => {});
-        saveCustomerToFirestore(finalProfile).catch(() => {});
 
         restoreTrips(finalProfile);
         window.dispatchEvent(new Event('storage'));
@@ -628,9 +609,7 @@ export default function MobileAppView() {
       customerEmail: userProf.email
     });
 
-    // 3. Dual-write directly to Firestore & Hostinger MySQL Database
-    saveInquiryToFirestore(newInquiry).catch(e => console.warn('Firestore inquiry save failed:', e));
-    saveCustomerToFirestore(userProf).catch(e => console.warn('Firestore customer save failed:', e));
+    // 3. Save directly to Hostinger MySQL Database
     saveInquiryToMySQL(newInquiry).catch(e => console.warn('MySQL inquiry save failed:', e));
     saveCustomerToMySQL(userProf).catch(e => console.warn('MySQL customer save failed:', e));
 
@@ -822,7 +801,6 @@ export default function MobileAppView() {
           onSave={(updatedProfile) => {
             if (updatedProfile) {
               saveCustomerToMySQL(updatedProfile).catch(() => {});
-              saveCustomerToFirestore(updatedProfile).catch(() => {});
               restoreTrips(updatedProfile);
               window.dispatchEvent(new Event('storage'));
               window.dispatchEvent(new CustomEvent('EMPERIAL CABS_db_sync', { detail: { type: 'CUSTOMER_UPDATED', data: updatedProfile } }));

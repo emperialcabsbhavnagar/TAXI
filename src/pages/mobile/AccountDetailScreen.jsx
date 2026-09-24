@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import db from '../../services/dbService';
 import { saveCustomerToMySQL } from '../../services/mysqlService';
-import { saveCustomerToFirestore } from '../../services/firebaseService';
 import { ArrowLeft, Camera, CheckCircle2, ArrowRight } from 'lucide-react';
 
 const formatNameFromEmail = (email) => {
@@ -184,9 +183,8 @@ export default function AccountDetailScreen({ onBack, onSave, isCreateMode = fal
       }
       db.saveCustomer(finalProfile);
 
-      // Async background DB writes (non-blocking so UI moves instantly)
+      // Async background DB write (non-blocking so UI moves instantly)
       saveCustomerToMySQL(finalProfile).catch(() => {});
-      saveCustomerToFirestore(finalProfile).catch(() => {});
 
       window.dispatchEvent(new Event('storage'));
       window.dispatchEvent(new CustomEvent('EMPERIAL CABS_db_sync', { detail: { type: 'CUSTOMER_UPDATED', data: finalProfile } }));

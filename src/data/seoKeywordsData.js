@@ -43,30 +43,7 @@ export const GUJARAT_PRIMARY_CITIES = [
   { name: 'Mumbai', slug: 'mumbai', district: 'Maharashtra', tier: 1, hub: 'Metropolitan & BOM Airport' }
 ];
 
-export const POPULAR_FEATURED_ROUTES = [
-  { from: 'Bhavnagar', to: 'Ahmedabad', distanceKm: 175, duration: '3 hr 15 min', baseFare: 2625, highway: 'NH-751 via Dholera Expressway' },
-  { from: 'Bhavnagar', to: 'Vadodara', distanceKm: 205, duration: '4 hr 00 min', baseFare: 3100, highway: 'GJ SH-6 via Tarapur' },
-  { from: 'Bhavnagar', to: 'Surat', distanceKm: 360, duration: '6 hr 30 min', baseFare: 5400, highway: 'NH-48 / Ro-Pax Ferry option' },
-  { from: 'Bhavnagar', to: 'Rajkot', distanceKm: 175, duration: '3 hr 30 min', baseFare: 2700, highway: 'GJ SH-25 via Babra' },
-  { from: 'Bhavnagar', to: 'Mumbai', distanceKm: 650, duration: '11 hr 30 min', baseFare: 9800, highway: 'NH-48 Western Expressway' },
-  { from: 'Bhavnagar', to: 'Palitana', distanceKm: 55, duration: '1 hr 15 min', baseFare: 950, highway: 'GJ SH-31' },
-  { from: 'Bhavnagar', to: 'Mahuva', distanceKm: 95, duration: '2 hr 00 min', baseFare: 1650, highway: 'NH-51 Coastal Highway' },
-  { from: 'Bhavnagar', to: 'Dholera', distanceKm: 70, duration: '1 hr 20 min', baseFare: 1200, highway: 'Bhavnagar-Dholera Expressway' },
-  { from: 'Bhavnagar', to: 'Somnath', distanceKm: 280, duration: '5 hr 30 min', baseFare: 4200, highway: 'GJ SH-26 via Amreli' },
-  { from: 'Bhavnagar', to: 'Dwarka', distanceKm: 410, duration: '7 hr 45 min', baseFare: 6150, highway: 'NH-51 / NH-27' },
-  { from: 'Ahmedabad', to: 'Bhavnagar', distanceKm: 175, duration: '3 hr 15 min', baseFare: 2625, highway: 'NH-751 via Dholera Expressway' },
-  { from: 'Ahmedabad', to: 'Surat', distanceKm: 265, duration: '4 hr 30 min', baseFare: 3950, highway: 'NE-1 / NH-48 Vadodara-Surat' },
-  { from: 'Ahmedabad', to: 'Rajkot', distanceKm: 215, duration: '3 hr 45 min', baseFare: 3200, highway: 'NH-47 Six-Lane Highway' },
-  { from: 'Ahmedabad', to: 'Vadodara', distanceKm: 110, duration: '1 hr 50 min', baseFare: 1650, highway: 'NE-1 National Expressway 1' },
-  { from: 'Surat', to: 'Bhavnagar', distanceKm: 360, duration: '6 hr 30 min', baseFare: 5400, highway: 'NH-48 / Ro-Pax Ferry' },
-  { from: 'Vadodara', to: 'Bhavnagar', distanceKm: 205, duration: '4 hr 00 min', baseFare: 3100, highway: 'GJ SH-6 via Tarapur' },
-  { from: 'Rajkot', to: 'Bhavnagar', distanceKm: 175, duration: '3 hr 30 min', baseFare: 2700, highway: 'GJ SH-25' },
-  { from: 'Gandhinagar', to: 'Bhavnagar', distanceKm: 195, duration: '3 hr 35 min', baseFare: 2950, highway: 'SG Highway / NH-751' },
-  { from: 'Bhavnagar', to: 'Botad', distanceKm: 90, duration: '1 hr 45 min', baseFare: 1450, highway: 'Salangpur Road' },
-  { from: 'Bhavnagar', to: 'Amreli', distanceKm: 115, duration: '2 hr 20 min', baseFare: 1850, highway: 'GJ SH-33' },
-  { from: 'Bhavnagar', to: 'Jamnagar', distanceKm: 265, duration: '5 hr 00 min', baseFare: 3950, highway: 'via Rajkot NH-27' },
-  { from: 'Bhavnagar', to: 'Junagadh', distanceKm: 215, duration: '4 hr 15 min', baseFare: 3300, highway: 'via Dhasa-Babra' }
-];
+export const POPULAR_FEATURED_ROUTES = [];
 
 // Helper: Normalize string to slug
 export const slugify = (text) => {
@@ -99,56 +76,39 @@ export const parseRouteSlug = (slug) => {
   return { from: fromName, to: toName, fromSlug: parts[0], toSlug: parts[1] };
 };
 
-// Helper: Calculate default estimated distance & fare
+// Helper: Find exact route configured by Admin in MySQL — NEVER guess or auto-generate
 export const calculateRouteEstimate = (from, to, customRoutes = []) => {
-  if (!from || !to) return { distanceKm: 150, duration: '3 hr 00 min', baseFare: 2250, highway: 'Gujarat State Highway' };
+  if (!from || !to) return null;
 
-  // Check custom admin routes from MySQL first
+  // Check custom admin routes from MySQL
   if (Array.isArray(customRoutes) && customRoutes.length > 0) {
-    const matched = customRoutes.find(r => 
-      r && r.pickup && r.dropoff &&
-      (r.pickup.toLowerCase().includes(from.toLowerCase()) || from.toLowerCase().includes(r.pickup.toLowerCase())) &&
-      (r.dropoff.toLowerCase().includes(to.toLowerCase()) || to.toLowerCase().includes(r.dropoff.toLowerCase()))
-    );
-    if (matched && matched.price) {
+    const fLower = from.toLowerCase().trim();
+    const tLower = to.toLowerCase().trim();
+
+    const matched = customRoutes.find(r => {
+      if (!r || !r.pickup || !r.dropoff) return false;
+      const pLower = r.pickup.toLowerCase().trim();
+      const dLower = r.dropoff.toLowerCase().trim();
+      return (pLower === fLower && dLower === tLower) ||
+             (pLower === tLower && dLower === fLower) ||
+             (pLower.includes(fLower) && dLower.includes(tLower)) ||
+             (pLower.includes(tLower) && dLower.includes(fLower)) ||
+             (fLower.includes(pLower) && tLower.includes(dLower));
+    });
+
+    if (matched) {
       return {
-        distanceKm: matched.distanceKm ? Number(matched.distanceKm) : 160,
-        duration: matched.duration || '3 hr 15 min',
-        baseFare: Number(matched.price),
-        highway: 'Direct Highway Corridor',
+        distanceKm: matched.distanceKm ? Number(matched.distanceKm) : 0,
+        duration: matched.duration || '',
+        baseFare: matched.price !== undefined && matched.price !== null ? Number(matched.price) : 0,
+        highway: matched.highway || 'Direct Route',
         car_prices: matched.car_prices || {}
       };
     }
   }
 
-  // Check featured routes
-  const featured = POPULAR_FEATURED_ROUTES.find(r => 
-    r.from.toLowerCase() === from.toLowerCase() && r.to.toLowerCase() === to.toLowerCase()
-  );
-  if (featured) return featured;
-
-  // Reverse featured route check
-  const reverseFeatured = POPULAR_FEATURED_ROUTES.find(r => 
-    r.from.toLowerCase() === to.toLowerCase() && r.to.toLowerCase() === from.toLowerCase()
-  );
-  if (reverseFeatured) {
-    return {
-      ...reverseFeatured,
-      from,
-      to
-    };
-  }
-
-  // Sensible algorithmic approximation for Gujarat routes
-  const estKm = 175;
-  const estHours = Math.floor(estKm / 55);
-  const estMins = Math.round(((estKm / 55) - estHours) * 60);
-  return {
-    distanceKm: estKm,
-    duration: `${estHours} hr ${estMins > 0 ? estMins + ' min' : ''}`,
-    baseFare: estKm * 15,
-    highway: 'Connecting State & National Highway'
-  };
+  // Strictly return null if no admin route exists in MySQL
+  return null;
 };
 
 // Generates high-intent search keywords for a specific route

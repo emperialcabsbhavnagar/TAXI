@@ -12,9 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 $db_configs = [
     ['host' => 'localhost', 'user' => 'u217835086_TAXI', 'pass' => 'Mahadev@0963', 'name' => 'u217835086_TAXI', 'port' => '3306'],
-    ['host' => getenv('MYSQL_HOST') ?: 'localhost', 'user' => getenv('MYSQL_USER') ?: 'u889282535_taxi', 'pass' => getenv('MYSQL_PASSWORD') ?: 'Mahadev@0963', 'name' => getenv('MYSQL_DATABASE') ?: 'u889282535_taxi', 'port' => '3306'],
-    ['host' => 'srv2213.hstgr.io', 'user' => 'u217835086_TAXI', 'pass' => 'Mahadev@0963', 'name' => 'u217835086_TAXI', 'port' => '3306'],
-    ['host' => 'srv1671.hstgr.io', 'user' => 'u889282535_taxi', 'pass' => 'Mahadev@0963', 'name' => 'u889282535_taxi', 'port' => '3306']
+    ['host' => 'srv2213.hstgr.io', 'user' => 'u217835086_TAXI', 'pass' => 'Mahadev@0963', 'name' => 'u217835086_TAXI', 'port' => '3306']
 ];
 
 $pdo = null;
@@ -39,132 +37,6 @@ if (!$pdo) {
     exit();
 }
 
-// Ensure database tables exist
-try {
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS inquiries (
-            id VARCHAR(64) PRIMARY KEY,
-            customerName VARCHAR(255),
-            customerPhone VARCHAR(64),
-            customerEmail VARCHAR(255),
-            pickup TEXT,
-            dropoff TEXT,
-            vehicle VARCHAR(100),
-            fare DECIMAL(10,2) DEFAULT 0.00,
-            originalFare DECIMAL(10,2) DEFAULT 0.00,
-            walletDiscountUsed DECIMAL(10,2) DEFAULT 0.00,
-            tripType VARCHAR(100),
-            scheduledDate VARCHAR(100),
-            scheduledTime VARCHAR(100),
-            driver VARCHAR(255) DEFAULT 'Unassigned',
-            status VARCHAR(64) DEFAULT 'Pending',
-            rewardIssued INT DEFAULT 0,
-            rewardAmount DECIMAL(10,2) DEFAULT 0.00,
-            paymentMethod VARCHAR(100) DEFAULT 'Cash',
-            notes TEXT,
-            timestamp VARCHAR(100),
-            date VARCHAR(100),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        );
-        
-        CREATE TABLE IF NOT EXISTS customers (
-            id VARCHAR(64) PRIMARY KEY,
-            name VARCHAR(255),
-            phone VARCHAR(64),
-            email VARCHAR(255),
-            photoURL TEXT,
-            profession VARCHAR(100),
-            area VARCHAR(255),
-            totalRides INT DEFAULT 0,
-            totalSpent DECIMAL(10,2) DEFAULT 0.00,
-            registeredAt VARCHAR(64),
-            lastLogin VARCHAR(100),
-            status VARCHAR(64) DEFAULT 'Active',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        );
-        
-        CREATE TABLE IF NOT EXISTS customer_wallets (
-            phone VARCHAR(64) PRIMARY KEY,
-            balance DECIMAL(10,2) DEFAULT 0.00,
-            transactions LONGTEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS vehicles (
-            id VARCHAR(64) PRIMARY KEY,
-            name VARCHAR(150),
-            passengers VARCHAR(50) DEFAULT '4 Persons',
-            rate DECIMAL(10,2) DEFAULT 15.00,
-            status VARCHAR(50) DEFAULT 'Active',
-            image LONGTEXT,
-            description TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS places (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            name VARCHAR(150) NOT NULL UNIQUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS routes (
-            id VARCHAR(64) PRIMARY KEY,
-            pickup VARCHAR(150) NOT NULL,
-            dropoff VARCHAR(150) NOT NULL,
-            price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-            duration VARCHAR(100) DEFAULT '',
-            car_prices LONGTEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            UNIQUE KEY unique_route_pair (pickup, dropoff)
-        );
-
-        CREATE TABLE IF NOT EXISTS drivers (
-            id VARCHAR(64) PRIMARY KEY,
-            name VARCHAR(255) NOT NULL,
-            phone VARCHAR(64) NOT NULL,
-            vehicle VARCHAR(100) DEFAULT NULL,
-            plate VARCHAR(64) DEFAULT NULL,
-            status VARCHAR(64) DEFAULT 'Active',
-            rating DECIMAL(3,2) DEFAULT 5.00,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS contact_messages (
-            id VARCHAR(64) PRIMARY KEY,
-            name VARCHAR(255) NOT NULL,
-            email VARCHAR(255) NOT NULL,
-            category VARCHAR(100) DEFAULT 'Support',
-            message TEXT NOT NULL,
-            date VARCHAR(100) DEFAULT NULL,
-            timestamp BIGINT DEFAULT NULL,
-            status VARCHAR(64) DEFAULT 'Unread',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS settings (
-            key_name VARCHAR(100) PRIMARY KEY,
-            key_value LONGTEXT NOT NULL,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        );
-    ");
-
-    try {
-        $pdo->exec("ALTER TABLE routes ADD COLUMN car_prices LONGTEXT");
-    } catch (Exception $e) {}
-    try {
-        $pdo->exec("ALTER TABLE routes ADD INDEX idx_routes_pickup (pickup)");
-    } catch (Exception $e) {}
-    try {
-        $pdo->exec("ALTER TABLE routes ADD INDEX idx_routes_dropoff (dropoff)");
-    } catch (Exception $e) {}
-    try {
-        $pdo->exec("ALTER TABLE vehicles ADD INDEX idx_vehicles_status (status)");
-    } catch (Exception $e) {}
-    try {
-        $pdo->exec("ALTER TABLE vehicles ADD INDEX idx_vehicles_name (name)");
-    } catch (Exception $e) {}
-} catch (Exception $e) {}
-
 // Read raw POST body
 $input = json_decode(file_get_contents('php://input'), true) ?: [];
 $action = $input['action'] ?? ($_GET['action'] ?? 'init');
@@ -172,6 +44,132 @@ $data = $input['data'] ?? $input;
 
 switch ($action) {
     case 'init':
+        // Ensure database tables exist ONLY on explicit init call
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS inquiries (
+                    id VARCHAR(64) PRIMARY KEY,
+                    customerName VARCHAR(255),
+                    customerPhone VARCHAR(64),
+                    customerEmail VARCHAR(255),
+                    pickup TEXT,
+                    dropoff TEXT,
+                    vehicle VARCHAR(100),
+                    fare DECIMAL(10,2) DEFAULT 0.00,
+                    originalFare DECIMAL(10,2) DEFAULT 0.00,
+                    walletDiscountUsed DECIMAL(10,2) DEFAULT 0.00,
+                    tripType VARCHAR(100),
+                    scheduledDate VARCHAR(100),
+                    scheduledTime VARCHAR(100),
+                    driver VARCHAR(255) DEFAULT 'Unassigned',
+                    status VARCHAR(64) DEFAULT 'Pending',
+                    rewardIssued INT DEFAULT 0,
+                    rewardAmount DECIMAL(10,2) DEFAULT 0.00,
+                    paymentMethod VARCHAR(100) DEFAULT 'Cash',
+                    notes TEXT,
+                    timestamp VARCHAR(100),
+                    date VARCHAR(100),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                );
+                
+                CREATE TABLE IF NOT EXISTS customers (
+                    id VARCHAR(64) PRIMARY KEY,
+                    name VARCHAR(255),
+                    phone VARCHAR(64),
+                    email VARCHAR(255),
+                    photoURL TEXT,
+                    profession VARCHAR(100),
+                    area VARCHAR(255),
+                    totalRides INT DEFAULT 0,
+                    totalSpent DECIMAL(10,2) DEFAULT 0.00,
+                    registeredAt VARCHAR(64),
+                    lastLogin VARCHAR(100),
+                    status VARCHAR(64) DEFAULT 'Active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                );
+                
+                CREATE TABLE IF NOT EXISTS customer_wallets (
+                    phone VARCHAR(64) PRIMARY KEY,
+                    balance DECIMAL(10,2) DEFAULT 0.00,
+                    transactions LONGTEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS vehicles (
+                    id VARCHAR(64) PRIMARY KEY,
+                    name VARCHAR(150),
+                    passengers VARCHAR(50) DEFAULT '4 Persons',
+                    rate DECIMAL(10,2) DEFAULT 15.00,
+                    status VARCHAR(50) DEFAULT 'Active',
+                    image LONGTEXT,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS places (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    name VARCHAR(150) NOT NULL UNIQUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS routes (
+                    id VARCHAR(64) PRIMARY KEY,
+                    pickup VARCHAR(150) NOT NULL,
+                    dropoff VARCHAR(150) NOT NULL,
+                    price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+                    duration VARCHAR(100) DEFAULT '',
+                    car_prices LONGTEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY unique_route_pair (pickup, dropoff)
+                );
+
+                CREATE TABLE IF NOT EXISTS drivers (
+                    id VARCHAR(64) PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    phone VARCHAR(64) NOT NULL,
+                    vehicle VARCHAR(100) DEFAULT NULL,
+                    plate VARCHAR(64) DEFAULT NULL,
+                    status VARCHAR(64) DEFAULT 'Active',
+                    rating DECIMAL(3,2) DEFAULT 5.00,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS contact_messages (
+                    id VARCHAR(64) PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    email VARCHAR(255) NOT NULL,
+                    category VARCHAR(100) DEFAULT 'Support',
+                    message TEXT NOT NULL,
+                    date VARCHAR(100) DEFAULT NULL,
+                    timestamp BIGINT DEFAULT NULL,
+                    status VARCHAR(64) DEFAULT 'Unread',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS settings (
+                    key_name VARCHAR(100) PRIMARY KEY,
+                    key_value LONGTEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                );
+            ");
+
+            try {
+                $pdo->exec("ALTER TABLE routes ADD COLUMN car_prices LONGTEXT");
+            } catch (Exception $e) {}
+            try {
+                $pdo->exec("ALTER TABLE routes ADD INDEX idx_routes_pickup (pickup)");
+            } catch (Exception $e) {}
+            try {
+                $pdo->exec("ALTER TABLE routes ADD INDEX idx_routes_dropoff (dropoff)");
+            } catch (Exception $e) {}
+            try {
+                $pdo->exec("ALTER TABLE vehicles ADD INDEX idx_vehicles_status (status)");
+            } catch (Exception $e) {}
+            try {
+                $pdo->exec("ALTER TABLE vehicles ADD INDEX idx_vehicles_name (name)");
+            } catch (Exception $e) {}
+        } catch (Exception $e) {}
+
         echo json_encode(['success' => true, 'message' => 'Hostinger MySQL PHP API Ready']);
         break;
 

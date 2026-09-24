@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import BottomNavBar from '../../components/BottomNavBar';
 import { INITIAL_VEHICLES } from '../AdminPortal';
 import { loadAllInquiriesFromMySQL, updateInquiryStatusInMySQL, saveInquiryToMySQL } from '../../services/mysqlService';
-import { loadAllInquiriesFromFirestore, updateInquiryStatus as updateInquiryStatusFirestore } from '../../services/firebaseService';
 import db from '../../services/dbService';
 import { Calendar, Clock3, CheckCircle2, XCircle, Car, ArrowRight, X, Edit3 } from 'lucide-react';
 
@@ -68,21 +67,17 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
       }
     } catch (e) {}
 
-    // ── 2. BACKGROUND PASS: Fetch fresh MySQL & Firestore updates with tight 2.5s timeout ──
+    // ── 2. BACKGROUND PASS: Fetch fresh MySQL updates with tight 2.5s timeout ──
     try {
       const withTimeout = (p, ms = 2500) => Promise.race([p, new Promise(r => setTimeout(() => r([]), ms))]);
 
-      const [mysqlData, firestoreData] = await Promise.all([
-        withTimeout(loadAllInquiriesFromMySQL().catch(() => [])),
-        withTimeout(loadAllInquiriesFromFirestore().catch(() => []))
-      ]);
+      const mysqlData = await withTimeout(loadAllInquiriesFromMySQL().catch(() => []));
 
       const inqMap = new Map();
       const localRaw = localStorage.getItem('cabsy_inquiries');
       const localList = localRaw ? JSON.parse(localRaw) : [];
       [...(Array.isArray(localList) ? localList : []),
-       ...(Array.isArray(mysqlData) ? mysqlData : []),
-       ...(Array.isArray(firestoreData) ? firestoreData : [])].forEach(item => {
+       ...(Array.isArray(mysqlData) ? mysqlData : [])].forEach(item => {
         if (item && item.id) {
           inqMap.set(item.id, { ...inqMap.get(item.id), ...item });
         }
@@ -144,7 +139,6 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
     try {
       const targetInq = inquiries.find(item => item.id === inqId || item.createdAt === inqId);
       updateInquiryStatusInMySQL(inqId, 'Cancelled').catch(() => {});
-      updateInquiryStatusFirestore(inqId, 'Cancelled').catch(() => {});
       const updatedList = inquiries.map(item => {
         if (item.id === inqId || (item.createdAt && item.createdAt === inqId)) {
           return { ...item, status: 'Cancelled' };

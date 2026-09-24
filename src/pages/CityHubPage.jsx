@@ -6,6 +6,7 @@ import {
   slugify,
   generateCityKeywords 
 } from '../data/seoKeywordsData';
+import { loadAllRoutesFromMySQL } from '../services/mysqlService';
 import { 
   MapPin, 
   Car, 
@@ -127,9 +128,21 @@ export default function CityHubPage({ onOpenBooking }) {
     }
   };
 
-  const topOutboundDestinations = GUJARAT_PRIMARY_CITIES
-    .filter(c => c.name.toLowerCase() !== cityName.toLowerCase())
-    .slice(0, 12);
+  const [dbRoutes, setDbRoutes] = useState([]);
+
+  useEffect(() => {
+    loadAllRoutesFromMySQL().then(routes => {
+      if (Array.isArray(routes)) {
+        setDbRoutes(routes);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const topOutboundDestinations = dbRoutes.filter(r => 
+    r && r.pickup && r.dropoff && 
+    (r.pickup.toLowerCase().trim() === cityName.toLowerCase().trim() || 
+     r.pickup.toLowerCase().includes(cityName.toLowerCase().trim()))
+  );
 
   const cityFaqs = [
     {
@@ -200,30 +213,42 @@ export default function CityHubPage({ onOpenBooking }) {
             </p>
           </div>
 
-          <div className="outbound-grid">
-            {topOutboundDestinations.map((dest, idx) => {
-              const routeSlug = `${slugify(cityName)}-to-${dest.slug}`;
-              return (
-                <div key={idx} className="outbound-card">
-                  <div className="outbound-header">
-                    <h4>{cityName} &rarr; {dest.name}</h4>
-                    <span className="dest-hub">{dest.hub}</span>
+          {topOutboundDestinations.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '36px 20px', background: '#F8FAFC', borderRadius: '16px', border: '1.5px dashed #CBD5E1', maxWidth: '600px', margin: '0 auto' }}>
+              <p style={{ fontSize: '14px', color: '#64748B', margin: '0 0 16px 0' }}>
+                Direct fixed routes from {cityName} can be booked on demand or customized for any outstation journey.
+              </p>
+              <button onClick={() => handleBookNow()} className="btn-city-primary" style={{ margin: '0 auto' }}>
+                <span>Book Custom Route from {cityName}</span>
+                <ArrowRight size={16} />
+              </button>
+            </div>
+          ) : (
+            <div className="outbound-grid">
+              {topOutboundDestinations.map((route, idx) => {
+                const routeSlug = `${slugify(route.pickup)}-to-${slugify(route.dropoff)}`;
+                return (
+                  <div key={idx} className="outbound-card">
+                    <div className="outbound-header">
+                      <h4>{route.pickup} &rarr; {route.dropoff}</h4>
+                      {route.price && <span className="dest-hub">₹{route.price}</span>}
+                    </div>
+                    <p className="outbound-info">
+                      {route.duration ? `Travel time: ~${route.duration}. ` : ''}Doorstep pickup across {cityName}.
+                    </p>
+                    <div className="outbound-actions">
+                      <Link to={`/taxi/${routeSlug}`} className="link-view-route">
+                        View Fares & Info &rarr;
+                      </Link>
+                      <button onClick={() => handleBookNow(route.dropoff)} className="btn-quick-book">
+                        Book Now
+                      </button>
+                    </div>
                   </div>
-                  <p className="outbound-info">
-                    One-way & round trip taxi service with doorstep pickup across {cityName}.
-                  </p>
-                  <div className="outbound-actions">
-                    <Link to={`/taxi/${routeSlug}`} className="link-view-route">
-                      View Fares & Info &rarr;
-                    </Link>
-                    <button onClick={() => handleBookNow(dest.name)} className="btn-quick-book">
-                      Book Now
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
 

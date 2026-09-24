@@ -40,24 +40,6 @@ const ALL_CITIES_AND_VILLAGES = [
   "Petlad", "Khambhat", "Borsad", "Dabhoi", "Karjan", "Vyara", "Bardoli", "Ankleshwar"
 ];
 
-export const FAMOUS_HOT_ROUTES = [
-  { id: 'DEST-102', name: 'Bhavnagar → Ahmedabad Airport (AMD)', pickup: 'Bhavnagar, Gujarat', dropoff: 'Ahmedabad Airport (AMD)', distanceKm: 175, price: 2625, duration: '3 hr 15 min', tag: 'HOT ROUTE', isHot: true },
-  { id: 'DEST-103', name: 'Bhavnagar → Vadodara Central Station', pickup: 'Bhavnagar, Gujarat', dropoff: 'Vadodara Central Railway Station', distanceKm: 205, price: 1650, duration: '2 hr 10 min', tag: 'HOT ROUTE', isHot: true },
-  { id: 'DEST-108', name: 'Bhavnagar → Surat Textile Hub', pickup: 'Bhavnagar, Gujarat', dropoff: 'Surat Textile Hub', distanceKm: 340, price: 4500, duration: '5 hr 30 min', tag: 'HOT ROUTE', isHot: true },
-  { id: 'DEST-107', name: 'Bhavnagar → Mumbai Central Airport', pickup: 'Bhavnagar, Gujarat', dropoff: 'Mumbai Central Airport (BOM)', distanceKm: 610, price: 8100, duration: '10 hr 30 min', tag: 'HOT ROUTE', isHot: true },
-  { id: 'DEST-109', name: 'Bhavnagar → Rajkot Trikon Baug', pickup: 'Bhavnagar, Gujarat', dropoff: 'Rajkot Trikon Baug', distanceKm: 175, price: 2400, duration: '3 hr 10 min', tag: 'POPULAR', isPopular: true },
-  { id: 'DEST-110', name: 'Bhavnagar → Somnath Temple', pickup: 'Bhavnagar, Gujarat', dropoff: 'Somnath Temple', distanceKm: 260, price: 3900, duration: '5 hr 15 min', tag: 'HOT ROUTE', isHot: true },
-  { id: 'DEST-111', name: 'Bhavnagar → Palitana Temples', pickup: 'Bhavnagar, Gujarat', dropoff: 'Palitana Bus Stand', distanceKm: 55, price: 950, duration: '1 hr 15 min', tag: 'HOT ROUTE', isHot: true },
-  { id: 'DEST-104', name: 'Bhavnagar → SG Highway IT Park', pickup: 'Bhavnagar, Gujarat', dropoff: 'SG Highway IT Park', distanceKm: 185, price: 2700, duration: '3 hr 30 min', tag: 'POPULAR', isPopular: true },
-  { id: 'DEST-112', name: 'Bhavnagar → Dholera SIR Smart City', pickup: 'Bhavnagar, Gujarat', dropoff: 'Dholera SIR Smart City', distanceKm: 70, price: 1200, duration: '1 hr 10 min', tag: 'HOT ROUTE', isHot: true },
-  { id: 'DEST-113', name: 'Bhavnagar → Dwarka Jagat Mandir', pickup: 'Bhavnagar, Gujarat', dropoff: 'Dwarka Jagat Mandir', distanceKm: 390, price: 5800, duration: '7 hr 30 min', tag: 'POPULAR', isPopular: true },
-  { id: 'DEST-101', name: 'Bhavnagar → Railway Station', pickup: 'Bhavnagar, Gujarat', dropoff: 'Bhavnagar Railway Station', distanceKm: 8, price: 270, duration: '35 min', tag: 'LOCAL' },
-  { id: 'DEST-105', name: 'Bhavnagar → Alkapuri Hub', pickup: 'Bhavnagar, Gujarat', dropoff: 'Alkapuri Commercial Hub', distanceKm: 210, price: 1680, duration: '2 hr 15 min', tag: 'POPULAR', isPopular: true },
-  { id: 'DEST-106', name: 'Bhavnagar → Ghogha Circle & Beach', pickup: 'Bhavnagar, Gujarat', dropoff: 'Ghogha Circle & Beach', distanceKm: 22, price: 180, duration: '25 min', tag: 'LOCAL' },
-  { id: 'DEST-114', name: 'Ahmedabad Airport (AMD) → Bhavnagar', pickup: 'Ahmedabad Airport (AMD)', dropoff: 'Bhavnagar, Gujarat', distanceKm: 175, price: 2625, duration: '3 hr 15 min', tag: 'HOT ROUTE', isHot: true },
-  { id: 'DEST-115', name: 'Vadodara Central → Bhavnagar', pickup: 'Vadodara Central Railway Station', dropoff: 'Bhavnagar, Gujarat', distanceKm: 205, price: 1650, duration: '2 hr 10 min', tag: 'POPULAR', isPopular: true }
-];
-
 export default function SelectLocationScreen({ 
   pickupLoc, 
   setPickupLoc, 
@@ -76,29 +58,6 @@ export default function SelectLocationScreen({
   onSelectLocation, 
   onBack 
 }) {
-  const mergeFamousRoutes = (adminRoutes = []) => {
-    const list = Array.isArray(adminRoutes) && adminRoutes.length > 0 ? [...adminRoutes] : [];
-    FAMOUS_HOT_ROUTES.forEach(f => {
-      const match = list.find(r => 
-        r && r.pickup && r.dropoff &&
-        r.pickup.toLowerCase().trim() === f.pickup.toLowerCase().trim() &&
-        r.dropoff.toLowerCase().trim() === f.dropoff.toLowerCase().trim()
-      );
-      if (!match) {
-        list.push(f);
-      } else {
-        if (!match.tag && f.tag) match.tag = f.tag;
-        if (match.isHot === undefined && f.isHot) match.isHot = f.isHot;
-        if (match.isPopular === undefined && f.isPopular) match.isPopular = f.isPopular;
-      }
-    });
-    return list.sort((a, b) => {
-      const scoreA = (a.isHot || a.tag === 'HOT ROUTE') ? 2 : ((a.isPopular || a.tag === 'POPULAR') ? 1 : 0);
-      const scoreB = (b.isHot || b.tag === 'HOT ROUTE') ? 2 : ((b.isPopular || b.tag === 'POPULAR') ? 1 : 0);
-      return scoreB - scoreA;
-    });
-  };
-
   const [places, setPlaces] = useState(() => {
     try {
       const savedPlaces = safeStorageGetItem('cabsy_places') || localStorage.getItem('cabsy_places');
@@ -117,12 +76,12 @@ export default function SelectLocationScreen({
       const savedDestinations = safeStorageGetItem('cabsy_destinations') || localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
       if (savedDestinations) {
         const parsed = typeof savedDestinations === 'string' ? JSON.parse(savedDestinations) : savedDestinations;
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return mergeFamousRoutes(parsed.filter(r => r && r.pickup && r.dropoff));
+        if (Array.isArray(parsed)) {
+          return parsed.filter(r => r && r.pickup && r.dropoff);
         }
       }
     } catch (e) {}
-    return FAMOUS_HOT_ROUTES;
+    return [];
   });
 
   const [activeDropdown, setActiveDropdown] = useState(null); // 'pickup' | 'dropoff' | 'pickupCity' | 'dropoffCity' | null
@@ -157,8 +116,8 @@ export default function SelectLocationScreen({
       const savedDestinations = safeStorageGetItem('cabsy_destinations') || localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
       if (savedDestinations) {
         const parsedD = typeof savedDestinations === 'string' ? JSON.parse(savedDestinations) : savedDestinations;
-        if (Array.isArray(parsedD) && parsedD.length > 0) {
-          setRoutes(mergeFamousRoutes(parsedD.filter(r => r && r.pickup && r.dropoff)));
+        if (Array.isArray(parsedD)) {
+          setRoutes(parsedD.filter(r => r && r.pickup && r.dropoff));
         }
       }
     } catch (e) {
@@ -184,7 +143,7 @@ export default function SelectLocationScreen({
           duration: r.duration || '',
           car_prices: r.car_prices || {}
         }));
-        setRoutes(mergeFamousRoutes(formattedRoutes));
+        setRoutes(formattedRoutes);
         try {
           localStorage.setItem('cabsy_destinations', JSON.stringify(formattedRoutes));
           localStorage.setItem('cabsy_routes', JSON.stringify(formattedRoutes));
@@ -197,8 +156,8 @@ export default function SelectLocationScreen({
     loadAdminConfig();
 
     const handleSync = (e) => {
-      if (e?.detail && Array.isArray(e.detail) && e.detail.length > 0) {
-        setRoutes(mergeFamousRoutes(e.detail.filter(r => r && r.pickup && r.dropoff)));
+      if (e?.detail && Array.isArray(e.detail)) {
+        setRoutes(e.detail.filter(r => r && r.pickup && r.dropoff));
       } else {
         loadAdminConfig();
       }
@@ -538,7 +497,21 @@ export default function SelectLocationScreen({
               <h3 style={{ fontFamily: 'League Spartan', fontSize: '16px', fontWeight: '800', color: '#0F172A', margin: '0 0 12px 0' }}>
                 Available Direct Routes
               </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {routes.length === 0 ? (
+                <div style={{
+                  padding: '24px 16px',
+                  textAlign: 'center',
+                  background: '#FFFFFF',
+                  borderRadius: '20px',
+                  border: '1.5px dashed #CBD5E1',
+                  color: '#64748B',
+                  fontSize: '13px',
+                  fontWeight: '600'
+                }}>
+                  No direct routes currently configured in database. You can search any custom pickup and dropoff above.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {routes.map((route, idx) => {
                   const isSelected = (pickupLoc === route.pickup && dropoffLoc === route.dropoff);
 
@@ -580,6 +553,7 @@ export default function SelectLocationScreen({
                   );
                 })}
               </div>
+              )}
             </div>
           </div>
         )}

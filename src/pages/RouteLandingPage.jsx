@@ -55,17 +55,20 @@ export default function RouteLandingPage({ onOpenBooking }) {
   }, [from, to]);
 
   const routeDetails = calculateRouteEstimate(from, to, customRoutes);
-  const { distanceKm, duration, baseFare, highway, car_prices = {} } = routeDetails;
+  const isDirect = !!routeDetails;
+  const { distanceKm = 0, duration = '', baseFare = null, highway = 'Direct Highway Corridor', car_prices = {} } = routeDetails || {};
 
   // Exact fixed fares for specific car categories if configured by Admin
-  const sedanFare = Number(car_prices['CAR-101'] ?? car_prices['Swift Dzire'] ?? car_prices['Sedan'] ?? baseFare);
-  const suvFare = Number(car_prices['CAR-102'] ?? car_prices['Maruti Ertiga'] ?? car_prices['Ertiga'] ?? Math.round(baseFare * 1.35));
-  const luxuryFare = Number(car_prices['CAR-103'] ?? car_prices['Innova Crysta'] ?? car_prices['Toyota Innova Crysta'] ?? Math.round(baseFare * 1.75));
+  const sedanFare = isDirect ? Number(car_prices['CAR-101'] ?? car_prices['Swift Dzire'] ?? car_prices['Sedan'] ?? baseFare) : null;
+  const suvFare = isDirect ? Number(car_prices['CAR-102'] ?? car_prices['Maruti Ertiga'] ?? car_prices['Ertiga'] ?? Math.round(baseFare * 1.35)) : null;
+  const luxuryFare = isDirect ? Number(car_prices['CAR-103'] ?? car_prices['Innova Crysta'] ?? car_prices['Toyota Innova Crysta'] ?? Math.round(baseFare * 1.75)) : null;
 
   // Dynamic SEO Title, Description, and Structured Data
   useEffect(() => {
     const pageTitle = `${from} to ${to} Taxi Service | Book One-Way & Round Trip Cab — EMPERIAL CABS`;
-    const pageDesc = `Book verified AC cab from ${from} to ${to} starting at ₹${baseFare}. Zero hidden charges, clean cars & 24/7 doorstep pickup across Gujarat.`;
+    const pageDesc = isDirect && baseFare
+      ? `Book verified AC cab from ${from} to ${to} starting at ₹${baseFare}. Zero hidden charges, clean cars & 24/7 doorstep pickup across Gujarat.`
+      : `Book verified AC cab from ${from} to ${to}. Zero hidden charges, clean cars & 24/7 doorstep pickup across Gujarat.`;
     
     document.title = pageTitle;
 
@@ -241,18 +244,18 @@ export default function RouteLandingPage({ onOpenBooking }) {
 
               <div className="route-key-metrics">
                 <div className="metric-item">
-                  <span className="metric-label">Estimated Distance</span>
-                  <span className="metric-value">{distanceKm} km</span>
+                  <span className="metric-label">{isDirect ? 'Distance' : 'Service Type'}</span>
+                  <span className="metric-value">{isDirect ? `${distanceKm} km` : 'Door-to-Door'}</span>
                 </div>
                 <div className="metric-divider"></div>
                 <div className="metric-item">
-                  <span className="metric-label">Travel Time</span>
-                  <span className="metric-value">{duration}</span>
+                  <span className="metric-label">{isDirect ? 'Travel Time' : 'Availability'}</span>
+                  <span className="metric-value">{isDirect && duration ? duration : '24/7 On Demand'}</span>
                 </div>
                 <div className="metric-divider"></div>
                 <div className="metric-item">
                   <span className="metric-label">Starting Fare</span>
-                  <span className="metric-value text-green">₹{baseFare}</span>
+                  <span className="metric-value text-green">{isDirect && baseFare ? `₹${baseFare}` : '₹15 / km'}</span>
                 </div>
               </div>
 
@@ -297,11 +300,11 @@ export default function RouteLandingPage({ onOpenBooking }) {
                 <div className="fare-highlight-box">
                   <div className="fare-row">
                     <span>Sedan (Swift / Aura)</span>
-                    <strong>₹{sedanFare}</strong>
+                    <strong>{isDirect && sedanFare ? `₹${sedanFare}` : '₹15 / km'}</strong>
                   </div>
                   <div className="fare-row">
                     <span>SUV (Ertiga 7-Seater)</span>
-                    <strong>₹{suvFare}</strong>
+                    <strong>{isDirect && suvFare ? `₹${suvFare}` : '₹22 / km'}</strong>
                   </div>
                   <div className="fare-row">
                     <span>Trip Type</span>

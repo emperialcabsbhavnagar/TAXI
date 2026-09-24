@@ -10,10 +10,6 @@ import {
   loadWalletFromMySQL
 } from './mysqlService';
 
-import {
-  saveInquiryToFirestore,
-  saveCustomerToFirestore
-} from './firebaseService';
 
 // Local cache keys
 const STORAGE_KEYS = {
@@ -114,9 +110,8 @@ class DatabaseService {
       });
     }
 
-    // Auto sync inquiry to Hostinger MySQL Database & Firestore
+    // Auto sync inquiry to Hostinger MySQL Database
     saveInquiryToMySQL(newInquiry).catch(() => {});
-    saveInquiryToFirestore(newInquiry).catch(() => {});
 
     // Dispatch real-time cross-platform event
     window.dispatchEvent(new CustomEvent('EMPERIAL CABS_db_sync', { detail: { type: 'INQUIRY_ADDED', data: newInquiry } }));
@@ -240,9 +235,8 @@ class DatabaseService {
       } catch (e) {}
     }
     
-    // Auto-sync customer profile to Hostinger MySQL Database & Firestore
+    // Auto-sync customer profile to Hostinger MySQL Database
     saveCustomerToMySQL(updatedCustomer).catch(() => {});
-    saveCustomerToFirestore(updatedCustomer).catch(() => {});
 
     window.dispatchEvent(new CustomEvent('EMPERIAL CABS_db_sync', { detail: { type: 'CUSTOMER_UPDATED', data: updatedCustomer } }));
     return updatedCustomer;

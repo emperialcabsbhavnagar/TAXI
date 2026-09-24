@@ -13,7 +13,7 @@ import {
   ChevronRight,
   Sparkles
 } from 'lucide-react';
-import { INITIAL_VEHICLES, INITIAL_PLACES, INITIAL_DESTINATIONS } from './AdminPortal';
+import { INITIAL_VEHICLES, INITIAL_PLACES } from './AdminPortal';
 import { loadAllVehiclesFromMySQL, loadAllPlacesFromMySQL, loadAllRoutesFromMySQL, getRoutePriceFromMySQL, safeStorageSetItem } from '../services/mysqlService';
 import './Pages.css';
 
@@ -77,8 +77,8 @@ export default function BookRide() {
       const parsedPlaces = savedPlaces ? JSON.parse(savedPlaces) : INITIAL_PLACES;
       
       const savedDest = localStorage.getItem('cabsy_destinations');
-      const parsedDest = savedDest ? JSON.parse(savedDest) : INITIAL_DESTINATIONS;
-      setDestinations(parsedDest);
+      const parsedDest = savedDest ? JSON.parse(savedDest) : [];
+      setDestinations(Array.isArray(parsedDest) ? parsedDest : []);
 
       const combinedPlaces = Array.from(new Set([
         ...(Array.isArray(parsedPlaces) ? parsedPlaces : []),
@@ -122,7 +122,7 @@ export default function BookRide() {
       }).catch(() => {});
 
       loadAllRoutesFromMySQL().then(fetchedRoutes => {
-        if (Array.isArray(fetchedRoutes) && fetchedRoutes.length > 0) {
+        if (Array.isArray(fetchedRoutes)) {
           const formatted = fetchedRoutes.map(r => ({
             id: r.id,
             name: `${r.pickup} → ${r.dropoff}`,

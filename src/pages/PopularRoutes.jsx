@@ -56,40 +56,18 @@ export default function PopularRoutes() {
     }).catch(() => {});
   }, []);
 
-  // Combine static featured routes with any custom routes and prices configured in MySQL
-  const allRoutesList = [
-    ...POPULAR_FEATURED_ROUTES.map(featured => {
-      const dbMatch = dbRoutes.find(r => 
-        r && r.pickup && r.dropoff &&
-        (r.pickup.toLowerCase().trim() === featured.from.toLowerCase().trim() || featured.from.toLowerCase().includes(r.pickup.toLowerCase().trim())) &&
-        (r.dropoff.toLowerCase().trim() === featured.to.toLowerCase().trim() || featured.to.toLowerCase().includes(r.dropoff.toLowerCase().trim()))
-      );
-      if (dbMatch && dbMatch.price) {
-        return {
-          ...featured,
-          baseFare: Number(dbMatch.price),
-          distanceKm: dbMatch.distanceKm ? Number(dbMatch.distanceKm) : featured.distanceKm,
-          duration: dbMatch.duration || featured.duration
-        };
-      }
-      return featured;
-    }),
-    ...dbRoutes
-      .filter(r => r && r.pickup && r.dropoff)
-      .filter(r => !POPULAR_FEATURED_ROUTES.some(p => 
-        p.from.toLowerCase().trim() === r.pickup.toLowerCase().trim() && 
-        p.to.toLowerCase().trim() === r.dropoff.toLowerCase().trim()
-      ))
-      .map(r => ({
-        from: r.pickup,
-        to: r.dropoff,
-        distanceKm: r.distanceKm ? Number(r.distanceKm) : 180,
-        duration: r.duration || '3 hr 30 min',
-        highway: 'Direct Highway Corridor',
-        baseFare: Number(r.price) || 2500,
-        badge: 'Direct Route'
-      }))
-  ];
+  // Strictly display only routes configured by Admin in MySQL
+  const allRoutesList = dbRoutes
+    .filter(r => r && r.pickup && r.dropoff)
+    .map(r => ({
+      from: r.pickup,
+      to: r.dropoff,
+      distanceKm: r.distanceKm ? Number(r.distanceKm) : 0,
+      duration: r.duration || '',
+      highway: r.highway || 'Direct Route',
+      baseFare: Number(r.price) || 0,
+      badge: 'Direct Route'
+    }));
 
   // Filter routes based on user search query
   const filteredRoutes = allRoutesList.filter(r => {
@@ -155,40 +133,56 @@ export default function PopularRoutes() {
             </p>
           </div>
 
-          <div className="directory-cards-grid">
-            {visibleRoutes.map((route, idx) => {
-              const routeSlug = `${slugify(route.from)}-to-${slugify(route.to)}`;
-              return (
-                <div key={idx} className="directory-route-card">
-                  <div className="d-route-header">
-                    <div className="d-route-name">
-                      <h3>{route.from} &rarr; {route.to}</h3>
-                      <span className="d-highway-tag">{route.highway}</span>
+          {visibleRoutes.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '48px 24px', background: '#F8FAFC', borderRadius: '16px', border: '1.5px dashed #CBD5E1' }}>
+              <Navigation size={32} color="#94A3B8" style={{ marginBottom: '12px' }} />
+              <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#1E293B', marginBottom: '8px' }}>
+                {searchQuery ? `No routes found matching "${searchQuery}"` : "No direct routes currently configured"}
+              </h3>
+              <p style={{ fontSize: '14px', color: '#64748B', maxWidth: '480px', margin: '0 auto 20px' }}>
+                {searchQuery ? "Try searching for a different city or location name." : "Direct routes configured by the administrator in the Admin Portal will appear here."}
+              </p>
+              <Link to="/book-ride" className="btn-city-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 20px', borderRadius: '10px', background: '#0F172A', color: '#FFF', textDecoration: 'none', fontWeight: '600', fontSize: '14px' }}>
+                <span>Book Custom Route</span>
+                <ArrowRight size={16} />
+              </Link>
+            </div>
+          ) : (
+            <div className="directory-cards-grid">
+              {visibleRoutes.map((route, idx) => {
+                const routeSlug = `${slugify(route.from)}-to-${slugify(route.to)}`;
+                return (
+                  <div key={idx} className="directory-route-card">
+                    <div className="d-route-header">
+                      <div className="d-route-name">
+                        <h3>{route.from} &rarr; {route.to}</h3>
+                        <span className="d-highway-tag">{route.highway}</span>
+                      </div>
+                      <div className="d-price-badge">
+                        <small>From</small>
+                        <strong>₹{route.baseFare}</strong>
+                      </div>
                     </div>
-                    <div className="d-price-badge">
-                      <small>From</small>
-                      <strong>₹{route.baseFare}</strong>
+
+                    <div className="d-route-specs">
+                      <span><Navigation size={14} /> {route.distanceKm} km</span>
+                      <span className="spec-dot">•</span>
+                      <span><Car size={14} /> ~{route.duration}</span>
+                      <span className="spec-dot">•</span>
+                      <span className="spec-oneway">One-Way / Round Trip</span>
+                    </div>
+
+                    <div className="d-card-footer">
+                      <Link to={`/taxi/${routeSlug}`} className="d-btn-view">
+                        View Fares & Schedule
+                        <ArrowRight size={15} />
+                      </Link>
                     </div>
                   </div>
-
-                  <div className="d-route-specs">
-                    <span><Navigation size={14} /> {route.distanceKm} km</span>
-                    <span className="spec-dot">•</span>
-                    <span><Car size={14} /> ~{route.duration}</span>
-                    <span className="spec-dot">•</span>
-                    <span className="spec-oneway">One-Way / Round Trip</span>
-                  </div>
-
-                  <div className="d-card-footer">
-                    <Link to={`/taxi/${routeSlug}`} className="d-btn-view">
-                      View Fares & Schedule
-                      <ArrowRight size={15} />
-                    </Link>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
 
           {visibleCount < filteredRoutes.length && (
             <div style={{ textAlign: 'center', marginTop: '2.5rem' }}>
