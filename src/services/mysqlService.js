@@ -27,9 +27,9 @@ const getApiEndpoints = () => {
       return ['/api/db.php', '/api/db', primaryApi];
     }
 
-    // Local dev (localhost / 127.0.0.1) — try relative first, then absolute
+    // Local dev (localhost / 127.0.0.1) — must use Vite proxy '/api/db'
     if (host.includes('localhost') || host.includes('127.0.0.1')) {
-      return [primaryApi, secondaryApi, '/api/db.php'];
+      return ['/api/db', primaryApi];
     }
   }
 
@@ -338,7 +338,7 @@ export const loadAllRoutesFromMySQL = async () => {
       return item;
     });
   }
-  return [];
+  return null;
 };
 
 /**
@@ -419,14 +419,17 @@ export const deleteRouteFromMySQL = async (routeIdOrPickup, dropoff) => {
   let payload = {};
   if (dropoff) {
     payload = { pickup: routeIdOrPickup, dropoff };
-    const k1 = `${String(routeIdOrPickup).trim().toLowerCase()}_${String(dropoff).trim().toLowerCase()}`;
-    const k2 = `${String(dropoff).trim().toLowerCase()}_${String(routeIdOrPickup).trim().toLowerCase()}`;
-    routeMemoryCache.delete(k1);
-    routeMemoryCache.delete(k2);
   } else {
     payload = { id: routeIdOrPickup };
   }
+  routeMemoryCache.clear();
   const res = await sendRequest('deleteRoute', payload);
+  return res && res.success;
+};
+
+export const clearAllRoutesFromMySQL = async () => {
+  routeMemoryCache.clear();
+  const res = await sendRequest('clearAllRoutes');
   return res && res.success;
 };
 

@@ -110,7 +110,7 @@ export default function SelectCarScreen({
     }
 
     loadAllRoutesFromMySQL().then(fetchedRoutes => {
-      if (isMounted && Array.isArray(fetchedRoutes) && fetchedRoutes.length > 0) {
+      if (isMounted && fetchedRoutes !== null && Array.isArray(fetchedRoutes)) {
         const formattedRoutes = fetchedRoutes.map(r => ({
           id: r.id,
           name: `${r.pickup} → ${r.dropoff}`,

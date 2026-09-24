@@ -23,6 +23,7 @@ import {
   saveRouteToMySQL,
   saveRoutesBatchToMySQL,
   deleteRouteFromMySQL,
+  clearAllRoutesFromMySQL,
   loadAllDriversFromMySQL,
   saveDriverToMySQL,
   deleteDriverFromMySQL,
@@ -410,23 +411,7 @@ export default function AdminPortal() {
     return saved ? JSON.parse(saved) : INITIAL_VEHICLES;
   });
 
-  const [destinations, setDestinations] = useState(() => {
-    const saved = localStorage.getItem('cabsy_destinations');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed.filter(d => d && d.pickup && d.dropoff).map(d => ({
-            ...d,
-            price: (d.price !== undefined && d.price !== null && d.price !== '') 
-              ? Number(d.price) 
-              : Math.round((Number(d.distanceKm) || 15) * 15)
-          }));
-        }
-      } catch (e) {}
-    }
-    return [];
-  });
+  const [destinations, setDestinations] = useState([]);
 
   const [places, setPlaces] = useState(() => {
     const saved = localStorage.getItem('cabsy_places');
@@ -667,20 +652,17 @@ export default function AdminPortal() {
       if (fresh && fresh.length > 0) {
         setNotifications(fresh);
       }
-      fetchAllData(false);
     };
 
     window.addEventListener('EMPERIAL CABS_admin_notif', syncAdminNotifs);
     window.addEventListener('EMPERIAL CABS_db_sync', syncAdminNotifs);
-    window.addEventListener('storage', syncAdminNotifs);
     
-    // Poll Hostinger MySQL silently in background every 12s (prevents DB connection exhaustion)
-    const interval = setInterval(() => fetchAllData(false), 12000);
+    // Poll Hostinger MySQL silently in background every 120s (prevents DB connection exhaustion)
+    const interval = setInterval(() => fetchAllData(false), 120000);
 
     return () => {
       window.removeEventListener('EMPERIAL CABS_admin_notif', syncAdminNotifs);
       window.removeEventListener('EMPERIAL CABS_db_sync', syncAdminNotifs);
-      window.removeEventListener('storage', syncAdminNotifs);
       clearInterval(interval);
     };
   }, []);
@@ -851,7 +833,7 @@ export default function AdminPortal() {
           loadAllCustomersFromMySQL().catch(() => []),
           loadAllVehiclesFromMySQL().catch(() => []),
           loadAllPlacesFromMySQL().catch(() => []),
-          loadAllRoutesFromMySQL().catch(() => []),
+          loadAllRoutesFromMySQL().catch(() => null),
           loadAllDriversFromMySQL().catch(() => []),
           loadAllContactMessagesFromMySQL().catch(() => []),
           loadSettingsFromMySQL().catch(() => null)
@@ -873,7 +855,7 @@ export default function AdminPortal() {
           INITIAL_PLACES.forEach(p => savePlaceToMySQL(p).catch(() => {}));
         }
 
-        if (Array.isArray(mysqlRoutes)) {
+        if (mysqlRoutes !== null && Array.isArray(mysqlRoutes)) {
           const formattedRoutes = mysqlRoutes.map(r => ({
             id: r.id,
             name: `${r.pickup} → ${r.dropoff}`,
@@ -885,6 +867,9 @@ export default function AdminPortal() {
           }));
           setDestinations(formattedRoutes);
           safeStorageSetItem('cabsy_destinations', formattedRoutes);
+          try {
+            localStorage.setItem('cabsy_routes', JSON.stringify(formattedRoutes));
+          } catch(e) {}
         }
 
         if (Array.isArray(mysqlDrivers) && mysqlDrivers.length > 0) {
@@ -946,15 +931,11 @@ export default function AdminPortal() {
     };
 
     loadFromCloud();
-    const pollInterval = setInterval(loadFromCloud, 10000);
     const handleSyncEvent = () => loadFromCloud();
 
-    window.addEventListener('storage', handleSyncEvent);
     window.addEventListener('EMPERIAL CABS_db_sync', handleSyncEvent);
 
     return () => {
-      clearInterval(pollInterval);
-      window.removeEventListener('storage', handleSyncEvent);
       window.removeEventListener('EMPERIAL CABS_db_sync', handleSyncEvent);
     };
   }, []);
@@ -988,13 +969,11 @@ export default function AdminPortal() {
   useEffect(() => {
     safeStorageSetItem('cabsy_destinations', destinations);
     window.dispatchEvent(new CustomEvent('EMPERIAL CABS_destinations_updated', { detail: destinations }));
-    window.dispatchEvent(new Event('storage'));
   }, [destinations]);
 
   useEffect(() => {
     safeStorageSetItem('cabsy_places', places);
     window.dispatchEvent(new CustomEvent('EMPERIAL CABS_places_updated', { detail: places }));
-    window.dispatchEvent(new Event('storage'));
   }, [places]);
 
   const handleAddPlace = (e) => {
@@ -1027,7 +1006,7 @@ export default function AdminPortal() {
     }
   };
 
-  const handleAddDestSubmit = (e) => {
+  const handleAddDestSubmit = async (e) => {
     e.preventDefault();
     const pickupVal = newDestForm.pickup || places[0] || 'Bhavnagar, Gujarat';
     const dropoffVal = newDestForm.dropoff || (places[1] ? places[1] : places[0]) || 'Ahmedabad Airport (AMD)';
@@ -1046,7 +1025,7 @@ export default function AdminPortal() {
     }
 
     const created = {
-      id: `DEST-${Math.floor(100 + Math.random() * 900)}`,
+      id: `DEST-${Date.now()}`,
       name: `${pickupVal} → ${dropoffVal}`,
       pickup: pickupVal,
       dropoff: dropoffVal,
@@ -1054,13 +1033,25 @@ export default function AdminPortal() {
       duration: durStr || newDestForm.duration || '',
       car_prices: carPrices
     };
-    saveRouteToMySQL(created).catch(() => {});
-    setDestinations([...destinations.filter(d => d && d.pickup && d.dropoff), created]);
+
+    try {
+      await saveRouteToMySQL(created);
+    } catch (err) {
+      console.warn("Save route MySQL error:", err);
+    }
+
+    const updated = [...destinations.filter(d => d && d.pickup && d.dropoff), created];
+    setDestinations(updated);
+    safeStorageSetItem('cabsy_destinations', updated);
+    try {
+      localStorage.setItem('cabsy_routes', JSON.stringify(updated));
+    } catch(e) {}
+    window.dispatchEvent(new CustomEvent('EMPERIAL CABS_destinations_updated', { detail: updated }));
     setNewDestForm({ name: '', pickup: places[0] || '', dropoff: places[1] || '', price: '', hours: '', mins: '', duration: '', car_prices: {} });
     setAddDestModal(false);
   };
 
-  const handleEditDestSubmit = (e) => {
+  const handleEditDestSubmit = async (e) => {
     e.preventDefault();
     if (!editDestModal.destination) return;
     const durStr = formatDurationHrMin(editDestModal.destination.hours, editDestModal.destination.mins);
@@ -1077,15 +1068,54 @@ export default function AdminPortal() {
       duration: durStr || editDestModal.destination.duration || '',
       car_prices: carPrices
     };
-    saveRouteToMySQL(updatedDest).catch(() => {});
-    setDestinations(destinations.map(d => d.id === updatedDest.id ? updatedDest : d));
+
+    try {
+      await saveRouteToMySQL(updatedDest);
+    } catch (err) {
+      console.warn("Edit route MySQL error:", err);
+    }
+
+    const updated = destinations.map(d => d.id === updatedDest.id ? updatedDest : d);
+    setDestinations(updated);
+    safeStorageSetItem('cabsy_destinations', updated);
+    try {
+      localStorage.setItem('cabsy_routes', JSON.stringify(updated));
+    } catch(e) {}
+    window.dispatchEvent(new CustomEvent('EMPERIAL CABS_destinations_updated', { detail: updated }));
     setEditDestModal({ open: false, destination: null });
   };
 
-  const handleDeleteDest = (id) => {
+  const handleDeleteDest = async (id) => {
     if (window.confirm("Are you sure you want to remove this route destination?")) {
-      deleteRouteFromMySQL(id).catch(() => {});
-      setDestinations(destinations.filter(d => d.id !== id));
+      try {
+        await deleteRouteFromMySQL(id);
+      } catch (err) {
+        console.warn("Delete route MySQL error:", err);
+      }
+      const updated = destinations.filter(d => d.id !== id);
+      setDestinations(updated);
+      safeStorageSetItem('cabsy_destinations', updated);
+      try {
+        localStorage.setItem('cabsy_routes', JSON.stringify(updated));
+      } catch(e) {}
+      window.dispatchEvent(new CustomEvent('EMPERIAL CABS_destinations_updated', { detail: updated }));
+    }
+  };
+
+  const handleClearAllRoutes = async () => {
+    if (window.confirm("WARNING: Are you sure you want to delete ALL routes? This will permanently delete all routes from the database so you can start completely fresh.")) {
+      try {
+        await clearAllRoutesFromMySQL();
+      } catch (err) {
+        console.warn("Clear all routes MySQL error:", err);
+      }
+      setDestinations([]);
+      safeStorageSetItem('cabsy_destinations', []);
+      try {
+        localStorage.setItem('cabsy_routes', JSON.stringify([]));
+      } catch(e) {}
+      window.dispatchEvent(new CustomEvent('EMPERIAL CABS_destinations_updated', { detail: [] }));
+      alert("All routes have been deleted from the database. You now have a clean slate to add fresh routes.");
     }
   };
 
@@ -1237,10 +1267,17 @@ export default function AdminPortal() {
     });
 
     if (batchToPersist.length > 0) {
-      saveRoutesBatchToMySQL(batchToPersist).catch(() => {});
+      saveRoutesBatchToMySQL(batchToPersist).catch(err => {
+        console.warn("Batch save routes MySQL error:", err);
+      });
     }
 
     setDestinations(updatedList);
+    safeStorageSetItem('cabsy_destinations', updatedList);
+    try {
+      localStorage.setItem('cabsy_routes', JSON.stringify(updatedList));
+    } catch(e) {}
+    window.dispatchEvent(new CustomEvent('EMPERIAL CABS_destinations_updated', { detail: updatedList }));
     setBatchMatrixModal({ open: false, originPlace: '', rates: {} });
   };
 
@@ -3485,6 +3522,16 @@ export default function AdminPortal() {
                   >
                     <Sparkles size={14} /> Batch Edit Rates
                   </button>
+                  {destinations.length > 0 && (
+                    <button 
+                      className="btn btn-outline btn-sm flex align-center gap-1"
+                      style={{ borderColor: '#EF4444', color: '#B91C1C', fontWeight: '800' }}
+                      onClick={handleClearAllRoutes}
+                      title="Permanently remove all routes from the database"
+                    >
+                      <Trash2 size={14} /> Clear All Routes
+                    </button>
+                  )}
                   <span className="pill-badge-sm font-bold">{destinations.length} Active Routes</span>
                 </div>
               </div>
@@ -3533,6 +3580,13 @@ export default function AdminPortal() {
                     </tr>
                   </thead>
                   <tbody>
+                    {pagedDestinations.length === 0 && (
+                      <tr>
+                        <td colSpan="6" style={{ textAlign: 'center', padding: '36px', color: '#64748B' }}>
+                          No routes configured yet. Add your first route using "Add New Route" or "Batch Edit Rates".
+                        </td>
+                      </tr>
+                    )}
                     {pagedDestinations.map(dest => (
                       <tr key={dest.id}>
                         <td><strong>{dest.id}</strong></td>
@@ -3600,6 +3654,11 @@ export default function AdminPortal() {
 
               {/* HOSTINGER ALIGNED MOBILE CARDS FOR DESTINATIONS & FIXED PRICING */}
               <div className="admin-mobile-card-list">
+                {pagedDestinations.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '32px 16px', color: '#64748B', background: '#F8FAFC', borderRadius: '12px', margin: '16px' }}>
+                    No routes configured yet. Add your first route using "Add New Route" or "Batch Edit Rates".
+                  </div>
+                )}
                 {pagedDestinations.map(dest => (
                   <div key={dest.id} className="hostinger-admin-card">
                     <div className="hostinger-card-top">

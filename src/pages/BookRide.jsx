@@ -122,7 +122,7 @@ export default function BookRide() {
       }).catch(() => {});
 
       loadAllRoutesFromMySQL().then(fetchedRoutes => {
-        if (Array.isArray(fetchedRoutes)) {
+        if (fetchedRoutes !== null && Array.isArray(fetchedRoutes)) {
           const formatted = fetchedRoutes.map(r => ({
             id: r.id,
             name: `${r.pickup} → ${r.dropoff}`,
@@ -134,6 +134,9 @@ export default function BookRide() {
           }));
           setDestinations(formatted);
           safeStorageSetItem('cabsy_destinations', formatted);
+          try {
+            localStorage.setItem('cabsy_routes', JSON.stringify(formatted));
+          } catch(e) {}
         }
       }).catch(() => {});
     };

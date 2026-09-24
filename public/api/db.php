@@ -536,6 +536,11 @@ switch ($action) {
         echo json_encode(['success' => true]);
         break;
 
+    case 'clearAllRoutes':
+        $pdo->exec("DELETE FROM routes");
+        echo json_encode(['success' => true]);
+        break;
+
     case 'getDrivers':
         $stmt = $pdo->query("SELECT * FROM drivers ORDER BY id ASC");
         $rows = $stmt->fetchAll();

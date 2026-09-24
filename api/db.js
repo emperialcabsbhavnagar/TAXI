@@ -614,6 +614,11 @@ export async function handleMySQLRequest(action, data = {}) {
         return { success: true };
       }
 
+      case 'clearAllRoutes': {
+        await executeQuery('DELETE FROM routes');
+        return { success: true };
+      }
+
       case 'getDrivers': {
         const [rows] = await executeQuery('SELECT * FROM drivers ORDER BY id ASC');
         return { success: true, drivers: rows || [] };

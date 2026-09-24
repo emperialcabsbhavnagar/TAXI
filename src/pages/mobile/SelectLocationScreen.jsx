@@ -133,7 +133,7 @@ export default function SelectLocationScreen({
     }).catch(() => {});
 
     loadAllRoutesFromMySQL().then(mysqlRoutes => {
-      if (Array.isArray(mysqlRoutes) && mysqlRoutes.length > 0) {
+      if (mysqlRoutes !== null && Array.isArray(mysqlRoutes)) {
         const formattedRoutes = mysqlRoutes.map(r => ({
           id: r.id,
           name: `${r.pickup} → ${r.dropoff}`,
