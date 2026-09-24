@@ -557,29 +557,14 @@ export default function SelectLocationScreen({
                       }}
                       onClick={() => handleSelectRoute(route)}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          {route.isHot || route.tag === 'HOT ROUTE' ? (
-                            <span style={{ fontSize: '11px', fontWeight: '800', background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', padding: '3px 8px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                              <Flame size={12} color="#DC2626" /> HOT ROUTE
-                            </span>
-                          ) : route.isPopular || route.tag === 'POPULAR' ? (
-                            <span style={{ fontSize: '11px', fontWeight: '800', background: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE', padding: '3px 8px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                              <TrendingUp size={12} color="#2563EB" /> POPULAR
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: '11px', fontWeight: '800', background: isSelected ? '#D1FAE5' : '#F1F5F9', color: isSelected ? '#059669' : '#475569', padding: '4px 10px', borderRadius: '12px' }}>
-                              DIRECT ROUTE
-                            </span>
-                          )}
-                        </div>
-                        {isSelected && (
+                      {isSelected && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: '8px' }}>
                           <span style={{ fontSize: '12px', fontWeight: '800', color: '#059669', display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <CheckCircle size={14} color="#10B981" />
                             Selected
                           </span>
-                        )}
-                      </div>
+                        </div>
+                      )}
                       <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
                           <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#22C55E' }}></span>
