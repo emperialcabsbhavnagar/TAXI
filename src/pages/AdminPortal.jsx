@@ -745,6 +745,65 @@ export default function AdminPortal() {
 
   const [matrixVehicleFilter, setMatrixVehicleFilter] = useState('');
 
+  const activeVehicles = (vehicles && vehicles.length > 0)
+    ? vehicles.filter(v => v.status !== 'Inactive')
+    : INITIAL_VEHICLES;
+
+  // High-Scale Memoized Filtering & Pagination (Unconditional Top-Level Hooks)
+  const uniqueVehicleModels = useMemo(() => {
+    const seen = new Set();
+    return activeVehicles.filter(v => {
+      const key = v.name?.trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [activeVehicles]);
+
+  const filteredDestinations = useMemo(() => {
+    if (!destSearchQuery.trim()) return destinations;
+    const q = destSearchQuery.toLowerCase().trim();
+    return destinations.filter(d => 
+      (d.pickup && d.pickup.toLowerCase().includes(q)) ||
+      (d.dropoff && d.dropoff.toLowerCase().includes(q)) ||
+      (d.id && String(d.id).toLowerCase().includes(q))
+    );
+  }, [destinations, destSearchQuery]);
+
+  const totalDestPages = Math.max(1, Math.ceil(filteredDestinations.length / destPageSize));
+  const pagedDestinations = useMemo(() => {
+    const start = (destCurrentPage - 1) * destPageSize;
+    return filteredDestinations.slice(start, start + destPageSize);
+  }, [filteredDestinations, destCurrentPage, destPageSize]);
+
+  const filteredVehicles = useMemo(() => {
+    if (!vehicleSearchQuery.trim()) return vehicles;
+    const q = vehicleSearchQuery.toLowerCase().trim();
+    return vehicles.filter(v => 
+      (v.name && v.name.toLowerCase().includes(q)) ||
+      (v.status && v.status.toLowerCase().includes(q)) ||
+      (v.id && String(v.id).toLowerCase().includes(q)) ||
+      (v.passengers && v.passengers.toLowerCase().includes(q))
+    );
+  }, [vehicles, vehicleSearchQuery]);
+
+  const totalVehiclePages = Math.max(1, Math.ceil(filteredVehicles.length / vehiclePageSize));
+  const pagedVehicles = useMemo(() => {
+    const start = (vehicleCurrentPage - 1) * vehiclePageSize;
+    return filteredVehicles.slice(start, start + vehiclePageSize);
+  }, [filteredVehicles, vehicleCurrentPage, vehiclePageSize]);
+
+  const matrixVehicles = useMemo(() => {
+    if (!matrixVehicleFilter.trim()) {
+      return activeVehicles.length > 15 ? uniqueVehicleModels : activeVehicles;
+    }
+    const q = matrixVehicleFilter.toLowerCase().trim();
+    return activeVehicles.filter(v => 
+      v.name?.toLowerCase().includes(q) || 
+      v.id?.toLowerCase().includes(q)
+    );
+  }, [activeVehicles, uniqueVehicleModels, matrixVehicleFilter]);
+
   const compressImage = (file, maxWidth = 800, maxHeight = 500, quality = 0.82) => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -1839,65 +1898,6 @@ export default function AdminPortal() {
       </div>
     );
   }
-
-  const activeVehicles = (vehicles && vehicles.length > 0)
-    ? vehicles.filter(v => v.status !== 'Inactive')
-    : INITIAL_VEHICLES;
-
-  // High-Scale Memoized Filtering & Pagination
-  const uniqueVehicleModels = useMemo(() => {
-    const seen = new Set();
-    return activeVehicles.filter(v => {
-      const key = v.name?.trim().toLowerCase();
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  }, [activeVehicles]);
-
-  const filteredDestinations = useMemo(() => {
-    if (!destSearchQuery.trim()) return destinations;
-    const q = destSearchQuery.toLowerCase().trim();
-    return destinations.filter(d => 
-      (d.pickup && d.pickup.toLowerCase().includes(q)) ||
-      (d.dropoff && d.dropoff.toLowerCase().includes(q)) ||
-      (d.id && String(d.id).toLowerCase().includes(q))
-    );
-  }, [destinations, destSearchQuery]);
-
-  const totalDestPages = Math.max(1, Math.ceil(filteredDestinations.length / destPageSize));
-  const pagedDestinations = useMemo(() => {
-    const start = (destCurrentPage - 1) * destPageSize;
-    return filteredDestinations.slice(start, start + destPageSize);
-  }, [filteredDestinations, destCurrentPage, destPageSize]);
-
-  const filteredVehicles = useMemo(() => {
-    if (!vehicleSearchQuery.trim()) return vehicles;
-    const q = vehicleSearchQuery.toLowerCase().trim();
-    return vehicles.filter(v => 
-      (v.name && v.name.toLowerCase().includes(q)) ||
-      (v.status && v.status.toLowerCase().includes(q)) ||
-      (v.id && String(v.id).toLowerCase().includes(q)) ||
-      (v.passengers && v.passengers.toLowerCase().includes(q))
-    );
-  }, [vehicles, vehicleSearchQuery]);
-
-  const totalVehiclePages = Math.max(1, Math.ceil(filteredVehicles.length / vehiclePageSize));
-  const pagedVehicles = useMemo(() => {
-    const start = (vehicleCurrentPage - 1) * vehiclePageSize;
-    return filteredVehicles.slice(start, start + vehiclePageSize);
-  }, [filteredVehicles, vehicleCurrentPage, vehiclePageSize]);
-
-  const matrixVehicles = useMemo(() => {
-    if (!matrixVehicleFilter.trim()) {
-      return activeVehicles.length > 15 ? uniqueVehicleModels : activeVehicles;
-    }
-    const q = matrixVehicleFilter.toLowerCase().trim();
-    return activeVehicles.filter(v => 
-      v.name?.toLowerCase().includes(q) || 
-      v.id?.toLowerCase().includes(q)
-    );
-  }, [activeVehicles, uniqueVehicleModels, matrixVehicleFilter]);
 
   // AUTHENTICATED: RENDER MAIN ADMIN DASHBOARD
   return (
