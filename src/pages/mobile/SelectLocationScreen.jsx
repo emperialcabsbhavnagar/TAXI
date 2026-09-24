@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { getBestLiveLocation } from '../../services/liveLocationService';
 import { getCoordsForPlace, calculateDistanceKm } from '../../utils/locationCoords';
-import { loadAllPlacesFromMySQL, loadAllRoutesFromMySQL } from '../../services/mysqlService';
-import { Navigation, MapPin, ArrowLeft, ArrowRight, Compass, Sparkles, Calendar, Clock, Plus, Minus, CheckCircle, Car } from 'lucide-react';
+import { loadAllPlacesFromMySQL, loadAllRoutesFromMySQL, safeStorageGetItem } from '../../services/mysqlService';
+import { Navigation, MapPin, ArrowLeft, ArrowRight, Compass, Sparkles, Calendar, Clock, Plus, Minus, CheckCircle, Car, Flame, TrendingUp } from 'lucide-react';
 
 const DEFAULT_PLACES = [
   "Bhavnagar, Gujarat",
@@ -40,13 +40,22 @@ const ALL_CITIES_AND_VILLAGES = [
   "Petlad", "Khambhat", "Borsad", "Dabhoi", "Karjan", "Vyara", "Bardoli", "Ankleshwar"
 ];
 
-const DEFAULT_ROUTES = [
-  { id: 'DEST-101', name: 'Bhavnagar ➔ Railway Station', pickup: 'Bhavnagar, Gujarat', dropoff: 'Bhavnagar Railway Station', price: 270, duration: '35 min' },
-  { id: 'DEST-102', name: 'Bhavnagar ➔ Ahmedabad Airport (AMD)', pickup: 'Bhavnagar, Gujarat', dropoff: 'Ahmedabad Airport (AMD)', price: 2625, duration: '3 hr 15 min' },
-  { id: 'DEST-103', name: 'Bhavnagar ➔ Vadodara Central Station', pickup: 'Bhavnagar, Gujarat', dropoff: 'Vadodara Central Railway Station', price: 1650, duration: '2 hr 10 min' },
-  { id: 'DEST-104', name: 'Bhavnagar ➔ SG Highway IT Park', pickup: 'Bhavnagar, Gujarat', dropoff: 'SG Highway IT Park', price: 2700, duration: '3 hr 30 min' },
-  { id: 'DEST-105', name: 'Bhavnagar ➔ Alkapuri Hub', pickup: 'Bhavnagar, Gujarat', dropoff: 'Alkapuri Commercial Hub', price: 1680, duration: '2 hr 15 min' },
-  { id: 'DEST-106', name: 'Bhavnagar ➔ Ghogha Circle & Beach', pickup: 'Bhavnagar, Gujarat', dropoff: 'Ghogha Circle & Beach', price: 180, duration: '25 min' }
+export const FAMOUS_HOT_ROUTES = [
+  { id: 'DEST-102', name: 'Bhavnagar → Ahmedabad Airport (AMD)', pickup: 'Bhavnagar, Gujarat', dropoff: 'Ahmedabad Airport (AMD)', distanceKm: 175, price: 2625, duration: '3 hr 15 min', tag: 'HOT ROUTE', isHot: true },
+  { id: 'DEST-103', name: 'Bhavnagar → Vadodara Central Station', pickup: 'Bhavnagar, Gujarat', dropoff: 'Vadodara Central Railway Station', distanceKm: 205, price: 1650, duration: '2 hr 10 min', tag: 'HOT ROUTE', isHot: true },
+  { id: 'DEST-108', name: 'Bhavnagar → Surat Textile Hub', pickup: 'Bhavnagar, Gujarat', dropoff: 'Surat Textile Hub', distanceKm: 340, price: 4500, duration: '5 hr 30 min', tag: 'HOT ROUTE', isHot: true },
+  { id: 'DEST-107', name: 'Bhavnagar → Mumbai Central Airport', pickup: 'Bhavnagar, Gujarat', dropoff: 'Mumbai Central Airport (BOM)', distanceKm: 610, price: 8100, duration: '10 hr 30 min', tag: 'HOT ROUTE', isHot: true },
+  { id: 'DEST-109', name: 'Bhavnagar → Rajkot Trikon Baug', pickup: 'Bhavnagar, Gujarat', dropoff: 'Rajkot Trikon Baug', distanceKm: 175, price: 2400, duration: '3 hr 10 min', tag: 'POPULAR', isPopular: true },
+  { id: 'DEST-110', name: 'Bhavnagar → Somnath Temple', pickup: 'Bhavnagar, Gujarat', dropoff: 'Somnath Temple', distanceKm: 260, price: 3900, duration: '5 hr 15 min', tag: 'HOT ROUTE', isHot: true },
+  { id: 'DEST-111', name: 'Bhavnagar → Palitana Temples', pickup: 'Bhavnagar, Gujarat', dropoff: 'Palitana Bus Stand', distanceKm: 55, price: 950, duration: '1 hr 15 min', tag: 'HOT ROUTE', isHot: true },
+  { id: 'DEST-104', name: 'Bhavnagar → SG Highway IT Park', pickup: 'Bhavnagar, Gujarat', dropoff: 'SG Highway IT Park', distanceKm: 185, price: 2700, duration: '3 hr 30 min', tag: 'POPULAR', isPopular: true },
+  { id: 'DEST-112', name: 'Bhavnagar → Dholera SIR Smart City', pickup: 'Bhavnagar, Gujarat', dropoff: 'Dholera SIR Smart City', distanceKm: 70, price: 1200, duration: '1 hr 10 min', tag: 'HOT ROUTE', isHot: true },
+  { id: 'DEST-113', name: 'Bhavnagar → Dwarka Jagat Mandir', pickup: 'Bhavnagar, Gujarat', dropoff: 'Dwarka Jagat Mandir', distanceKm: 390, price: 5800, duration: '7 hr 30 min', tag: 'POPULAR', isPopular: true },
+  { id: 'DEST-101', name: 'Bhavnagar → Railway Station', pickup: 'Bhavnagar, Gujarat', dropoff: 'Bhavnagar Railway Station', distanceKm: 8, price: 270, duration: '35 min', tag: 'LOCAL' },
+  { id: 'DEST-105', name: 'Bhavnagar → Alkapuri Hub', pickup: 'Bhavnagar, Gujarat', dropoff: 'Alkapuri Commercial Hub', distanceKm: 210, price: 1680, duration: '2 hr 15 min', tag: 'POPULAR', isPopular: true },
+  { id: 'DEST-106', name: 'Bhavnagar → Ghogha Circle & Beach', pickup: 'Bhavnagar, Gujarat', dropoff: 'Ghogha Circle & Beach', distanceKm: 22, price: 180, duration: '25 min', tag: 'LOCAL' },
+  { id: 'DEST-114', name: 'Ahmedabad Airport (AMD) → Bhavnagar', pickup: 'Ahmedabad Airport (AMD)', dropoff: 'Bhavnagar, Gujarat', distanceKm: 175, price: 2625, duration: '3 hr 15 min', tag: 'HOT ROUTE', isHot: true },
+  { id: 'DEST-115', name: 'Vadodara Central → Bhavnagar', pickup: 'Vadodara Central Railway Station', dropoff: 'Bhavnagar, Gujarat', distanceKm: 205, price: 1650, duration: '2 hr 10 min', tag: 'POPULAR', isPopular: true }
 ];
 
 export default function SelectLocationScreen({ 
@@ -67,8 +76,55 @@ export default function SelectLocationScreen({
   onSelectLocation, 
   onBack 
 }) {
-  const [places, setPlaces] = useState(DEFAULT_PLACES);
-  const [routes, setRoutes] = useState(DEFAULT_ROUTES);
+  const mergeFamousRoutes = (adminRoutes = []) => {
+    const list = Array.isArray(adminRoutes) && adminRoutes.length > 0 ? [...adminRoutes] : [];
+    FAMOUS_HOT_ROUTES.forEach(f => {
+      const match = list.find(r => 
+        r && r.pickup && r.dropoff &&
+        r.pickup.toLowerCase().trim() === f.pickup.toLowerCase().trim() &&
+        r.dropoff.toLowerCase().trim() === f.dropoff.toLowerCase().trim()
+      );
+      if (!match) {
+        list.push(f);
+      } else {
+        if (!match.tag && f.tag) match.tag = f.tag;
+        if (match.isHot === undefined && f.isHot) match.isHot = f.isHot;
+        if (match.isPopular === undefined && f.isPopular) match.isPopular = f.isPopular;
+      }
+    });
+    return list.sort((a, b) => {
+      const scoreA = (a.isHot || a.tag === 'HOT ROUTE') ? 2 : ((a.isPopular || a.tag === 'POPULAR') ? 1 : 0);
+      const scoreB = (b.isHot || b.tag === 'HOT ROUTE') ? 2 : ((b.isPopular || b.tag === 'POPULAR') ? 1 : 0);
+      return scoreB - scoreA;
+    });
+  };
+
+  const [places, setPlaces] = useState(() => {
+    try {
+      const savedPlaces = safeStorageGetItem('cabsy_places') || localStorage.getItem('cabsy_places');
+      if (savedPlaces) {
+        const parsed = typeof savedPlaces === 'string' ? JSON.parse(savedPlaces) : savedPlaces;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map(p => typeof p === 'string' ? p : (p.name || p.title || p.location));
+        }
+      }
+    } catch (e) {}
+    return DEFAULT_PLACES;
+  });
+
+  const [routes, setRoutes] = useState(() => {
+    try {
+      const savedDestinations = safeStorageGetItem('cabsy_destinations') || localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
+      if (savedDestinations) {
+        const parsed = typeof savedDestinations === 'string' ? JSON.parse(savedDestinations) : savedDestinations;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return mergeFamousRoutes(parsed.filter(r => r && r.pickup && r.dropoff));
+        }
+      }
+    } catch (e) {}
+    return FAMOUS_HOT_ROUTES;
+  });
+
   const [activeDropdown, setActiveDropdown] = useState(null); // 'pickup' | 'dropoff' | 'pickupCity' | 'dropoffCity' | null
   const [mode, setMode] = useState(isCustom ? 'custom' : 'standard'); // 'standard' | 'custom'
 
@@ -86,23 +142,23 @@ export default function SelectLocationScreen({
   const estTotalKm = Math.max(calculatedRoadKm > 10 ? calculatedRoadKm : 175, 300 * cDays);
   const avgKmPerDay = Math.round(estTotalKm / cDays);
 
-  // Load Admin back config
+  // Load Admin back config directly from storage & database
   const loadAdminConfig = () => {
     try {
-      const savedPlaces = localStorage.getItem('cabsy_places');
+      const savedPlaces = safeStorageGetItem('cabsy_places') || localStorage.getItem('cabsy_places');
       if (savedPlaces) {
-        const parsedP = JSON.parse(savedPlaces);
+        const parsedP = typeof savedPlaces === 'string' ? JSON.parse(savedPlaces) : savedPlaces;
         if (Array.isArray(parsedP) && parsedP.length > 0) {
           const cleanPlaces = parsedP.map(p => typeof p === 'string' ? p : (p.name || p.title || p.location));
           setPlaces(cleanPlaces);
         }
       }
 
-      const savedDestinations = localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
+      const savedDestinations = safeStorageGetItem('cabsy_destinations') || localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
       if (savedDestinations) {
-        const parsedD = JSON.parse(savedDestinations);
+        const parsedD = typeof savedDestinations === 'string' ? JSON.parse(savedDestinations) : savedDestinations;
         if (Array.isArray(parsedD) && parsedD.length > 0) {
-          setRoutes(parsedD);
+          setRoutes(mergeFamousRoutes(parsedD.filter(r => r && r.pickup && r.dropoff)));
         }
       }
     } catch (e) {
@@ -125,9 +181,10 @@ export default function SelectLocationScreen({
           pickup: r.pickup,
           dropoff: r.dropoff,
           price: Number(r.price) || 0,
-          duration: r.duration || ''
+          duration: r.duration || '',
+          car_prices: r.car_prices || {}
         }));
-        setRoutes(formattedRoutes);
+        setRoutes(mergeFamousRoutes(formattedRoutes));
         try {
           localStorage.setItem('cabsy_destinations', JSON.stringify(formattedRoutes));
           localStorage.setItem('cabsy_routes', JSON.stringify(formattedRoutes));
@@ -138,6 +195,22 @@ export default function SelectLocationScreen({
 
   useEffect(() => {
     loadAdminConfig();
+
+    const handleSync = (e) => {
+      if (e?.detail && Array.isArray(e.detail) && e.detail.length > 0) {
+        setRoutes(mergeFamousRoutes(e.detail.filter(r => r && r.pickup && r.dropoff)));
+      } else {
+        loadAdminConfig();
+      }
+    };
+
+    window.addEventListener('EMPERIAL CABS_destinations_updated', handleSync);
+    window.addEventListener('storage', handleSync);
+
+    return () => {
+      window.removeEventListener('EMPERIAL CABS_destinations_updated', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
   }, []);
 
   // Dynamic filter for cities & villages
@@ -193,13 +266,52 @@ export default function SelectLocationScreen({
   return (
     <div className="real-mobile-app" style={{ background: '#F8FAFC', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Header Bar */}
-      <div className="white-header-nav" style={{ boxShadow: '0 2px 10px rgba(0,0,0,0.03)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#FFFFFF' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button className="header-back-arrow" onClick={onBack} style={{ background: '#F1F5F9', border: 'none', borderRadius: '12px', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#0F172A' }}>
-            <ArrowLeft size={18} />
-          </button>
-          <h2 className="white-header-title" style={{ margin: 0, fontSize: '18px', fontWeight: '800', fontFamily: 'League Spartan, sans-serif' }}>Select Destination</h2>
-        </div>
+      <div 
+        style={{ 
+          boxShadow: '0 2px 10px rgba(0,0,0,0.03)', 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between', 
+          padding: '12px 16px', 
+          background: '#FFFFFF',
+          minHeight: '56px',
+          borderBottom: '1px solid #F1F5F9'
+        }}
+      >
+        <button 
+          type="button"
+          onClick={onBack} 
+          aria-label="Back"
+          style={{ 
+            background: '#F1F5F9', 
+            border: 'none', 
+            borderRadius: '12px', 
+            width: '38px', 
+            height: '38px', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            cursor: 'pointer', 
+            color: '#0F172A',
+            flexShrink: 0
+          }}
+        >
+          <ArrowLeft size={18} />
+        </button>
+        <h2 
+          style={{ 
+            margin: 0, 
+            fontSize: '18px', 
+            fontWeight: '800', 
+            fontFamily: 'League Spartan, sans-serif',
+            color: '#0F172A',
+            textAlign: 'center',
+            flex: 1
+          }}
+        >
+          Select Destination
+        </h2>
+        <div style={{ width: '38px', height: '38px', flexShrink: 0 }} aria-hidden="true" />
       </div>
 
       <div className="mobile-screen-body" style={{ padding: '16px 20px 110px 20px', flex: 1 }}>
@@ -240,7 +352,7 @@ export default function SelectLocationScreen({
             }}
           >
             <Car size={16} color={mode === 'standard' ? '#10B981' : '#64748B'} />
-            <span>Point-to-Point</span>
+            <span>One Way</span>
           </button>
 
           <button
@@ -429,9 +541,6 @@ export default function SelectLocationScreen({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {routes.map((route, idx) => {
                   const isSelected = (pickupLoc === route.pickup && dropoffLoc === route.dropoff);
-                  const estFare = (route.price !== undefined && route.price !== null && route.price !== '') 
-                    ? Number(route.price) 
-                    : Math.round((Number(route.distanceKm) || 15) * 15);
 
                   return (
                     <div 
@@ -449,15 +558,27 @@ export default function SelectLocationScreen({
                       onClick={() => handleSelectRoute(route)}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                        <span style={{ fontSize: '11px', fontWeight: '800', background: isSelected ? '#D1FAE5' : '#F1F5F9', color: isSelected ? '#059669' : '#475569', padding: '4px 10px', borderRadius: '12px' }}>
-                          DIRECT ROUTE
-                        </span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          {route.duration && (
-                            <span style={{ fontSize: '12px', fontWeight: '700', color: '#64748B' }}>⏱️ {route.duration}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {route.isHot || route.tag === 'HOT ROUTE' ? (
+                            <span style={{ fontSize: '11px', fontWeight: '800', background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', padding: '3px 8px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <Flame size={12} color="#DC2626" /> HOT ROUTE
+                            </span>
+                          ) : route.isPopular || route.tag === 'POPULAR' ? (
+                            <span style={{ fontSize: '11px', fontWeight: '800', background: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE', padding: '3px 8px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <TrendingUp size={12} color="#2563EB" /> POPULAR
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '11px', fontWeight: '800', background: isSelected ? '#D1FAE5' : '#F1F5F9', color: isSelected ? '#059669' : '#475569', padding: '4px 10px', borderRadius: '12px' }}>
+                              DIRECT ROUTE
+                            </span>
                           )}
-                          <span style={{ fontFamily: 'League Spartan', fontSize: '18px', fontWeight: '800', color: '#22C55E' }}>₹{estFare.toLocaleString('en-IN')}</span>
                         </div>
+                        {isSelected && (
+                          <span style={{ fontSize: '12px', fontWeight: '800', color: '#059669', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <CheckCircle size={14} color="#10B981" />
+                            Selected
+                          </span>
+                        )}
                       </div>
                       <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>

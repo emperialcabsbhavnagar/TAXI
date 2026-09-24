@@ -205,13 +205,21 @@ const INITIAL_CUSTOMERS = [
 ];
 
 export const INITIAL_DESTINATIONS = [
-  { id: 'DEST-101', name: 'Bhavnagar → Railway Station', pickup: 'Bhavnagar, Gujarat', dropoff: 'Bhavnagar Railway Station', price: 270, duration: '35 min' },
-  { id: 'DEST-102', name: 'Bhavnagar → Ahmedabad Airport (AMD)', pickup: 'Bhavnagar, Gujarat', dropoff: 'Ahmedabad Airport (AMD)', price: 2625, duration: '3 hr 15 min' },
-  { id: 'DEST-103', name: 'Bhavnagar → Vadodara Central Station', pickup: 'Bhavnagar, Gujarat', dropoff: 'Vadodara Central Railway Station', price: 1650, duration: '2 hr 10 min' },
-  { id: 'DEST-104', name: 'Bhavnagar → SG Highway IT Park', pickup: 'Bhavnagar, Gujarat', dropoff: 'SG Highway IT Park', price: 2700, duration: '3 hr 30 min' },
-  { id: 'DEST-105', name: 'Bhavnagar → Alkapuri Hub', pickup: 'Bhavnagar, Gujarat', dropoff: 'Alkapuri Commercial Hub', price: 1680, duration: '2 hr 15 min' },
-  { id: 'DEST-106', name: 'Bhavnagar → Ghogha Circle & Beach', pickup: 'Bhavnagar, Gujarat', dropoff: 'Ghogha Circle & Beach', price: 180, duration: '25 min' },
-  { id: 'DEST-107', name: 'Bhavnagar → Mumbai Central Airport', pickup: 'Bhavnagar, Gujarat', dropoff: 'Mumbai Central Airport (BOM)', price: 8100, duration: '10 hr 30 min' }
+  { id: 'DEST-102', name: 'Bhavnagar → Ahmedabad Airport (AMD)', pickup: 'Bhavnagar, Gujarat', dropoff: 'Ahmedabad Airport (AMD)', distanceKm: 175, price: 2625, duration: '3 hr 15 min', tag: 'HOT ROUTE', isHot: true },
+  { id: 'DEST-103', name: 'Bhavnagar → Vadodara Central Station', pickup: 'Bhavnagar, Gujarat', dropoff: 'Vadodara Central Railway Station', distanceKm: 205, price: 1650, duration: '2 hr 10 min', tag: 'HOT ROUTE', isHot: true },
+  { id: 'DEST-108', name: 'Bhavnagar → Surat Textile Hub', pickup: 'Bhavnagar, Gujarat', dropoff: 'Surat Textile Hub', distanceKm: 340, price: 4500, duration: '5 hr 30 min', tag: 'HOT ROUTE', isHot: true },
+  { id: 'DEST-107', name: 'Bhavnagar → Mumbai Central Airport', pickup: 'Bhavnagar, Gujarat', dropoff: 'Mumbai Central Airport (BOM)', distanceKm: 610, price: 8100, duration: '10 hr 30 min', tag: 'HOT ROUTE', isHot: true },
+  { id: 'DEST-109', name: 'Bhavnagar → Rajkot Trikon Baug', pickup: 'Bhavnagar, Gujarat', dropoff: 'Rajkot Trikon Baug', distanceKm: 175, price: 2400, duration: '3 hr 10 min', tag: 'POPULAR', isPopular: true },
+  { id: 'DEST-110', name: 'Bhavnagar → Somnath Temple', pickup: 'Bhavnagar, Gujarat', dropoff: 'Somnath Temple', distanceKm: 260, price: 3900, duration: '5 hr 15 min', tag: 'HOT ROUTE', isHot: true },
+  { id: 'DEST-111', name: 'Bhavnagar → Palitana Temples', pickup: 'Bhavnagar, Gujarat', dropoff: 'Palitana Bus Stand', distanceKm: 55, price: 950, duration: '1 hr 15 min', tag: 'HOT ROUTE', isHot: true },
+  { id: 'DEST-104', name: 'Bhavnagar → SG Highway IT Park', pickup: 'Bhavnagar, Gujarat', dropoff: 'SG Highway IT Park', distanceKm: 185, price: 2700, duration: '3 hr 30 min', tag: 'POPULAR', isPopular: true },
+  { id: 'DEST-112', name: 'Bhavnagar → Dholera SIR Smart City', pickup: 'Bhavnagar, Gujarat', dropoff: 'Dholera SIR Smart City', distanceKm: 70, price: 1200, duration: '1 hr 10 min', tag: 'HOT ROUTE', isHot: true },
+  { id: 'DEST-113', name: 'Bhavnagar → Dwarka Jagat Mandir', pickup: 'Bhavnagar, Gujarat', dropoff: 'Dwarka Jagat Mandir', distanceKm: 390, price: 5800, duration: '7 hr 30 min', tag: 'POPULAR', isPopular: true },
+  { id: 'DEST-101', name: 'Bhavnagar → Railway Station', pickup: 'Bhavnagar, Gujarat', dropoff: 'Bhavnagar Railway Station', distanceKm: 8, price: 270, duration: '35 min', tag: 'LOCAL' },
+  { id: 'DEST-105', name: 'Bhavnagar → Alkapuri Hub', pickup: 'Bhavnagar, Gujarat', dropoff: 'Alkapuri Commercial Hub', distanceKm: 210, price: 1680, duration: '2 hr 15 min', tag: 'POPULAR', isPopular: true },
+  { id: 'DEST-106', name: 'Bhavnagar → Ghogha Circle & Beach', pickup: 'Bhavnagar, Gujarat', dropoff: 'Ghogha Circle & Beach', distanceKm: 22, price: 180, duration: '25 min', tag: 'LOCAL' },
+  { id: 'DEST-114', name: 'Ahmedabad Airport (AMD) → Bhavnagar', pickup: 'Ahmedabad Airport (AMD)', dropoff: 'Bhavnagar, Gujarat', distanceKm: 175, price: 2625, duration: '3 hr 15 min', tag: 'HOT ROUTE', isHot: true },
+  { id: 'DEST-115', name: 'Vadodara Central → Bhavnagar', pickup: 'Vadodara Central Railway Station', dropoff: 'Bhavnagar, Gujarat', distanceKm: 205, price: 1650, duration: '2 hr 10 min', tag: 'POPULAR', isPopular: true }
 ];
 
 export const parseDurationHrMin = (str) => {
