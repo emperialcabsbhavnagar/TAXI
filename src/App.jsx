@@ -81,14 +81,14 @@ function MainLayout({ handleOpenBooking, isBookingOpen, handleCloseBooking, book
   const searchParams = new URLSearchParams(location.search);
   const isMobileQuery = searchParams.has('app') || searchParams.has('mobile') || searchParams.has('android') || searchParams.get('mode') === 'app' || searchParams.get('mode') === 'mobile' || searchParams.get('mode') === 'android';
 
-  // 1. Mobile App Mode (Triggered strictly by Native Capacitor APK, explicit mode=app, VITE_APP_MODE=android, or /app route)
-  if (!isWebSite && (isCapacitorNative || appMode === 'android' || appMode === 'app' || appMode === 'mobile' || isMobileDomain || isMobilePath || isMobileQuery)) {
-    return <MobileAppView platform={appMode || 'android'} />;
-  }
-
-  // 2. Admin Portal Route
+  // 1. Admin Portal Route (Always takes absolute priority on both desktop and mobile browsers)
   if (isAdmin) {
     return <AdminPortal />;
+  }
+
+  // 2. Mobile App Mode (Triggered strictly by Native Capacitor APK, explicit mode=app, VITE_APP_MODE=android, or /app route)
+  if (!isWebSite && (isCapacitorNative || appMode === 'android' || appMode === 'app' || appMode === 'mobile' || isMobileDomain || isMobilePath || isMobileQuery)) {
+    return <MobileAppView platform={appMode || 'android'} />;
   }
 
   // 3. Desktop Website (Default layout for main domain & web routes)
