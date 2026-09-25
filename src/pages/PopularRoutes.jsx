@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   GUJARAT_PRIMARY_CITIES, 
@@ -21,7 +21,6 @@ import './PopularRoutes.css';
 export default function PopularRoutes() {
   const [searchQuery, setSearchQuery] = useState('');
   const [dbRoutes, setDbRoutes] = useState([]);
-  const [allCities, setAllCities] = useState(GUJARAT_PRIMARY_CITIES);
 
   useEffect(() => {
     document.title = "Gujarat Taxi Routes & Fares Directory | EMPERIAL CABS — Outstation Cab Booking";
@@ -34,24 +33,6 @@ export default function PopularRoutes() {
     loadAllRoutesFromMySQL().then(routes => {
       if (Array.isArray(routes) && routes.length > 0) {
         setDbRoutes(routes);
-      }
-    }).catch(() => {});
-
-    // Load places from MySQL and merge any new cities added by admin
-    loadAllPlacesFromMySQL().then(places => {
-      if (Array.isArray(places) && places.length > 0) {
-        const existingSlugs = new Set(GUJARAT_PRIMARY_CITIES.map(c => c.slug));
-        const customCities = places
-          .filter(p => p && typeof p === 'string' && !existingSlugs.has(slugify(p)))
-          .map(p => ({
-            name: p,
-            slug: slugify(p),
-            district: 'Service Hub',
-            hub: 'Direct Fleet Coverage'
-          }));
-        if (customCities.length > 0) {
-          setAllCities(prev => [...prev, ...customCities]);
-        }
       }
     }).catch(() => {});
   }, []);
@@ -85,6 +66,28 @@ export default function PopularRoutes() {
         badge: 'Direct Route'
       };
     });
+
+  // Derive only cities that have active routes configured in MySQL
+  const activeCitiesList = useMemo(() => {
+    const cityMap = new Map();
+    allRoutesList.forEach(r => {
+      [r.from, r.to].forEach(cName => {
+        if (cName && typeof cName === 'string') {
+          const s = slugify(cName);
+          if (!cityMap.has(s)) {
+            const foundObj = GUJARAT_PRIMARY_CITIES.find(g => slugify(g.name) === s || g.slug === s);
+            cityMap.set(s, {
+              name: cName,
+              slug: s,
+              district: foundObj ? foundObj.district : 'Service Hub',
+              hub: foundObj ? foundObj.hub : 'Direct Fleet Hub'
+            });
+          }
+        }
+      });
+    });
+    return Array.from(cityMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [allRoutesList]);
 
   // Filter routes based on user search query
   const filteredRoutes = allRoutesList.filter(r => {
@@ -226,20 +229,30 @@ export default function PopularRoutes() {
         </div>
       </section>
 
-      {/* GUJARAT CITY HUBS (LOCAL TAXI DIRECTORY) */}
+      {/* GUJARAT CITY HUBS (LOCAL TAXI DIRECTORY - DYNAMICALLY TIED TO ACTIVE ROUTES) */}
       <section className="section city-directory-section">
         <div className="container">
           <div className="section-header text-center">
             <span className="section-badge">Regional Coverage</span>
-            <h2>Explore Taxi Services by Gujarat City & District</h2>
+            <h2>Explore Taxi Services by Active City Hubs</h2>
             <p className="section-desc">
-              Dedicated 24/7 cab operations and local fleet dispatch centers across Gujarat.
+              Dedicated 24/7 cab operations and verified fleet hubs across our active route network.
             </p>
           </div>
 
-          <div className="cities-directory-grid">
-            {allCities.map((city, i) => {
-              return (
+          {activeCitiesList.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '36px 16px', background: '#F8FAFC', borderRadius: '16px', border: '1.5px dashed #CBD5E1', maxWidth: '580px', margin: '0 auto' }}>
+              <MapPin size={28} color="#94A3B8" style={{ marginBottom: '8px' }} />
+              <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1E293B', marginBottom: '6px' }}>
+                City Hubs Synchronized to Active Routes
+              </h3>
+              <p style={{ fontSize: '13px', color: '#64748B', margin: 0 }}>
+                Regional service hubs are automatically displayed here as direct routes are scheduled by the dispatch administrator.
+              </p>
+            </div>
+          ) : (
+            <div className="cities-directory-grid">
+              {activeCitiesList.map((city, i) => (
                 <Link key={i} to={`/taxi-service-in-${city.slug}`} className="city-directory-pill">
                   <div className="city-pill-icon"><MapPin size={16} /></div>
                   <div className="city-pill-text">
@@ -248,9 +261,9 @@ export default function PopularRoutes() {
                   </div>
                   <ChevronRight size={16} className="city-arrow" />
                 </Link>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
     </div>

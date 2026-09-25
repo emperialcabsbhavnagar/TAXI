@@ -140,9 +140,31 @@ export default function CityHubPage({ onOpenBooking }) {
 
   const topOutboundDestinations = dbRoutes.filter(r => 
     r && r.pickup && r.dropoff && 
+    (Number(r.price) > 0 || (r.car_prices && Object.values(r.car_prices).some(v => Number(v) > 0))) &&
     (r.pickup.toLowerCase().trim() === cityName.toLowerCase().trim() || 
-     r.pickup.toLowerCase().includes(cityName.toLowerCase().trim()))
+     r.pickup.toLowerCase().includes(cityName.toLowerCase().trim()) ||
+     r.dropoff.toLowerCase().trim() === cityName.toLowerCase().trim() ||
+     r.dropoff.toLowerCase().includes(cityName.toLowerCase().trim()))
   );
+
+  useEffect(() => {
+    let robotsMeta = document.querySelector('meta[name="robots"]');
+    if (!robotsMeta) {
+      robotsMeta = document.createElement('meta');
+      robotsMeta.setAttribute('name', 'robots');
+      document.head.appendChild(robotsMeta);
+    }
+
+    if (topOutboundDestinations.length === 0) {
+      robotsMeta.setAttribute('content', 'noindex, nofollow');
+    } else {
+      robotsMeta.setAttribute('content', 'index, follow');
+    }
+
+    return () => {
+      robotsMeta.setAttribute('content', 'index, follow');
+    };
+  }, [topOutboundDestinations.length]);
 
   const cityFaqs = [
     {

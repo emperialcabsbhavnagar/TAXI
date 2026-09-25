@@ -192,14 +192,14 @@ export default function SelectLocationScreen({
     return filtered.length > 0 ? filtered : [];
   };
 
-  // Dynamic filter for standard places
+  // Dynamic filter for standard places strictly based on active routes
   const getFilteredPlaces = (query) => {
-    if (!query || query.trim() === '') return places;
+    const activeRoutePlaces = Array.from(new Set(
+      routes.flatMap(r => [r.pickup, r.dropoff].filter(Boolean))
+    ));
+    if (!query || query.trim() === '') return activeRoutePlaces;
     const q = query.toLowerCase().trim();
-    const filtered = places.filter(p => p.toLowerCase().includes(q));
-    if (filtered.length > 0) return filtered;
-    // Fallback search in ALL_CITIES_AND_VILLAGES
-    return ALL_CITIES_AND_VILLAGES.filter(c => c.toLowerCase().includes(q));
+    return activeRoutePlaces.filter(p => p.toLowerCase().includes(q));
   };
 
   const handleSelectRoute = (route) => {
@@ -323,7 +323,7 @@ export default function SelectLocationScreen({
             }}
           >
             <Car size={16} color={mode === 'standard' ? '#10B981' : '#64748B'} />
-            <span>One Way</span>
+            <span>One Way Trip</span>
           </button>
 
           <button
@@ -351,7 +351,7 @@ export default function SelectLocationScreen({
             }}
           >
             <Sparkles size={16} color={mode === 'custom' ? '#10B981' : '#64748B'} />
-            <span>Custom Trip</span>
+            <span>Round Trip</span>
           </button>
         </div>
 
@@ -618,12 +618,12 @@ export default function SelectLocationScreen({
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
                 <span style={{ background: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0', padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: '800', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                  ✨ Multi-City Custom Trip
+                  Round Trip Journey
                 </span>
                 <Sparkles size={20} color="#10B981" />
               </div>
               <h3 style={{ margin: '0 0 6px 0', fontFamily: 'League Spartan', fontSize: '20px', fontWeight: '800', color: '#0F172A', lineHeight: 1.2 }}>
-                Custom Outstation & Multi-Day Rental
+                Round Trip & Multi-City Tour
               </h3>
               <p style={{ margin: 0, fontSize: '13px', color: '#64748B', lineHeight: 1.4 }}>
                 Specify your exact pickup & dropoff cities, villages, door-to-door locations, and number of days.

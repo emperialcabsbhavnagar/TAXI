@@ -42,6 +42,112 @@ $input = json_decode(file_get_contents('php://input'), true) ?: [];
 $action = $input['action'] ?? ($_GET['action'] ?? 'init');
 $data = $input['data'] ?? $input;
 
+// Helper functions for Dynamic SEO & Sitemap Sync
+function slugifyText($text) {
+    $text = preg_replace('~[^\pL\d]+~u', '-', $text);
+    $text = iconv('utf-8', 'us-ascii//TRANSLIT', $text);
+    $text = preg_replace('~[^-\w]+~', '', $text);
+    $text = trim($text, '-');
+    $text = preg_replace('~-+~', '-', $text);
+    $text = strtolower($text);
+    return empty($text) ? 'n-a' : $text;
+}
+
+function regenerateDynamicSitemapFiles($pdo) {
+    try {
+        $stmt = $pdo->query("SELECT pickup, dropoff, price, car_prices FROM routes ORDER BY id ASC");
+        $routes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        $activeRoutes = [];
+        $activeCities = [];
+        $today = date('Y-m-d');
+        
+        foreach ($routes as $r) {
+            $p = trim($r['pickup'] ?? '');
+            $d = trim($r['dropoff'] ?? '');
+            if (empty($p) || empty($d)) continue;
+            
+            $priceVal = floatval($r['price'] ?? 0);
+            $hasPositivePrice = ($priceVal > 0);
+            if (!$hasPositivePrice && !empty($r['car_prices'])) {
+                $cp = is_array($r['car_prices']) ? $r['car_prices'] : json_decode($r['car_prices'], true);
+                if (is_array($cp)) {
+                    foreach ($cp as $v) {
+                        if (floatval($v) > 0) {
+                            $hasPositivePrice = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if ($hasPositivePrice) {
+                $activeRoutes[] = ['pickup' => $p, 'dropoff' => $d];
+                $activeCities[slugifyText($p)] = $p;
+                $activeCities[slugifyText($d)] = $d;
+            }
+        }
+        
+        // 1. Build sitemap-routes.xml
+        $xmlRoutes = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+        $xmlRoutes .= '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
+        foreach ($activeRoutes as $ar) {
+            $slug = slugifyText($ar['pickup']) . '-to-' . slugifyText($ar['dropoff']);
+            $xmlRoutes .= "  <url>\n";
+            $xmlRoutes .= "    <loc>https://emperialcabs.com/taxi/{$slug}</loc>\n";
+            $xmlRoutes .= "    <lastmod>{$today}</lastmod>\n";
+            $xmlRoutes .= "    <changefreq>weekly</changefreq>\n";
+            $xmlRoutes .= "    <priority>0.85</priority>\n";
+            $xmlRoutes .= "  </url>\n";
+        }
+        $xmlRoutes .= '</urlset>';
+        
+        $routesFilePath = dirname(__DIR__) . '/sitemap-routes.xml';
+        @file_put_contents($routesFilePath, $xmlRoutes);
+        
+        // 2. Build sitemap.xml with core pages + only ACTIVE cities!
+        $xmlMain = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+        $xmlMain .= '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
+        $staticUrls = [
+            ['loc' => 'https://emperialcabs.com/', 'priority' => '1.0', 'freq' => 'daily'],
+            ['loc' => 'https://emperialcabs.com/book-ride', 'priority' => '0.95', 'freq' => 'daily'],
+            ['loc' => 'https://emperialcabs.com/routes', 'priority' => '0.90', 'freq' => 'daily'],
+            ['loc' => 'https://emperialcabs.com/services', 'priority' => '0.85', 'freq' => 'weekly'],
+            ['loc' => 'https://emperialcabs.com/about', 'priority' => '0.80', 'freq' => 'monthly'],
+            ['loc' => 'https://emperialcabs.com/contact', 'priority' => '0.80', 'freq' => 'monthly'],
+            ['loc' => 'https://emperialcabs.com/faq', 'priority' => '0.75', 'freq' => 'monthly'],
+            ['loc' => 'https://emperialcabs.com/privacy', 'priority' => '0.50', 'freq' => 'yearly'],
+        ];
+        foreach ($staticUrls as $su) {
+            $xmlMain .= "  <url>\n";
+            $xmlMain .= "    <loc>{$su['loc']}</loc>\n";
+            $xmlMain .= "    <lastmod>{$today}</lastmod>\n";
+            $xmlMain .= "    <changefreq>{$su['freq']}</changefreq>\n";
+            $xmlMain .= "    <priority>{$su['priority']}</priority>\n";
+            $xmlMain .= "  </url>\n";
+        }
+        foreach ($activeCities as $cSlug => $cName) {
+            $xmlMain .= "  <url>\n";
+            $xmlMain .= "    <loc>https://emperialcabs.com/taxi-service-in-{$cSlug}</loc>\n";
+            $xmlMain .= "    <lastmod>{$today}</lastmod>\n";
+            $xmlMain .= "    <changefreq>weekly</changefreq>\n";
+            $xmlMain .= "    <priority>0.85</priority>\n";
+            $xmlMain .= "  </url>\n";
+        }
+        $xmlMain .= '</urlset>';
+        
+        $mainSitemapPath = dirname(__DIR__) . '/sitemap.xml';
+        @file_put_contents($mainSitemapPath, $xmlMain);
+        
+        return [
+            'routes_count' => count($activeRoutes),
+            'cities_count' => count($activeCities)
+        ];
+    } catch (Exception $e) {
+        return ['error' => $e->getMessage()];
+    }
+}
+
 switch ($action) {
     case 'init':
         // Ensure database tables exist ONLY on explicit init call
@@ -545,6 +651,7 @@ switch ($action) {
             ':duration' => $duration,
             ':car_prices' => $car_prices
         ]);
+        regenerateDynamicSitemapFiles($pdo);
         echo json_encode(['success' => true, 'id' => $id]);
         break;
 
@@ -603,6 +710,7 @@ switch ($action) {
                 }
             }
             $pdo->commit();
+            regenerateDynamicSitemapFiles($pdo);
             echo json_encode(['success' => true, 'count' => $count]);
         } catch (Exception $e) {
             if ($pdo->inTransaction()) {
@@ -626,12 +734,30 @@ switch ($action) {
             echo json_encode(['success' => false, 'error' => 'Missing route identification']);
             exit();
         }
+        regenerateDynamicSitemapFiles($pdo);
         echo json_encode(['success' => true]);
         break;
 
     case 'clearAllRoutes':
         $pdo->exec("DELETE FROM routes");
+        regenerateDynamicSitemapFiles($pdo);
         echo json_encode(['success' => true]);
+        break;
+
+    case 'regenerateSitemap':
+        $sitemapRes = regenerateDynamicSitemapFiles($pdo);
+        echo json_encode(['success' => true, 'sitemap' => $sitemapRes]);
+        break;
+
+    case 'sitemap_routes_xml':
+        header('Content-Type: application/xml; charset=utf-8');
+        $routesFilePath = dirname(__DIR__) . '/sitemap-routes.xml';
+        if (file_exists($routesFilePath)) {
+            readfile($routesFilePath);
+        } else {
+            echo '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>';
+        }
+        exit();
         break;
 
     case 'getDrivers':

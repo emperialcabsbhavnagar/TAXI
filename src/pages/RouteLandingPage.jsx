@@ -63,10 +63,31 @@ export default function RouteLandingPage({ onOpenBooking }) {
   const suvFare = isDirect ? Number(car_prices['CAR-102'] ?? car_prices['Maruti Ertiga'] ?? car_prices['Ertiga'] ?? Math.round(baseFare * 1.35)) : null;
   const luxuryFare = isDirect ? Number(car_prices['CAR-103'] ?? car_prices['Innova Crysta'] ?? car_prices['Toyota Innova Crysta'] ?? Math.round(baseFare * 1.75)) : null;
 
-  // Dynamic SEO Title, Description, and Structured Data
+  // Dynamic SEO Title, Description, Robots Meta and Structured Data
   useEffect(() => {
+    let robotsMeta = document.querySelector('meta[name="robots"]');
+    if (!robotsMeta) {
+      robotsMeta = document.createElement('meta');
+      robotsMeta.setAttribute('name', 'robots');
+      document.head.appendChild(robotsMeta);
+    }
+
+    if (!isDirect) {
+      // If route does not exist in MySQL or was deleted by Admin: tell Google to immediately DE-INDEX
+      document.title = `${from} to ${to} Route Not Available | EMPERIAL CABS`;
+      robotsMeta.setAttribute('content', 'noindex, nofollow');
+      const el = document.getElementById('route-json-ld');
+      if (el) el.remove();
+      return () => {
+        robotsMeta.setAttribute('content', 'index, follow');
+      };
+    }
+
+    // Active route: allow Google indexing
+    robotsMeta.setAttribute('content', 'index, follow');
+
     const pageTitle = `${from} to ${to} Taxi Service | Book One-Way & Round Trip Cab — EMPERIAL CABS`;
-    const pageDesc = isDirect && baseFare
+    const pageDesc = baseFare
       ? `Book verified AC cab from ${from} to ${to} starting at ₹${baseFare}. Zero hidden charges, clean cars & 24/7 doorstep pickup across Gujarat.`
       : `Book verified AC cab from ${from} to ${to}. Zero hidden charges, clean cars & 24/7 doorstep pickup across Gujarat.`;
     
@@ -116,7 +137,7 @@ export default function RouteLandingPage({ onOpenBooking }) {
           ],
           "offers": {
             "@type": "Offer",
-            "price": String(baseFare),
+            "price": String(baseFare || 0),
             "priceCurrency": "INR",
             "availability": "https://schema.org/InStock",
             "validFrom": "2026-01-01"
@@ -175,8 +196,9 @@ export default function RouteLandingPage({ onOpenBooking }) {
     return () => {
       const el = document.getElementById(schemaScriptId);
       if (el) el.remove();
+      robotsMeta.setAttribute('content', 'index, follow');
     };
-  }, [routeSlug, from, to, baseFare, distanceKm, duration, highway, suvFare]);
+  }, [routeSlug, from, to, isDirect, baseFare, distanceKm, duration, highway, suvFare]);
 
   // Direct 1-Click Booking
   const handleBookNow = () => {
@@ -186,6 +208,52 @@ export default function RouteLandingPage({ onOpenBooking }) {
       navigate(`/book-ride?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
     }
   };
+
+  // If route is not configured in MySQL or was deleted by Admin, render clean professional Unavailable state
+  if (!isDirect) {
+    return (
+      <div className="route-landing-page">
+        <section className="route-hero" style={{ padding: '60px 0 80px 0', minHeight: '60vh', display: 'flex', alignItems: 'center' }}>
+          <div className="container" style={{ textAlign: 'center', maxWidth: '700px', margin: '0 auto' }}>
+            <div className="route-breadcrumb" style={{ justifyContent: 'center', marginBottom: '20px' }}>
+              <Link to="/">Home</Link>
+              <ChevronRight size={14} />
+              <Link to="/routes">Gujarat Taxi Routes</Link>
+              <ChevronRight size={14} />
+              <span>{from} to {to}</span>
+            </div>
+
+            <div style={{ background: '#FFFFFF', padding: '40px 24px', borderRadius: '24px', border: '1px solid #E2E8F0', boxShadow: '0 4px 20px rgba(0,0,0,0.04)' }}>
+              <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: '#FEF3C7', color: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <MapPin size={30} />
+              </div>
+              <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#0F172A', marginBottom: '10px' }}>
+                {from} to {to} Route Not Currently Scheduled
+              </h1>
+              <p style={{ fontSize: '15px', color: '#64748B', lineHeight: '1.6', marginBottom: '26px' }}>
+                This direct route is currently not an active fixed route in our fleet schedule. You can explore all currently active direct routes, or book a custom round-trip journey with 24/7 doorstep pickup.
+              </p>
+
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                <Link to="/routes" className="btn-route-primary" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '12px 24px' }}>
+                  <span>Explore Active Routes</span>
+                  <ArrowRight size={16} />
+                </Link>
+                <Link to="/book-ride" className="btn-route-secondary" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '12px 24px' }}>
+                  <Sparkles size={16} />
+                  <span>Book Custom Journey</span>
+                </Link>
+              </div>
+
+              <div style={{ marginTop: '28px', paddingTop: '18px', borderTop: '1px solid #F1F5F9', fontSize: '13px', color: '#64748B' }}>
+                Have questions or need assistance? Call 24/7 Helpline: <a href="tel:+919876543210" style={{ color: '#0F172A', fontWeight: '700' }}>+91 98765 43210</a>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   const faqs = [
     {

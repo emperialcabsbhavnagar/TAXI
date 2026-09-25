@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import db from '../services/dbService';
 import { 
   MapPin, 
@@ -13,7 +13,7 @@ import {
   ChevronRight,
   Sparkles
 } from 'lucide-react';
-import { INITIAL_VEHICLES, INITIAL_PLACES } from './AdminPortal';
+import { INITIAL_VEHICLES } from './AdminPortal';
 import { loadAllVehiclesFromMySQL, loadAllPlacesFromMySQL, loadAllRoutesFromMySQL, getRoutePriceFromMySQL, safeStorageSetItem } from '../services/mysqlService';
 import './Pages.css';
 
@@ -37,12 +37,22 @@ const ALL_CITIES_AND_VILLAGES = [
   "Kodinar", "Una", "Keshod", "Manavadar", "Visavadar", "Bhanvad", "Khambhalia", "Okha", "Salaya"
 ];
 
+const isRoutePriced = (r) => {
+  if (!r || !r.pickup || !r.dropoff) return false;
+  const baseP = Number(r.price) || 0;
+  if (baseP > 0) return true;
+  if (r.car_prices && typeof r.car_prices === 'object') {
+    return Object.values(r.car_prices).some(v => Number(v) > 0);
+  }
+  return false;
+};
+
 export default function BookRide() {
   const [places, setPlaces] = useState([]);
   const [destinations, setDestinations] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   
-  // Trip Type State: 'one-way' (Point to Point) | 'round-trip' | 'custom-trip'
+  // Trip Type State: 'one-way' (One Way Trip) | 'custom-trip' (Round Trip)
   const [tripType, setTripType] = useState('one-way');
   const [noOfDays, setNoOfDays] = useState(1);
   const [returnDate, setReturnDate] = useState('');
@@ -50,7 +60,7 @@ export default function BookRide() {
   const [pickupLocation, setPickupLocation] = useState('');
   const [dropoffDestination, setDropoffDestination] = useState('');
 
-  // Custom Outstation Specific Fields (matching APK SelectLocationScreen)
+  // Round Trip Specific Fields (Custom Outstation & Multi-day)
   const [pickupCity, setPickupCity] = useState('Bhavnagar');
   const [dropoffCity, setDropoffCity] = useState('Ahmedabad');
   const [exactPickupAddress, setExactPickupAddress] = useState('');
@@ -70,28 +80,72 @@ export default function BookRide() {
 
   const [bookingSuccess, setBookingSuccess] = useState(null);
 
-  // Load places, destinations, and vehicles from Admin Portal storage
+  // Active routes strictly with valid positive pricing
+  const activeRoutes = useMemo(() => {
+    return (destinations || []).filter(isRoutePriced);
+  }, [destinations]);
+
+  // Only cities that have a configured active route can appear in From (Pick-up)
+  const availableFromCities = useMemo(() => {
+    const set = new Set();
+    activeRoutes.forEach(r => {
+      if (r.pickup) set.add(r.pickup.trim());
+      if (r.dropoff) set.add(r.dropoff.trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [activeRoutes]);
+
+  // Destination cities strictly connected to selected pickupLocation in activeRoutes
+  const availableToCities = useMemo(() => {
+    if (!pickupLocation) return [];
+    const pNorm = pickupLocation.toLowerCase().trim();
+    const set = new Set();
+    activeRoutes.forEach(r => {
+      const rp = (r.pickup || '').toLowerCase().trim();
+      const rd = (r.dropoff || '').toLowerCase().trim();
+      if (rp === pNorm && r.dropoff) {
+        set.add(r.dropoff.trim());
+      } else if (rd === pNorm && r.pickup) {
+        set.add(r.pickup.trim());
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [activeRoutes, pickupLocation]);
+
+  // Keep pickupLocation in sync with available routes
+  useEffect(() => {
+    if (tripType !== 'custom-trip') {
+      if (availableFromCities.length > 0) {
+        setPickupLocation(prev => {
+          if (prev && availableFromCities.includes(prev)) return prev;
+          return availableFromCities[0];
+        });
+      } else {
+        setPickupLocation('');
+      }
+    }
+  }, [availableFromCities, tripType]);
+
+  // Keep dropoffDestination in sync with available destination routes for that pickup
+  useEffect(() => {
+    if (tripType !== 'custom-trip') {
+      if (availableToCities.length > 0) {
+        setDropoffDestination(prev => {
+          if (prev && availableToCities.includes(prev)) return prev;
+          return availableToCities[0];
+        });
+      } else {
+        setDropoffDestination('');
+      }
+    }
+  }, [pickupLocation, availableToCities, tripType]);
+
+  // Load destinations and vehicles from Admin Portal storage & MySQL
   useEffect(() => {
     const loadDynamicData = () => {
-      const savedPlaces = localStorage.getItem('cabsy_places');
-      const parsedPlaces = savedPlaces ? JSON.parse(savedPlaces) : INITIAL_PLACES;
-      
-      const savedDest = localStorage.getItem('cabsy_destinations');
+      const savedDest = localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
       const parsedDest = savedDest ? JSON.parse(savedDest) : [];
       setDestinations(Array.isArray(parsedDest) ? parsedDest : []);
-
-      const combinedPlaces = Array.from(new Set([
-        ...(Array.isArray(parsedPlaces) ? parsedPlaces : []),
-        ...(Array.isArray(parsedDest) ? parsedDest.flatMap(d => [d.pickup, d.dropoff]) : []),
-        ...INITIAL_PLACES
-      ].filter(Boolean)));
-
-      setPlaces(combinedPlaces);
-      
-      const initialFrom = combinedPlaces[0] || 'Bhavnagar, Gujarat';
-      const initialTo = combinedPlaces[1] || combinedPlaces[0] || 'Ahmedabad Airport (AMD)';
-      setPickupLocation(prev => prev || initialFrom);
-      setDropoffDestination(prev => prev || initialTo);
 
       const savedVehicles = localStorage.getItem('cabsy_vehicles');
       const parsedVehicles = savedVehicles ? JSON.parse(savedVehicles) : (INITIAL_VEHICLES || FALLBACK_VEHICLES);
@@ -111,13 +165,6 @@ export default function BookRide() {
             setVehicles(active);
             try { localStorage.setItem('cabsy_vehicles', JSON.stringify(fetched)); } catch(e) {}
           }
-        }
-      }).catch(() => {});
-
-      loadAllPlacesFromMySQL().then(fetchedPlaces => {
-        if (Array.isArray(fetchedPlaces) && fetchedPlaces.length > 0) {
-          setPlaces(prev => Array.from(new Set([...fetchedPlaces, ...prev])));
-          safeStorageSetItem('cabsy_places', fetchedPlaces);
         }
       }).catch(() => {});
 
@@ -150,23 +197,26 @@ export default function BookRide() {
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('taxigo_vehicles_updated', handleStorageChange);
     window.addEventListener('EMPERIAL CABS_vehicles_updated', handleStorageChange);
-    window.addEventListener('EMPERIAL CABS_places_updated', handleStorageChange);
     window.addEventListener('EMPERIAL CABS_destinations_updated', handleStorageChange);
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('taxigo_vehicles_updated', handleStorageChange);
       window.removeEventListener('EMPERIAL CABS_vehicles_updated', handleStorageChange);
-      window.removeEventListener('EMPERIAL CABS_places_updated', handleStorageChange);
       window.removeEventListener('EMPERIAL CABS_destinations_updated', handleStorageChange);
     };
   }, []);
 
-  // Update KM whenever Pickup or Dropoff changes
+  // Update KM and fixed route pricing whenever Pickup or Dropoff changes
   useEffect(() => {
     const fromLoc = tripType === 'custom-trip' ? pickupCity : pickupLocation;
     const toLoc = tripType === 'custom-trip' ? dropoffCity : dropoffDestination;
 
-    if (!fromLoc || !toLoc) return;
+    if (!fromLoc || !toLoc) {
+      setMatchedRouteData(null);
+      setFixedPrice(null);
+      setIsMatchedRoute(false);
+      return;
+    }
 
     if (fromLoc === toLoc && tripType !== 'custom-trip') {
       setDistanceKm(0);
@@ -176,14 +226,22 @@ export default function BookRide() {
     }
 
     let isCurrent = true;
-    const matched = destinations.find(
-      d => (d.pickup && d.dropoff && d.pickup.toLowerCase().includes(fromLoc.toLowerCase()) && d.dropoff.toLowerCase().includes(toLoc.toLowerCase())) ||
-           (d.pickup && d.dropoff && d.pickup.toLowerCase().includes(toLoc.toLowerCase()) && d.dropoff.toLowerCase().includes(fromLoc.toLowerCase()))
-    );
+    const fLower = fromLoc.toLowerCase().trim();
+    const tLower = toLoc.toLowerCase().trim();
+
+    const matched = activeRoutes.find(d => {
+      if (!d || !d.pickup || !d.dropoff) return false;
+      const dp = d.pickup.toLowerCase().trim();
+      const dd = d.dropoff.toLowerCase().trim();
+      return (dp === fLower && dd === tLower) ||
+             (dp === tLower && dd === fLower) ||
+             (dp.includes(fLower) && dd.includes(tLower)) ||
+             (dp.includes(tLower) && dd.includes(fLower));
+    });
 
     if (matched) {
       setMatchedRouteData(matched);
-      if (matched.price !== undefined && matched.price !== null && matched.price !== '') {
+      if (matched.price !== undefined && matched.price !== null && matched.price !== '' && Number(matched.price) > 0) {
         setFixedPrice(Number(matched.price));
       } else {
         setFixedPrice(null);
@@ -210,7 +268,7 @@ export default function BookRide() {
         car_prices: liveRoute.car_prices || {}
       };
       setMatchedRouteData(formattedLive);
-      if (formattedLive.price) {
+      if (formattedLive.price > 0) {
         setFixedPrice(formattedLive.price);
         setIsMatchedRoute(true);
       }
@@ -219,7 +277,7 @@ export default function BookRide() {
     return () => {
       isCurrent = false;
     };
-  }, [pickupLocation, dropoffDestination, pickupCity, dropoffCity, destinations, tripType]);
+  }, [pickupLocation, dropoffDestination, pickupCity, dropoffCity, activeRoutes, tripType]);
 
   // Swap pickup & dropoff
   const handleSwapPlaces = () => {
@@ -241,50 +299,60 @@ export default function BookRide() {
   const currentVehicle = vehicles.find(v => v.id === selectedVehicleId) || vehicles[0] || FALLBACK_VEHICLES[0];
   const ratePerKm = parseFloat(currentVehicle?.rate || 15);
 
-  // Calculate effective distance & fare based on trip type (Minimum 300km/day for Custom Outstation)
-  const effectiveDistanceKm = tripType === 'round-trip' 
-    ? distanceKm * 2 
-    : (tripType === 'custom-trip' ? Math.max(distanceKm > 10 ? distanceKm : 175, 300 * noOfDays) : distanceKm);
+  // Calculate effective distance & fare based on trip type (Minimum 300km/day for Round Trip)
+  const effectiveDistanceKm = tripType === 'custom-trip' 
+    ? Math.max(distanceKm > 10 ? distanceKm : 175, 300 * noOfDays) 
+    : distanceKm;
 
-  // Exact car price calculation helper: checks specific car_prices, then base fixed price, then per-km
+  // Exact car price calculation helper: checks specific car_prices, then base fixed price
   const getVehicleFare = (veh) => {
-    if (!veh) return { fare: '0.00', isFixed: false };
+    if (!veh) return { fare: '0.00', isFixed: false, available: false };
     if (tripType === 'custom-trip') {
       const kmFare = (effectiveDistanceKm * parseFloat(veh.rate || 15)).toFixed(2);
-      return { fare: kmFare, isFixed: false };
+      return { fare: kmFare, isFixed: false, available: true };
     }
 
     // 1. Check exact car price configured for this vehicle on this route
     if (matchedRouteData && matchedRouteData.car_prices) {
-      const directPrice = matchedRouteData.car_prices[veh.id] ?? matchedRouteData.car_prices[veh.name];
+      let directPrice = matchedRouteData.car_prices[veh.id] ?? matchedRouteData.car_prices[veh.name];
+      if (directPrice === undefined || directPrice === null || directPrice === '') {
+        const vNameNorm = (veh.name || '').toLowerCase().trim();
+        const vIdNorm = (veh.id || '').toLowerCase().trim();
+        for (const [key, val] of Object.entries(matchedRouteData.car_prices)) {
+          const kNorm = key.toLowerCase().trim();
+          if (kNorm === vNameNorm || kNorm === vIdNorm) {
+            directPrice = val;
+            break;
+          }
+        }
+      }
       if (directPrice !== undefined && directPrice !== null && directPrice !== '' && !isNaN(Number(directPrice)) && Number(directPrice) > 0) {
         const numP = Number(directPrice);
-        const total = tripType === 'round-trip' ? numP * 2 : numP;
         return {
-          fare: total.toFixed(2),
+          fare: numP.toFixed(2),
           isFixed: true,
-          oneWayFixed: numP
+          oneWayFixed: numP,
+          available: true
         };
       }
     }
 
-    // 2. Fallback to base route fixed price with capacity multiplier
+    // 2. Base fixed price for the route with capacity multiplier
     if (fixedPrice && fixedPrice > 0) {
       const isSevenSeater = (veh?.passengers && veh.passengers.includes('7')) || (veh?.name && (veh.name.toLowerCase().includes('ertiga') || veh.name.toLowerCase().includes('innova')));
       const isLuxury = veh?.name && (veh.name.toLowerCase().includes('innova') || veh.name.toLowerCase().includes('crysta'));
       const multiplier = isLuxury ? 1.7 : (isSevenSeater ? 1.35 : 1.0);
       const baseFixed = Math.round(fixedPrice * multiplier);
-      const total = tripType === 'round-trip' ? baseFixed * 2 : baseFixed;
       return {
-        fare: total.toFixed(2),
+        fare: baseFixed.toFixed(2),
         isFixed: true,
-        oneWayFixed: baseFixed
+        oneWayFixed: baseFixed,
+        available: true
       };
     }
 
-    // 3. Fallback to distance * per-km rate
-    const kmFare = (effectiveDistanceKm * parseFloat(veh.rate || 15)).toFixed(2);
-    return { fare: kmFare, isFixed: false };
+    // If one-way trip and no fixed price set for this vehicle on this route:
+    return { fare: '0.00', isFixed: false, available: false };
   };
 
   const calculatedFare = getVehicleFare(currentVehicle).fare;
@@ -297,6 +365,18 @@ export default function BookRide() {
     }
 
     const isCustomMode = tripType === 'custom-trip';
+
+    if (!isCustomMode) {
+      if (activeRoutes.length === 0 || !pickupLocation || !dropoffDestination) {
+        alert("No active direct route available to book. Please choose Round Trip for custom travel.");
+        return;
+      }
+      const currentFareInfo = getVehicleFare(currentVehicle);
+      if (!currentFareInfo.available || Number(currentFareInfo.fare) <= 0) {
+        alert("The selected vehicle does not have pricing configured for this route. Please select another vehicle.");
+        return;
+      }
+    }
     const finalPickupCity = isCustomMode ? (pickupCity.trim() || 'Bhavnagar') : (pickupLocation.split(',')[0] || pickupLocation);
     const finalDropoffCity = isCustomMode ? (dropoffCity.trim() || 'Ahmedabad') : (dropoffDestination.split(',')[0] || dropoffDestination);
     
@@ -326,13 +406,13 @@ export default function BookRide() {
       exactDropoffAddress: isCustomMode ? exactDropoffAddress : dropoffDestination,
       vehicle: currentVehicle.name,
       fare: parseFloat(calculatedFare),
-      tripType: isCustomMode ? 'Custom Trip' : (tripType === 'round-trip' ? 'Round Trip (Return)' : 'Point to Point (One-Way)'),
+      tripType: isCustomMode ? `Round Trip (${noOfDays} Day${noOfDays > 1 ? 's' : ''})` : 'One Way Trip',
       isCustom: isCustomMode,
       noOfDays: isCustomMode ? noOfDays : 1,
       totalDistanceKm: effectiveDistanceKm,
       status: 'Pending',
       driver: 'Unassigned',
-      date: `${pickupDate} ${pickupTime}` + (tripType === 'round-trip' && returnDate ? ` (Return: ${returnDate})` : '')
+      date: `${pickupDate} ${pickupTime}` + (isCustomMode && noOfDays > 1 ? ` (${noOfDays} Days)` : '')
     };
 
     db.saveInquiry(newInquiry);
@@ -408,77 +488,53 @@ export default function BookRide() {
                     <Sparkles size={16} color="#0f172a" /> 1. Select Trip Type
                   </label>
                   
-                  <div className="trip-type-selector-grid mt-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                  <div className="trip-type-selector-grid mt-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px' }}>
                     <button
                       type="button"
                       onClick={() => setTripType('one-way')}
                       style={{
-                        padding: '12px 10px',
+                        padding: '14px 12px',
                         borderRadius: '14px',
                         border: tripType === 'one-way' ? '2px solid #E3B10F' : '1px solid #e2e8f0',
                         background: tripType === 'one-way' ? '#ffffff' : '#f8fafc',
                         color: tripType === 'one-way' ? '#0f172a' : '#64748b',
                         fontWeight: '800',
-                        fontSize: '0.92rem',
+                        fontSize: '0.98rem',
                         cursor: 'pointer',
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
-                        gap: '2px',
-                        boxShadow: 'none',
+                        gap: '3px',
+                        boxShadow: tripType === 'one-way' ? '0 4px 12px rgba(227, 177, 15, 0.15)' : 'none',
                         transition: 'all 0.2s ease'
                       }}
                     >
-                      <span>Point to Point</span>
-                      <span style={{ fontSize: '0.75rem', color: tripType === 'one-way' ? '#0f172a' : '#64748b', fontWeight: '600' }}>One-Way</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setTripType('round-trip')}
-                      style={{
-                        padding: '12px 10px',
-                        borderRadius: '14px',
-                        border: tripType === 'round-trip' ? '2px solid #E3B10F' : '1px solid #e2e8f0',
-                        background: tripType === 'round-trip' ? '#ffffff' : '#f8fafc',
-                        color: tripType === 'round-trip' ? '#0f172a' : '#64748b',
-                        fontWeight: '800',
-                        fontSize: '0.92rem',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: '2px',
-                        boxShadow: 'none',
-                        transition: 'all 0.2s ease'
-                      }}
-                    >
-                      <span>Round Trip</span>
-                      <span style={{ fontSize: '0.75rem', color: tripType === 'round-trip' ? '#0f172a' : '#64748b', fontWeight: '600' }}>Return Journey</span>
+                      <span>One Way Trip</span>
+                      <span style={{ fontSize: '0.75rem', color: tripType === 'one-way' ? '#0f172a' : '#64748b', fontWeight: '600' }}>Direct Route</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setTripType('custom-trip')}
                       style={{
-                        padding: '12px 10px',
+                        padding: '14px 12px',
                         borderRadius: '14px',
                         border: tripType === 'custom-trip' ? '2px solid #E3B10F' : '1px solid #e2e8f0',
                         background: tripType === 'custom-trip' ? '#ffffff' : '#f8fafc',
                         color: tripType === 'custom-trip' ? '#0f172a' : '#64748b',
                         fontWeight: '800',
-                        fontSize: '0.92rem',
+                        fontSize: '0.98rem',
                         cursor: 'pointer',
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
-                        gap: '2px',
-                        boxShadow: 'none',
+                        gap: '3px',
+                        boxShadow: tripType === 'custom-trip' ? '0 4px 12px rgba(227, 177, 15, 0.15)' : 'none',
                         transition: 'all 0.2s ease'
                       }}
                     >
-                      <span>Custom Outstation</span>
-                      <span style={{ fontSize: '0.75rem', color: tripType === 'custom-trip' ? '#0f172a' : '#64748b', fontWeight: '600' }}>Multi-Day Rental</span>
+                      <span>Round Trip</span>
+                      <span style={{ fontSize: '0.75rem', color: tripType === 'custom-trip' ? '#0f172a' : '#64748b', fontWeight: '600' }}>Outstation & Multi-Day</span>
                     </button>
                   </div>
                 </div>
@@ -563,8 +619,26 @@ export default function BookRide() {
                         </div>
                       </div>
                     </div>
+                  ) : activeRoutes.length === 0 ? (
+                    /* CLEAN EMPTY STATE WHEN NO ONE-WAY ROUTES ARE CONFIGURED */
+                    <div style={{ textAlign: 'center', padding: '28px 16px', background: '#f8fafc', borderRadius: '16px', border: '1.5px dashed #cbd5e1', marginTop: '10px' }}>
+                      <MapPin size={28} color="#94a3b8" style={{ marginBottom: '8px' }} />
+                      <h4 style={{ margin: '0 0 6px 0', fontSize: '15px', fontWeight: '800', color: '#1e293b' }}>
+                        No One-Way Routes Currently Configured
+                      </h4>
+                      <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#64748b', maxWidth: '420px', marginInline: 'auto' }}>
+                        Direct routes configured by the administrator in the Admin Portal will appear here automatically. For any custom pickup and dropoff city, switch to <strong>Round Trip</strong> above.
+                      </p>
+                      <button 
+                        type="button" 
+                        onClick={() => setTripType('custom-trip')}
+                        style={{ padding: '9px 18px', borderRadius: '10px', background: '#e3b10f', color: '#0f172a', fontWeight: '800', fontSize: '13px', border: 'none', cursor: 'pointer', boxShadow: '0 2px 6px rgba(227, 177, 15, 0.25)' }}
+                      >
+                        Switch to Round Trip (Any City)
+                      </button>
+                    </div>
                   ) : (
-                    /* STANDARD POINT TO POINT & ROUND TRIP SELECTS */
+                    /* ONE-WAY TRIP DROPDOWNS STRICTLY FILTERED TO CONFIGURED ACTIVE ROUTES */
                     <div className="route-picker-row mt-2">
                       <div className="field-group">
                         <span className="field-label">From (Pick-up)</span>
@@ -574,7 +648,7 @@ export default function BookRide() {
                           onChange={e => setPickupLocation(e.target.value)}
                           required
                         >
-                          {places.map((p, idx) => (
+                          {availableFromCities.map((p, idx) => (
                             <option key={idx} value={p}>{p}</option>
                           ))}
                         </select>
@@ -597,7 +671,7 @@ export default function BookRide() {
                           onChange={e => setDropoffDestination(e.target.value)}
                           required
                         >
-                          {places.map((p, idx) => (
+                          {availableToCities.map((p, idx) => (
                             <option key={idx} value={p}>{p}</option>
                           ))}
                         </select>
@@ -605,10 +679,10 @@ export default function BookRide() {
                     </div>
                   )}
                   
-                  {tripType === 'one-way' && (
+                  {tripType === 'one-way' && activeRoutes.length > 0 && isMatchedRoute && (
                     <div className="route-distance-chip mt-2">
                       <span className="dot green"></span>
-                      <span>{fixedPrice ? `Fixed Route Pricing: ₹${calculatedFare}` : `Distance: ${distanceKm} KM`}</span>
+                      <span>Fixed Route: {pickupLocation} → {dropoffDestination}</span>
                     </div>
                   )}
                 </div>
@@ -622,11 +696,15 @@ export default function BookRide() {
                   <div className="vehicle-light-grid mt-2">
                     {vehicles.map(v => {
                       const fareInfo = getVehicleFare(v);
+                      const isAvail = fareInfo.available;
                       return (
                         <div 
                           key={v.id} 
                           className={`vehicle-light-card ${selectedVehicleId === v.id ? 'active' : ''}`}
-                          onClick={() => setSelectedVehicleId(v.id)}
+                          style={{ opacity: isAvail ? 1 : 0.6, cursor: isAvail ? 'pointer' : 'not-allowed' }}
+                          onClick={() => {
+                            if (isAvail) setSelectedVehicleId(v.id);
+                          }}
                         >
                           <img src={v.image} alt={v.name} className="vehicle-thumb" />
                           <div className="vehicle-info">
@@ -643,8 +721,13 @@ export default function BookRide() {
                                   Fixed Total
                                 </span>
                               </>
+                            ) : isAvail ? (
+                              <>
+                                <span className="vehicle-price">₹{Number(fareInfo.fare).toFixed(0)}</span>
+                                <small className="text-muted" style={{ fontSize: '10px' }}>Est. Total ({noOfDays} {noOfDays > 1 ? 'Days' : 'Day'})</small>
+                              </>
                             ) : (
-                              <span className="vehicle-price">₹{v.rate}/km</span>
+                              <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700' }}>Price Not Set</span>
                             )}
                           </div>
                         </div>
@@ -777,7 +860,7 @@ export default function BookRide() {
                     <div className="summary-row">
                       <span>Trip Type:</span>
                       <strong style={{ color: '#0f172a' }}>
-                        {tripType === 'custom-trip' ? `Custom Outstation (${noOfDays} Day Rental)` : (tripType === 'round-trip' ? 'Round Trip' : 'Point to Point (One-Way)')}
+                        {tripType === 'custom-trip' ? `Round Trip (${noOfDays} Day${noOfDays > 1 ? 's' : ''})` : 'One Way Trip'}
                       </strong>
                     </div>
 
