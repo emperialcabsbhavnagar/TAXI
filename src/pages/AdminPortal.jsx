@@ -1022,15 +1022,28 @@ export default function AdminPortal() {
     }
 
     const durStr = formatDurationHrMin(newDestForm.hours, newDestForm.mins);
-    const carPrices = newDestForm.car_prices || {};
+    const rawCarPrices = newDestForm.car_prices || {};
+    const carPrices = {};
+    Object.entries(rawCarPrices).forEach(([key, val]) => {
+      const numV = Number(val);
+      if (!isNaN(numV) && numV > 0) {
+        carPrices[key] = numV;
+        const matchingVeh = activeVehicles.find(v => v.id === key || v.name === key);
+        if (matchingVeh) {
+          carPrices[matchingVeh.id] = numV;
+          carPrices[matchingVeh.name] = numV;
+        }
+      }
+    });
+
     let basePrice = Number(newDestForm.price) || 0;
     if (!basePrice) {
-      const firstCarP = Object.values(carPrices).find(p => p !== '' && !isNaN(Number(p)) && Number(p) > 0);
-      if (firstCarP) basePrice = Number(firstCarP);
+      const validVals = Object.values(carPrices).filter(v => typeof v === 'number' && v > 0);
+      if (validVals.length > 0) basePrice = Math.min(...validVals);
     }
 
     if (!basePrice || basePrice <= 0) {
-      alert("Please enter a valid fare price greater than ₹0. A route cannot be created without a price!");
+      alert("Please enter a fixed price for at least one vehicle. A route cannot be created without a car price!");
       return;
     }
 
@@ -1065,15 +1078,28 @@ export default function AdminPortal() {
     e.preventDefault();
     if (!editDestModal.destination) return;
     const durStr = formatDurationHrMin(editDestModal.destination.hours, editDestModal.destination.mins);
-    const carPrices = editDestModal.destination.car_prices || {};
+    const rawCarPrices = editDestModal.destination.car_prices || {};
+    const carPrices = {};
+    Object.entries(rawCarPrices).forEach(([key, val]) => {
+      const numV = Number(val);
+      if (!isNaN(numV) && numV > 0) {
+        carPrices[key] = numV;
+        const matchingVeh = activeVehicles.find(v => v.id === key || v.name === key);
+        if (matchingVeh) {
+          carPrices[matchingVeh.id] = numV;
+          carPrices[matchingVeh.name] = numV;
+        }
+      }
+    });
+
     let basePrice = Number(editDestModal.destination.price) || 0;
     if (!basePrice) {
-      const firstCarP = Object.values(carPrices).find(p => p !== '' && !isNaN(Number(p)) && Number(p) > 0);
-      if (firstCarP) basePrice = Number(firstCarP);
+      const validVals = Object.values(carPrices).filter(v => typeof v === 'number' && v > 0);
+      if (validVals.length > 0) basePrice = Math.min(...validVals);
     }
 
     if (!basePrice || basePrice <= 0) {
-      alert("Please enter a valid fare price greater than ₹0 for this route.");
+      alert("Please enter a fixed price for at least one vehicle on this route.");
       return;
     }
 
@@ -5167,18 +5193,17 @@ export default function AdminPortal() {
 
               <div className="form-grid-2 mt-2">
                 <div className="input-group">
-                  <label>Base Fixed Fare in Rupees (₹)</label>
+                  <label>Default Base Fare (₹) (Optional)</label>
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                     <span style={{ position: 'absolute', left: '12px', fontWeight: '800', color: '#059669', fontSize: '1.05rem' }}>₹</span>
                     <input 
                       type="number" 
                       min="0"
                       step="1"
-                      placeholder="e.g. 2500"
+                      placeholder="Auto from car prices"
                       value={newDestForm.price} 
                       onChange={e => setNewDestForm({ ...newDestForm, price: e.target.value })}
                       style={{ paddingLeft: '28px', fontWeight: '700' }}
-                      required
                     />
                   </div>
                 </div>
@@ -5217,8 +5242,8 @@ export default function AdminPortal() {
 
               {/* Specific Car Fixed Prices Grid */}
               <div className="input-group full-width mt-3" style={{ background: '#F8FAFC', padding: '14px', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
-                <label style={{ fontWeight: '800', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', fontSize: '0.9rem' }}>
-                  <Car size={16} className="text-amber" /> Specific Car Fixed Prices (₹) (Optional - Overrides Base Fare)
+                <label style={{ fontWeight: '800', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', fontSize: '0.95rem' }}>
+                  <Car size={16} className="text-amber" /> Set Fixed Price for Each Car (₹) — Customer sees this exact price
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px' }}>
                   {(activeVehicles.length > 15 ? uniqueVehicleModels : activeVehicles).map(veh => (
@@ -5300,21 +5325,20 @@ export default function AdminPortal() {
 
               <div className="form-grid-2 mt-2">
                 <div className="input-group">
-                  <label>Base Fixed Fare in Rupees (₹)</label>
+                  <label>Default Base Fare (₹) (Optional)</label>
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                     <span style={{ position: 'absolute', left: '12px', fontWeight: '800', color: '#059669', fontSize: '1.05rem' }}>₹</span>
                     <input 
                       type="number" 
                       min="0"
                       step="1"
-                      placeholder="e.g. 2500"
+                      placeholder="Auto from car prices"
                       value={editDestModal.destination.price !== undefined ? editDestModal.destination.price : ''} 
                       onChange={e => setEditDestModal({ 
                         ...editDestModal, 
                         destination: { ...editDestModal.destination, price: e.target.value } 
                       })}
                       style={{ paddingLeft: '28px', fontWeight: '700' }}
-                      required
                     />
                   </div>
                 </div>
@@ -5359,8 +5383,8 @@ export default function AdminPortal() {
 
               {/* Specific Car Fixed Prices Grid */}
               <div className="input-group full-width mt-3" style={{ background: '#F8FAFC', padding: '14px', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
-                <label style={{ fontWeight: '800', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', fontSize: '0.9rem' }}>
-                  <Car size={16} className="text-amber" /> Specific Car Fixed Prices (₹) (Optional - Overrides Base Fare)
+                <label style={{ fontWeight: '800', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', fontSize: '0.95rem' }}>
+                  <Car size={16} className="text-amber" /> Set Fixed Price for Each Car (₹) — Customer sees this exact price
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px' }}>
                   {(activeVehicles.length > 15 ? uniqueVehicleModels : activeVehicles).map(veh => (
