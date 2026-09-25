@@ -68,7 +68,25 @@ export default function PrivacyPolicy() {
 
           <section style={{ marginBottom: '32px' }}>
             <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#1E293B', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-              <FileText size={22} style={{ color: '#10B981' }} /> 4. Contact Us
+              <Lock size={22} style={{ color: '#10B981' }} /> 4. User Account & Data Deletion Rights
+            </h2>
+            <p style={{ color: '#475569', lineHeight: '1.7', fontSize: '15px' }}>
+              In full compliance with Google Play Store User Data policies, riders and partners have the right to request deletion of their account and all associated personal records at any time:
+            </p>
+            <ul style={{ color: '#475569', lineHeight: '1.8', fontSize: '15px', paddingLeft: '24px' }}>
+              <li><strong>In-App Deletion:</strong> You can request account deletion directly inside the EMPERIAL CABS mobile app by opening <em>Account Tab &rarr; Delete Account &amp; Data</em>.</li>
+              <li><strong>Email Request:</strong> You can submit a deletion request by emailing <strong>info@emperialcabs.com</strong> with the subject line <em>"Account Deletion Request"</em> including your registered phone number.</li>
+            </ul>
+            <p style={{ color: '#475569', lineHeight: '1.7', fontSize: '15px', marginTop: '12px' }}>
+              Upon confirmation, your profile details, contact information, and trip history are permanently deleted from our active databases within 48 hours.
+            </p>
+          </section>
+
+          <hr style={{ border: 'none', borderTop: '1px solid #F1F5F9', margin: '32px 0' }} />
+
+          <section style={{ marginBottom: '32px' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#1E293B', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+              <FileText size={22} style={{ color: '#10B981' }} /> 5. Contact Us
             </h2>
             <p style={{ color: '#475569', lineHeight: '1.7', fontSize: '15px' }}>
               If you have any questions regarding our Privacy Policy or data handling practices, please contact us at:

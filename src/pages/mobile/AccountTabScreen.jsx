@@ -35,6 +35,7 @@ export default function AccountTabScreen({ activeTab, setActiveTab, onNavigate, 
 
   const [showInfoModal, setShowInfoModal] = useState(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     try {
@@ -184,6 +185,26 @@ export default function AccountTabScreen({ activeTab, setActiveTab, onNavigate, 
         >
           <LogOut size={18} /> Logout Account
         </button>
+
+        {/* Delete Account & Data Button (Google Play Policy Compliance) */}
+        <button 
+          onClick={() => setShowDeleteConfirm(true)}
+          style={{ 
+            width: '100%', 
+            background: 'transparent', 
+            border: 'none', 
+            color: '#94A3B8', 
+            padding: '12px', 
+            fontFamily: 'Space Grotesk', 
+            fontSize: '13px', 
+            fontWeight: '600',
+            cursor: 'pointer',
+            marginTop: '8px',
+            textDecoration: 'underline'
+          }}
+        >
+          Delete Account & Personal Data
+        </button>
       </div>
 
       {/* Logout Confirmation Modal Overlay */}
@@ -214,6 +235,45 @@ export default function AccountTabScreen({ activeTab, setActiveTab, onNavigate, 
                 style={{ flex: 1, background: '#E11D48', color: '#FFFFFF', border: 'none', padding: '14px', borderRadius: '14px', fontWeight: '800', fontSize: '15px', cursor: 'pointer', fontFamily: 'League Spartan', boxShadow: '0 4px 14px rgba(225, 29, 72, 0.35)' }}
               >
                 Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Account Confirmation Modal Overlay */}
+      {showDeleteConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.65)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backdropFilter: 'blur(4px)' }}>
+          <div style={{ background: '#FFFFFF', borderRadius: '24px', padding: '24px', maxWidth: '340px', width: '100%', boxShadow: '0 20px 40px rgba(0,0,0,0.15)', textAlign: 'center' }}>
+            <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#FEF2F2', color: '#DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+              <Lock size={24} />
+            </div>
+            <h3 style={{ margin: '0 0 8px 0', fontFamily: 'League Spartan', fontSize: '20px', fontWeight: '800', color: '#0F172A' }}>
+              Delete Account & Data?
+            </h3>
+            <p style={{ fontFamily: 'Space Grotesk', fontSize: '13px', color: '#64748B', lineHeight: '1.45', margin: '0 0 20px 0' }}>
+              This will permanently delete your profile, saved locations, and ride records in accordance with Google Play data protection guidelines.
+            </p>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button 
+                onClick={() => setShowDeleteConfirm(false)}
+                style={{ flex: 1, background: '#F1F5F9', color: '#475569', border: 'none', padding: '14px', borderRadius: '14px', fontWeight: '700', fontSize: '15px', cursor: 'pointer', fontFamily: 'Space Grotesk' }}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => {
+                  try {
+                    localStorage.removeItem('cabsy_user_profile');
+                    localStorage.removeItem('cabsy_user_session');
+                    localStorage.removeItem('cabsy_inquiries');
+                  } catch (e) {}
+                  setShowDeleteConfirm(false);
+                  if (onLogout) onLogout();
+                }}
+                style={{ flex: 1, background: '#DC2626', color: '#FFFFFF', border: 'none', padding: '14px', borderRadius: '14px', fontWeight: '800', fontSize: '15px', cursor: 'pointer', fontFamily: 'League Spartan', boxShadow: '0 4px 14px rgba(220, 38, 38, 0.35)' }}
+              >
+                Delete
               </button>
             </div>
           </div>
