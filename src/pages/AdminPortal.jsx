@@ -90,6 +90,7 @@ export const INITIAL_VEHICLES = [
   {
     id: 'CAR-101',
     name: 'SWIFT',
+    plate: 'GJ-04-AB-1234',
     passengers: '4 Persons',
     rate: '5.00',
     status: 'Active',
@@ -99,6 +100,7 @@ export const INITIAL_VEHICLES = [
   {
     id: 'CAR-102',
     name: 'AURA (CNG)',
+    plate: 'GJ-04-CD-5678',
     passengers: '4 Persons',
     rate: '3.00',
     status: 'Active',
@@ -108,6 +110,7 @@ export const INITIAL_VEHICLES = [
   {
     id: 'CAR-103',
     name: 'EARTICE (PETROL)',
+    plate: 'GJ-04-EF-9012',
     passengers: '7 Persons',
     rate: '10.00',
     status: 'Active',
@@ -117,6 +120,7 @@ export const INITIAL_VEHICLES = [
   {
     id: 'CAR-104',
     name: 'Electric',
+    plate: 'GJ-04-EV-3456',
     passengers: '7 Persons',
     rate: '3.00',
     status: 'Active',
@@ -125,12 +129,12 @@ export const INITIAL_VEHICLES = [
   }
 ];
 
-// Clean Database Initialization with Default Demo Records
+// Clean Database Initialization with Default Demo Records (Chauffeurs are flexible and assigned dynamically to any car)
 const INITIAL_DRIVERS = [
-  { id: 'DRV-101', name: 'Ramesh Patel', phone: '+91 98250 99887', vehicle: 'Emperial XL SUV', plate: 'GJ-04-AB-1234', status: 'Active', rating: 4.9 },
-  { id: 'DRV-102', name: 'Suresh Verma', phone: '+91 99099 11223', vehicle: 'Emperial Executive Luxury', plate: 'GJ-04-CD-5678', status: 'Active', rating: 4.8 },
-  { id: 'DRV-103', name: 'Amit Singh', phone: '+91 98765 33445', vehicle: 'Emperial Regular Sedan', plate: 'GJ-04-EF-9012', status: 'Active', rating: 4.9 },
-  { id: 'DRV-104', name: 'Hardik Joshi', phone: '+91 97234 55667', vehicle: 'Emperial Eco Green EV', plate: 'GJ-04-EV-3456', status: 'Active', rating: 5.0 }
+  { id: 'DRV-101', name: 'Ramesh Patel', phone: '+91 98250 99887', status: 'Active', rating: 4.9 },
+  { id: 'DRV-102', name: 'Suresh Verma', phone: '+91 99099 11223', status: 'Active', rating: 4.8 },
+  { id: 'DRV-103', name: 'Amit Singh', phone: '+91 98765 33445', status: 'Active', rating: 4.9 },
+  { id: 'DRV-104', name: 'Hardik Joshi', phone: '+91 97234 55667', status: 'Active', rating: 5.0 }
 ];
 
 const INITIAL_INQUIRIES = [
@@ -462,6 +466,7 @@ export default function AdminPortal() {
   const [assignModal, setAssignModal] = useState({ open: false, inquiry: null });
   const [completeModal, setCompleteModal] = useState({ open: false, inquiry: null, finalPrice: '', rewardAmount: '0' });
   const [addDriverModal, setAddDriverModal] = useState(false);
+  const [editDriverModal, setEditDriverModal] = useState({ open: false, driver: null });
   const [addCustomerModal, setAddCustomerModal] = useState(false);
   const [addInquiryModal, setAddInquiryModal] = useState(false);
   const [addVehicleModal, setAddVehicleModal] = useState(false);
@@ -706,25 +711,21 @@ export default function AdminPortal() {
       const vehName = matchedVeh ? matchedVeh.name : (targetCar || 'SWIFT');
       setSelectedAssignVehicle(vehName);
 
-      // 2. Auto-match driver suitable for this car or first active driver
-      const matchedDriver = (drivers || []).find(d => 
-        d.status === 'Active' && 
-        d.vehicle && (
-          d.vehicle.toLowerCase().includes(vehName.toLowerCase()) || 
-          vehName.toLowerCase().includes(d.vehicle.toLowerCase())
-        )
-      ) || (drivers || []).find(d => d.status === 'Active') || (drivers && drivers[0]);
+      // 2. Auto-match available active chauffeur (chauffeurs are flexible and assigned to any vehicle)
+      const matchedDriver = (drivers || []).find(d => d.status === 'Active') || (drivers && drivers[0]);
 
       if (matchedDriver) {
         setSelectedDriverId(matchedDriver.id);
       }
 
-      // 3. Auto-populate number plate based on vehicle or driver
+      // 3. Auto-populate number plate based SOLELY on fleet vehicle
       const plate = (matchedVeh && matchedVeh.plate) 
         ? matchedVeh.plate 
-        : (matchedDriver && matchedDriver.plate) 
-          ? matchedDriver.plate 
-          : 'GJ-04-AB-1234';
+        : (vehName.toLowerCase().includes('swift') ? 'GJ-04-AB-1234' :
+           vehName.toLowerCase().includes('aura') ? 'GJ-04-CD-5678' :
+           vehName.toLowerCase().includes('eartic') || vehName.toLowerCase().includes('ertiga') ? 'GJ-04-EF-9012' :
+           vehName.toLowerCase().includes('electric') || vehName.toLowerCase().includes('ev') ? 'GJ-04-EV-3456' :
+           'GJ-04-AB-1234');
       setSelectedAssignPlate(plate);
     }
   }, [assignModal.open, assignModal.inquiry, vehicles, drivers]);
@@ -1536,9 +1537,9 @@ export default function AdminPortal() {
     if (actionLoadingId === actionKey) return;
     setActionLoadingId(actionKey);
 
-    const driverObj = drivers.find(d => d.id === selectedDriverId) || drivers[0] || { name: 'Assigned Driver', id: 'DRV-DEF', plate: 'GJ-04-AB-1234', phone: '+91 98250 99887' };
+    const driverObj = drivers.find(d => d.id === selectedDriverId) || drivers[0] || { name: 'Assigned Driver', id: 'DRV-DEF', phone: '+91 98250 99887' };
     const chosenVehicle = selectedAssignVehicle || inq.vehicle || 'SWIFT';
-    const chosenPlate = selectedAssignPlate || driverObj.plate || 'GJ-04-AB-1234';
+    const chosenPlate = selectedAssignPlate || (vehicles.find(v => v.name === chosenVehicle)?.plate) || 'GJ-04-AB-1234';
     const driverPhone = driverObj.phone || driverObj.contact || '+91 98250 99887';
 
     const updatedInquiries = inquiries.map(item => {
@@ -1838,19 +1839,33 @@ export default function AdminPortal() {
     if (!newDriverForm.name) return;
     const createdDriver = {
       id: 'DRV-' + Math.floor(100 + Math.random() * 899),
-      name: newDriverForm.name,
-      phone: newDriverForm.phone || '+1 (555) ' + Math.floor(100 + Math.random() * 899) + '-0011',
-      vehicle: newDriverForm.vehicle,
-      plate: newDriverForm.plate || 'CAB-' + Math.floor(1000 + Math.random() * 8999),
+      name: newDriverForm.name.trim(),
+      phone: newDriverForm.phone ? newDriverForm.phone.trim() : '+91 98250 ' + Math.floor(10000 + Math.random() * 89999),
       rating: 5.0,
       status: 'Active',
       trips: 0,
       earnings: 0.00
     };
-    saveDriverToMySQL(createdDriver).catch(() => {});
+    saveDriverToMySQL(createdDriver).catch(err => console.warn('Save driver error:', err));
     setDrivers([createdDriver, ...drivers]);
-    setNewDriverForm({ name: '', phone: '', vehicle: 'Empire Regular', plate: '' });
+    setNewDriverForm({ name: '', phone: '' });
     setAddDriverModal(false);
+  };
+
+  // Edit Driver
+  const handleEditDriverSubmit = (e) => {
+    e.preventDefault();
+    if (!editDriverModal.driver) return;
+    const updated = {
+      ...editDriverModal.driver,
+      name: (editDriverModal.driver.name || '').trim(),
+      phone: (editDriverModal.driver.phone || '').trim(),
+      status: editDriverModal.driver.status || 'Active',
+      rating: Number(editDriverModal.driver.rating) || 5.0
+    };
+    setDrivers(drivers.map(d => d.id === updated.id ? updated : d));
+    saveDriverToMySQL(updated).catch(err => console.warn('Failed to update driver in MySQL:', err));
+    setEditDriverModal({ open: false, driver: null });
   };
 
   // Delete Driver
@@ -3955,6 +3970,13 @@ export default function AdminPortal() {
 
                     <div className="driver-card-actions flex gap-2 align-center">
                       <button 
+                        className="btn btn-outline btn-sm flex align-center justify-center gap-1"
+                        onClick={() => setEditDriverModal({ open: true, driver: { ...drv } })}
+                        title="Edit Driver Profile"
+                      >
+                        <Edit size={14} /> Edit
+                      </button>
+                      <button 
                         className="btn btn-outline btn-sm flex-1 flex align-center justify-center gap-1"
                         onClick={() => setDriverReportModal({ open: true, driver: drv })}
                       >
@@ -4594,18 +4616,12 @@ export default function AdminPortal() {
             </div>
 
             <div className="input-group mt-3">
-              <label>Select Driver from Fleet Roster</label>
-              <select value={selectedDriverId} onChange={e => {
-                setSelectedDriverId(e.target.value);
-                const d = drivers.find(drv => drv.id === e.target.value);
-                if (d && d.plate && !selectedAssignPlate) {
-                  setSelectedAssignPlate(d.plate);
-                }
-              }}>
+              <label>Select Driver from Fleet Chauffeurs</label>
+              <select value={selectedDriverId} onChange={e => setSelectedDriverId(e.target.value)}>
                 <option value="">-- Choose Driver --</option>
                 {drivers.map(d => (
                   <option key={d.id} value={d.id}>
-                    {d.name} ({d.plate || d.vehicle || 'Driver'}) - [{d.status}]
+                    {d.name} {d.phone ? `(${d.phone})` : ''} - [{d.status}]
                   </option>
                 ))}
               </select>
@@ -4621,6 +4637,13 @@ export default function AdminPortal() {
                   const matchedVeh = vehicles.find(v => v.name === vName);
                   if (matchedVeh && matchedVeh.plate) {
                     setSelectedAssignPlate(matchedVeh.plate);
+                  } else {
+                    const fallbackPlate = vName.toLowerCase().includes('swift') ? 'GJ-04-AB-1234' :
+                      vName.toLowerCase().includes('aura') ? 'GJ-04-CD-5678' :
+                      vName.toLowerCase().includes('eartic') || vName.toLowerCase().includes('ertiga') ? 'GJ-04-EF-9012' :
+                      vName.toLowerCase().includes('electric') || vName.toLowerCase().includes('ev') ? 'GJ-04-EV-3456' :
+                      'GJ-04-AB-1234';
+                    setSelectedAssignPlate(fallbackPlate);
                   }
                 }}
               >
@@ -4738,6 +4761,102 @@ export default function AdminPortal() {
               <div className="modal-actions-flex mt-4">
                 <button type="button" className="btn btn-outline" onClick={() => setAddDriverModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary">Add Driver to Fleet</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT DRIVER PROFILE */}
+      {editDriverModal.open && editDriverModal.driver && (
+        <div className="admin-modal-overlay" onClick={() => setEditDriverModal({ open: false, driver: null })}>
+          <div className="admin-modal-box card" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between align-center mb-3">
+              <h3 style={{ margin: 0 }}>Edit Driver Profile</h3>
+              <button 
+                type="button" 
+                onClick={() => setEditDriverModal({ open: false, driver: null })}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <p className="text-muted" style={{ fontSize: '13px', marginTop: 0, marginBottom: '16px' }}>
+              Update chauffeur details. Vehicles are assigned separately on a per-trip basis.
+            </p>
+            <form onSubmit={handleEditDriverSubmit}>
+              <div className="input-group">
+                <label>Driver ID</label>
+                <input 
+                  type="text" 
+                  value={editDriverModal.driver.id} 
+                  disabled 
+                  style={{ background: '#F1F5F9', color: '#64748B', cursor: 'not-allowed' }}
+                />
+              </div>
+
+              <div className="input-group mt-3">
+                <label>Chauffeur Full Name</label>
+                <input 
+                  type="text" 
+                  value={editDriverModal.driver.name || ''} 
+                  onChange={e => setEditDriverModal({
+                    ...editDriverModal,
+                    driver: { ...editDriverModal.driver, name: e.target.value }
+                  })}
+                  required 
+                />
+              </div>
+
+              <div className="input-group mt-3">
+                <label>Phone Number</label>
+                <input 
+                  type="text" 
+                  placeholder="+91 98250 99887"
+                  value={editDriverModal.driver.phone || ''} 
+                  onChange={e => setEditDriverModal({
+                    ...editDriverModal,
+                    driver: { ...editDriverModal.driver, phone: e.target.value }
+                  })}
+                  required
+                />
+              </div>
+
+              <div className="input-group mt-3">
+                <label>Duty Status</label>
+                <select 
+                  value={editDriverModal.driver.status || 'Active'} 
+                  onChange={e => setEditDriverModal({
+                    ...editDriverModal,
+                    driver: { ...editDriverModal.driver, status: e.target.value }
+                  })}
+                >
+                  <option value="Active">Active / Available</option>
+                  <option value="On Ride">On Ride</option>
+                  <option value="Off Duty">Off Duty</option>
+                </select>
+              </div>
+
+              <div className="input-group mt-3">
+                <label>Chauffeur Rating (1.0 - 5.0)</label>
+                <input 
+                  type="number" 
+                  step="0.1" 
+                  min="1" 
+                  max="5"
+                  value={editDriverModal.driver.rating || 5.0} 
+                  onChange={e => setEditDriverModal({
+                    ...editDriverModal,
+                    driver: { ...editDriverModal.driver, rating: parseFloat(e.target.value) || 5.0 }
+                  })}
+                />
+              </div>
+
+              <div className="modal-actions-flex mt-4">
+                <button type="button" className="btn btn-outline" onClick={() => setEditDriverModal({ open: false, driver: null })}>Cancel</button>
+                <button type="submit" className="btn btn-primary flex align-center gap-1">
+                  <Save size={16} /> Save Chauffeur Changes
+                </button>
               </div>
             </form>
           </div>
