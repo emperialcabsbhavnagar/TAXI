@@ -15,6 +15,9 @@ DirectoryIndex index.html index.php
   # Dynamic live sitemaps for Google Search Engine crawlers
   RewriteRule ^sitemap-routes\.xml$ /sitemap-routes.php [L]
 
+  # Dynamic Edge SEO & Meta injection for route landing pages (Googlebot & Users)
+  RewriteRule ^taxi/([a-zA-Z0-9\-_]+)/?$ /route-seo.php?slug=$1 [L,QSA]
+
   # Allow direct access to real existing files and directories
   RewriteRule ^index\.html$ - [L]
   RewriteCond %{REQUEST_FILENAME} -f [OR]

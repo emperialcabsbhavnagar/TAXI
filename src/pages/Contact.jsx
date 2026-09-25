@@ -87,7 +87,7 @@ export default function Contact() {
                 <div className="card info-mini-card">
                   <div className="icon-box"><MapPin size={22} /></div>
                   <h4>Our Office</h4>
-                  <p className="small-text">Emperial Cabs Hub, Outer Ring Road, Connaught Place, New Delhi 110001</p>
+                  <p className="small-text">EMPERIAL CABS Hub, Waghawadi Road, Bhavnagar, Gujarat 364001, India</p>
                 </div>
 
                 <div className="card info-mini-card">

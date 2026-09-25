@@ -23,7 +23,8 @@ import {
   Award, 
   Calendar,
   Sparkles,
-  Users
+  Users,
+  MessageSquare
 } from 'lucide-react';
 import './RouteLandingPage.css';
 
@@ -295,7 +296,7 @@ export default function RouteLandingPage({ onOpenBooking }) {
             },
             {
               "@type": "Question",
-              "name": `How much time does it take to travel from ${from} to ${to} by cab?`,
+              "name": `How long does it take to travel from ${from} to ${to} by road?`,
               "acceptedAnswer": {
                 "@type": "Answer",
                 "text": `The road distance between ${from} and ${to} is approximately ${distanceKm} km. A private cab trip typically takes about ${duration || 'comfortable travel time'} via ${highway}.`
@@ -303,10 +304,26 @@ export default function RouteLandingPage({ onOpenBooking }) {
             },
             {
               "@type": "Question",
-              "name": `Can I book a one-way cab from ${from} to ${to}?`,
+              "name": `Is taxi service available for ${to} Airport transfers from ${from}?`,
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": `Yes, EMPERIAL CABS specializes in verified one-way outstation cabs from ${from} to ${to}. You only pay for the distance travelled without paying round-trip return fare.`
+                "text": `Yes, EMPERIAL CABS provides 24/7 dedicated airport drop service to Sardar Vallabhbhai Patel International Airport (AMD) Terminal 1 and Terminal 2 directly from your doorstep in ${from}.`
+              }
+            },
+            {
+              "@type": "Question",
+              "name": `Can I book a one-way cab from ${from} to ${to} without return charges?`,
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": `Yes, EMPERIAL CABS specializes in verified one-way outstation cabs from ${from} to ${to}. You only pay for the one-way route without any round-trip return penalty.`
+              }
+            },
+            {
+              "@type": "Question",
+              "name": `Are highway toll taxes and driver allowances included?`,
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": `Yes, EMPERIAL CABS ensures complete billing transparency. Our dispatcher invoices clearly cover vehicle fare, state tolls, and professional driver allowances with zero hidden surge.`
               }
             },
             {
@@ -314,7 +331,7 @@ export default function RouteLandingPage({ onOpenBooking }) {
               "name": `How do I book a taxi from ${from} to ${to}?`,
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": `You can book instantly online on our website, through our mobile app, or by calling our 24/7 dispatch helpline at +91 98765 43210.`
+                "text": `You can book instantly online on our website emperialcabs.com, through our mobile app, via WhatsApp, or by calling our 24/7 dispatch helpline at +91 98765 43210.`
               }
             }
           ]
@@ -405,16 +422,24 @@ export default function RouteLandingPage({ onOpenBooking }) {
       a: `The approximate driving distance is ${distanceKm} km, and travel time is usually around ${duration || 'comfortable travel time'} depending on traffic and route conditions via ${highway}.`
     },
     {
-      q: `Are toll taxes and driver allowances included?`,
-      a: `Yes! EMPERIAL CABS ensures full billing transparency. Our dispatchers provide clean breakdown invoices covering vehicle fare, highway tolls, and professional driver allowances.`
+      q: `Is taxi service available for ${to} Airport (AMD) transfers from ${from}?`,
+      a: `Yes! EMPERIAL CABS provides 24/7 dedicated airport drop-off directly to Sardar Vallabhbhai Patel International Airport (AMD) Terminal 1 and Terminal 2. Our drivers ensure on-time arrival for all domestic and international flights.`
     },
     {
-      q: `Can I schedule a night or early morning pickup?`,
-      a: `Absolutely. We operate 24 hours a day, 7 days a week. You can book doorstep pickup in ${from} for airport flights, business meetings, or family trips at any hour.`
+      q: `Can I book a one-way cab without paying round-trip return fare?`,
+      a: `Yes, you only pay for the one-way route with EMPERIAL CABS. There are zero return charges or hidden penalties for one-way journeys.`
+    },
+    {
+      q: `Are toll taxes and driver allowances included in the fare?`,
+      a: `Yes, EMPERIAL CABS ensures full billing transparency. Our dispatchers provide clean breakdown invoices covering vehicle fare, highway tolls, and professional driver allowances.`
+    },
+    {
+      q: `Can I schedule a night or early morning pickup in ${from}?`,
+      a: `Absolutely. We operate 24 hours a day, 7 days a week. You can book doorstep pickup in ${from} for early morning flights, business meetings, or family emergencies at any hour.`
     },
     {
       q: `What types of vehicles are available on this route?`,
-      a: `We maintain a modern fleet configured by our dispatch team including ${displayVehicles.map(v => v.name).join(', ')} with verified commercial chauffeurs.`
+      a: `We maintain a modern fleet configured by dispatch including ${displayVehicles.map(v => v.name).join(', ')} with commercially licensed, verified chauffeurs.`
     }
   ];
 
@@ -507,7 +532,7 @@ export default function RouteLandingPage({ onOpenBooking }) {
                 </div>
               </div>
 
-              <div className="route-cta-group">
+              <div className="route-cta-group" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <button onClick={() => handleBookNow()} className="btn-route-primary">
                   <span>Book {from} to {to} Cab</span>
                   <ArrowRight size={18} />
@@ -515,6 +540,28 @@ export default function RouteLandingPage({ onOpenBooking }) {
                 <a href="tel:+919876543210" className="btn-route-secondary">
                   <Phone size={18} />
                   <span>Call 24/7 Helpline</span>
+                </a>
+                <a 
+                  href={`https://wa.me/919876543210?text=${encodeURIComponent(`Hi EMPERIAL CABS, I want to book a taxi from ${from} to ${to}. Please share available cabs and fares.`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-route-whatsapp"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '12px 20px',
+                    borderRadius: '12px',
+                    background: '#10B981',
+                    color: '#FFFFFF',
+                    fontWeight: '700',
+                    fontSize: '14px',
+                    textDecoration: 'none',
+                    boxShadow: '0 2px 8px rgba(16,185,129,0.25)'
+                  }}
+                >
+                  <MessageSquare size={17} />
+                  <span>WhatsApp Booking</span>
                 </a>
               </div>
             </div>
@@ -691,6 +738,57 @@ export default function RouteLandingPage({ onOpenBooking }) {
           </div>
         </div>
       </section>
+ 
+      {/* LOCAL DOORSTEP PICKUP & POPULAR DROPOFF HUBS */}
+      <section className="section route-locations-section" style={{ background: '#F8FAFC', padding: '60px 0' }}>
+        <div className="container">
+          <div className="section-header text-center" style={{ marginBottom: '36px' }}>
+            <span className="section-badge">Coverage Hubs</span>
+            <h2>Doorstep Pickups & Direct Drop Locations</h2>
+            <p className="section-desc">
+              We provide 100% door-to-door cab services across every residential area, corporate office, and transport terminal in {from} and {to}.
+            </p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
+            <div style={{ background: '#FFFFFF', padding: '28px', borderRadius: '20px', border: '1px solid #E2E8F0', boxShadow: '0 4px 15px rgba(0,0,0,0.03)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: '#ECFDF5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <MapPin size={22} />
+                </div>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '18px', color: '#0F172A', fontWeight: '700' }}>Pick-up Points in {from}</h4>
+                  <small style={{ color: '#64748B' }}>Any residential, hotel or commercial address</small>
+                </div>
+              </div>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '14px', color: '#334155' }}>
+                <li style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><CheckCircle2 size={16} color="#10B981" /> 24/7 Doorstep Pickup across all residential colonies</li>
+                <li style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><CheckCircle2 size={16} color="#10B981" /> Bhavnagar Railway Terminus & Bus Station Pickup</li>
+                <li style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><CheckCircle2 size={16} color="#10B981" /> Waghawadi Road, Kaliyabid, Ghogha Circle & Nilambag</li>
+                <li style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><CheckCircle2 size={16} color="#10B981" /> Zero waiting charges for scheduled departures</li>
+              </ul>
+            </div>
+
+            <div style={{ background: '#FFFFFF', padding: '28px', borderRadius: '20px', border: '1px solid #E2E8F0', boxShadow: '0 4px 15px rgba(0,0,0,0.03)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: '#EFF6FF', color: '#2563EB', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <MapPin size={22} />
+                </div>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '18px', color: '#0F172A', fontWeight: '700' }}>Direct Drops in {to}</h4>
+                  <small style={{ color: '#64748B' }}>Direct drop to your terminal or destination</small>
+                </div>
+              </div>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '14px', color: '#334155' }}>
+                <li style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><CheckCircle2 size={16} color="#2563EB" /> Sardar Vallabhbhai Patel Int'l Airport (AMD) T1 & T2</li>
+                <li style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><CheckCircle2 size={16} color="#2563EB" /> Kalupur Central Railway Station & Sabarmati Junction</li>
+                <li style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><CheckCircle2 size={16} color="#2563EB" /> SG Highway, Satellite, Prahlad Nagar, Ashram Road</li>
+                <li style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><CheckCircle2 size={16} color="#2563EB" /> Direct drop to any hospital, society, or institution</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* FREQUENTLY ASKED QUESTIONS (FAQ RICH SNIPPET) */}
       <section className="section route-faq-section">
@@ -766,9 +864,29 @@ export default function RouteLandingPage({ onOpenBooking }) {
           <span className="bar-sub">{from} &rarr; {to}</span>
           <span className="bar-price">From ₹{minPrice}</span>
         </div>
-        <button onClick={() => handleBookNow(displayVehicles[0])} className="btn-mobile-book">
-          Book Cab
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <a
+            href={`https://wa.me/919876543210?text=${encodeURIComponent(`Hi EMPERIAL CABS, I want to book a cab from ${from} to ${to}.`)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              background: '#10B981',
+              color: '#FFFFFF',
+              width: '42px',
+              height: '42px',
+              borderRadius: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textDecoration: 'none'
+            }}
+          >
+            <MessageSquare size={18} />
+          </a>
+          <button onClick={() => handleBookNow(displayVehicles[0])} className="btn-mobile-book">
+            Book Cab
+          </button>
+        </div>
       </div>
     </div>
   );

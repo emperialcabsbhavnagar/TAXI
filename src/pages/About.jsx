@@ -210,7 +210,7 @@ export default function About({ onOpenBooking }) {
                     <MapPin size={22} />
                   </div>
                   <h4>Head Office</h4>
-                  <p className="small-text">Emperial Cabs Hub, Connaught Place, New Delhi, India</p>
+                  <p className="small-text">EMPERIAL CABS Hub, Waghawadi Road, Bhavnagar, Gujarat 364001, India</p>
                 </div>
 
                 <div className="card info-mini-card">

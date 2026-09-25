@@ -128,8 +128,8 @@ export default function Footer() {
             <div className="footer-col">
               <h4 className="footer-title">Our Office</h4>
               <p className="office-text">
-                Emperial Cabs Hub, Outer Ring Road,<br />
-                Connaught Place, New Delhi 110001, India
+                EMPERIAL CABS Central Hub,<br />
+                Waghawadi Road, Bhavnagar 364001, Gujarat, India
               </p>
               
               <h4 className="footer-title contact-title">Contact</h4>
