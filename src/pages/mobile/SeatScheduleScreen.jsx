@@ -400,69 +400,12 @@ export default function SeatScheduleScreen({
               </div>
             )}
 
-            {/* STANDARD MODE OPTIONS: 1. SELECT TRIP TYPE & 2. SCHEDULE PICKUP DATE & TIME (HIDDEN IF IS_CUSTOM IS TRUE) */}
+            {/* STANDARD MODE OPTIONS: 1. SCHEDULE PICKUP DATE & TIME (HIDDEN IF IS_CUSTOM IS TRUE) */}
             {!isCustomMode && (
               <>
-                {/* 1. TRIP TYPE SELECTOR */}
+                {/* 1. SCHEDULE DATE & TIME */}
                 <p style={{ fontFamily: 'League Spartan', fontSize: '14px', fontWeight: '800', color: '#0F172A', letterSpacing: '0.3px', margin: '0 0 8px 0', textTransform: 'uppercase' }}>
-                  1. SELECT TRIP TYPE
-                </p>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setTripType('one-way')}
-                    style={{
-                      padding: '12px 10px',
-                      borderRadius: '14px',
-                      border: tripType === 'one-way' ? '2px solid #10B981' : '1.5px solid #E2E8F0',
-                      background: tripType === 'one-way' ? '#F0FDF4' : '#FFFFFF',
-                      color: tripType === 'one-way' ? '#0F172A' : '#64748B',
-                      fontFamily: 'League Spartan, sans-serif',
-                      fontSize: '14px',
-                      fontWeight: '800',
-                      cursor: 'pointer',
-                      boxShadow: tripType === 'one-way' ? '0 4px 14px rgba(16,185,129,0.2)' : 'none',
-                      transition: 'all 0.2s ease',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: '2px'
-                    }}
-                  >
-                    <span>One-Way</span>
-                    <span style={{ fontSize: '11px', fontWeight: '700', color: '#059669' }}>{baseDistance} KM</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setTripType('round-trip')}
-                    style={{
-                      padding: '12px 10px',
-                      borderRadius: '14px',
-                      border: tripType === 'round-trip' ? '2px solid #10B981' : '1.5px solid #E2E8F0',
-                      background: tripType === 'round-trip' ? '#F0FDF4' : '#FFFFFF',
-                      color: tripType === 'round-trip' ? '#0F172A' : '#64748B',
-                      fontFamily: 'League Spartan, sans-serif',
-                      fontSize: '14px',
-                      fontWeight: '800',
-                      cursor: 'pointer',
-                      boxShadow: tripType === 'round-trip' ? '0 4px 14px rgba(16,185,129,0.2)' : 'none',
-                      transition: 'all 0.2s ease',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: '2px'
-                    }}
-                  >
-                    <span>Round Trip</span>
-                    <span style={{ fontSize: '11px', fontWeight: '700', color: '#059669' }}>{baseDistance * 2} KM</span>
-                  </button>
-                </div>
-
-                {/* 2. SCHEDULE DATE & TIME */}
-                <p style={{ fontFamily: 'League Spartan', fontSize: '14px', fontWeight: '800', color: '#0F172A', letterSpacing: '0.3px', margin: '0 0 8px 0', textTransform: 'uppercase' }}>
-                  2. SCHEDULE PICKUP DATE & TIME
+                  1. SCHEDULE PICKUP DATE & TIME
                 </p>
 
                 <div className="schedule-inputs-row" style={{ marginBottom: tripType === 'round-trip' ? '10px' : '16px' }}>
@@ -524,7 +467,7 @@ export default function SeatScheduleScreen({
 
             {/* EXACT PICKUP & DROP-OFF ADDRESS DETAILS (CUSTOMER MANUAL ENTRY) */}
             <p style={{ fontFamily: 'League Spartan', fontSize: '14px', fontWeight: '800', color: '#0F172A', letterSpacing: '0.3px', margin: '0 0 8px 0', textTransform: 'uppercase' }}>
-              {isCustomMode ? 'EXACT PICKUP & DROP-OFF ADDRESS' : '3. EXACT PICKUP & DROP-OFF ADDRESS'}
+              {isCustomMode ? 'EXACT PICKUP & DROP-OFF ADDRESS' : '2. EXACT PICKUP & DROP-OFF ADDRESS'}
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
@@ -589,7 +532,7 @@ export default function SeatScheduleScreen({
 
             {/* SELECT FLEET CAR ON THIS SCREEN */}
             <p style={{ fontFamily: 'League Spartan', fontSize: '14px', fontWeight: '800', color: '#0F172A', letterSpacing: '0.3px', margin: '0 0 8px 0', textTransform: 'uppercase' }}>
-              {isCustomMode ? 'SELECT FLEET CAR (PRICE PER KM)' : '4. SELECT FLEET CAR (PRICE PER KM)'}
+              {isCustomMode ? 'SELECT FLEET CAR (PRICE PER KM)' : '3. SELECT FLEET CAR (PRICE PER KM)'}
             </p>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginBottom: '16px' }}>
