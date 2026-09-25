@@ -59,7 +59,7 @@ function ScrollToTop() {
   return null;
 }
 
-function MainLayout({ handleOpenBooking, isBookingOpen, handleCloseBooking }) {
+function MainLayout({ handleOpenBooking, isBookingOpen, handleCloseBooking, bookingData }) {
   const location = useLocation();
   const hostname = typeof window !== 'undefined' ? window.location.hostname.toLowerCase() : '';
 
@@ -118,7 +118,7 @@ function MainLayout({ handleOpenBooking, isBookingOpen, handleCloseBooking }) {
       </main>
 
       <Footer />
-      <BookingModal isOpen={isBookingOpen} onClose={handleCloseBooking} />
+      <BookingModal isOpen={isBookingOpen} onClose={handleCloseBooking} initialData={bookingData} />
     </div>
   );
 }
@@ -173,13 +173,16 @@ class ErrorBoundary extends React.Component {
 
 export default function App() {
   const [isBookingOpen, setIsBookingOpen] = useState(false);
+  const [bookingData, setBookingData] = useState(null);
 
-  const handleOpenBooking = () => {
+  const handleOpenBooking = (data = null) => {
+    setBookingData(data);
     setIsBookingOpen(true);
   };
 
   const handleCloseBooking = () => {
     setIsBookingOpen(false);
+    setBookingData(null);
   };
 
   return (
@@ -190,6 +193,7 @@ export default function App() {
           handleOpenBooking={handleOpenBooking}
           isBookingOpen={isBookingOpen}
           handleCloseBooking={handleCloseBooking}
+          bookingData={bookingData}
         />
       </Router>
     </ErrorBoundary>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { 
   parseRouteSlug, 
@@ -8,6 +8,7 @@ import {
   slugify 
 } from '../data/seoKeywordsData';
 import { loadAllRoutesFromMySQL, loadAllVehiclesFromMySQL, getRoutePriceFromMySQL } from '../services/mysqlService';
+import { INITIAL_VEHICLES } from './AdminPortal';
 import { 
   Car, 
   MapPin, 
@@ -31,14 +32,84 @@ export default function RouteLandingPage({ onOpenBooking }) {
   const { routeSlug } = useParams();
   const navigate = useNavigate();
 
-  const parsed = parseRouteSlug(routeSlug) || { from: 'Bhavnagar', to: 'Ahmedabad' };
-  const { from, to } = parsed;
+  const [customRoutes, setCustomRoutes] = useState(() => {
+    try {
+      const saved = localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  });
 
-  const [customRoutes, setCustomRoutes] = useState([]);
+  const [vehicles, setVehicles] = useState(() => {
+    try {
+      const saved = localStorage.getItem('cabsy_vehicles');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.filter(v => v.status !== 'Inactive');
+        }
+      }
+    } catch (e) {}
+    return INITIAL_VEHICLES;
+  });
+
   const [openFaqIndex, setOpenFaqIndex] = useState(0);
 
+  // Load latest live routes & vehicles from MySQL and listen for AdminPortal changes
   useEffect(() => {
-    // Fast O(1) single-route live lookup
+    const refreshData = () => {
+      loadAllRoutesFromMySQL().then(routes => {
+        if (Array.isArray(routes) && routes.length > 0) {
+          setCustomRoutes(routes);
+        }
+      }).catch(() => {});
+
+      loadAllVehiclesFromMySQL().then(fetched => {
+        if (Array.isArray(fetched) && fetched.length > 0) {
+          const active = fetched.filter(v => v.status !== 'Inactive');
+          if (active.length > 0) {
+            setVehicles(active);
+            try { localStorage.setItem('cabsy_vehicles', JSON.stringify(fetched)); } catch(e) {}
+          }
+        }
+      }).catch(() => {});
+    };
+
+    refreshData();
+
+    window.addEventListener('storage', refreshData);
+    window.addEventListener('EMPERIAL CABS_destinations_updated', refreshData);
+    window.addEventListener('EMPERIAL CABS_vehicles_updated', refreshData);
+    return () => {
+      window.removeEventListener('storage', refreshData);
+      window.removeEventListener('EMPERIAL CABS_destinations_updated', refreshData);
+      window.removeEventListener('EMPERIAL CABS_vehicles_updated', refreshData);
+    };
+  }, []);
+
+  // 1. Check if routeSlug directly matches an Admin route in MySQL/localStorage
+  const matchedDbRoute = useMemo(() => {
+    if (!routeSlug) return null;
+    return (customRoutes || []).find(r => {
+      if (!r || !r.pickup || !r.dropoff) return false;
+      const s1 = `${slugify(r.pickup)}-to-${slugify(r.dropoff)}`;
+      const s2 = `${slugify(r.dropoff)}-to-${slugify(r.pickup)}`;
+      return s1 === routeSlug || s2 === routeSlug;
+    }) || null;
+  }, [routeSlug, customRoutes]);
+
+  // Fallback parsed from slug words
+  const parsed = useMemo(() => parseRouteSlug(routeSlug) || { from: 'Bhavnagar', to: 'Ahmedabad' }, [routeSlug]);
+
+  const isReverse = matchedDbRoute && routeSlug === `${slugify(matchedDbRoute.dropoff)}-to-${slugify(matchedDbRoute.pickup)}`;
+  const from = matchedDbRoute ? (isReverse ? matchedDbRoute.dropoff : matchedDbRoute.pickup) : parsed.from;
+  const to = matchedDbRoute ? (isReverse ? matchedDbRoute.pickup : matchedDbRoute.dropoff) : parsed.to;
+
+  // Targeted live MySQL lookup for this route
+  useEffect(() => {
     if (from && to) {
       getRoutePriceFromMySQL(from, to).then(liveRoute => {
         if (liveRoute) {
@@ -46,22 +117,74 @@ export default function RouteLandingPage({ onOpenBooking }) {
         }
       }).catch(() => {});
     }
-
-    loadAllRoutesFromMySQL().then(routes => {
-      if (Array.isArray(routes) && routes.length > 0) {
-        setCustomRoutes(routes);
-      }
-    }).catch(() => {});
   }, [from, to]);
 
-  const routeDetails = calculateRouteEstimate(from, to, customRoutes);
+  const routeDetails = useMemo(() => {
+    if (matchedDbRoute) {
+      return {
+        id: matchedDbRoute.id,
+        pickup: from,
+        dropoff: to,
+        distanceKm: matchedDbRoute.distanceKm ? Number(matchedDbRoute.distanceKm) : 0,
+        duration: matchedDbRoute.duration || '',
+        baseFare: (matchedDbRoute.price !== undefined && matchedDbRoute.price !== null) ? Number(matchedDbRoute.price) : 0,
+        highway: matchedDbRoute.highway || 'Direct Route',
+        car_prices: matchedDbRoute.car_prices || {}
+      };
+    }
+    return calculateRouteEstimate(from, to, customRoutes);
+  }, [matchedDbRoute, from, to, customRoutes]);
+
   const isDirect = !!routeDetails;
   const { distanceKm = 0, duration = '', baseFare = null, highway = 'Direct Highway Corridor', car_prices = {} } = routeDetails || {};
 
-  // Exact fixed fares for specific car categories if configured by Admin
-  const sedanFare = isDirect ? Number(car_prices['CAR-101'] ?? car_prices['Swift Dzire'] ?? car_prices['Sedan'] ?? baseFare) : null;
-  const suvFare = isDirect ? Number(car_prices['CAR-102'] ?? car_prices['Maruti Ertiga'] ?? car_prices['Ertiga'] ?? Math.round(baseFare * 1.35)) : null;
-  const luxuryFare = isDirect ? Number(car_prices['CAR-103'] ?? car_prices['Innova Crysta'] ?? car_prices['Toyota Innova Crysta'] ?? Math.round(baseFare * 1.75)) : null;
+  // Active fleet of vehicles
+  const activeFleet = useMemo(() => {
+    return (vehicles && vehicles.length > 0) ? vehicles : INITIAL_VEHICLES;
+  }, [vehicles]);
+
+  // Exact fixed price calculation for every vehicle set by Admin
+  const resolveCarPrice = (veh) => {
+    if (!isDirect) return null;
+    const cp = car_prices || {};
+    // 1. Direct match on ID
+    if (cp[veh.id] !== undefined && cp[veh.id] !== null && Number(cp[veh.id]) > 0) {
+      return Number(cp[veh.id]);
+    }
+    // 2. Direct match on Name
+    if (cp[veh.name] !== undefined && cp[veh.name] !== null && Number(cp[veh.name]) > 0) {
+      return Number(cp[veh.name]);
+    }
+    // 3. Case-insensitive match on ID or Name
+    const vNameNorm = (veh.name || '').toLowerCase().trim();
+    const vIdNorm = (veh.id || '').toLowerCase().trim();
+    for (const [key, val] of Object.entries(cp)) {
+      const kNorm = key.toLowerCase().trim();
+      if ((kNorm === vNameNorm || kNorm === vIdNorm) && Number(val) > 0) {
+        return Number(val);
+      }
+    }
+    // 4. Fallback to baseFare with capacity logic if available
+    if (baseFare && baseFare > 0) {
+      const isSevenSeater = (veh?.passengers && veh.passengers.includes('7')) || (veh?.name && (veh.name.toLowerCase().includes('ertiga') || veh.name.toLowerCase().includes('eartice')));
+      const isLuxury = veh?.name && (veh.name.toLowerCase().includes('innova') || veh.name.toLowerCase().includes('crysta'));
+      const multiplier = isLuxury ? 1.75 : (isSevenSeater ? 1.35 : 1.0);
+      return Math.round(baseFare * multiplier);
+    }
+    return baseFare || 0;
+  };
+
+  const displayVehicles = useMemo(() => {
+    return activeFleet.map(veh => ({
+      ...veh,
+      resolvedPrice: resolveCarPrice(veh)
+    }));
+  }, [activeFleet, car_prices, baseFare, isDirect]);
+
+  const minPrice = useMemo(() => {
+    const validPrices = displayVehicles.map(v => v.resolvedPrice).filter(p => p !== null && !isNaN(p) && p > 0);
+    return validPrices.length > 0 ? Math.min(...validPrices) : (baseFare || 0);
+  }, [displayVehicles, baseFare]);
 
   // Dynamic SEO Title, Description, Robots Meta and Structured Data
   useEffect(() => {
@@ -87,8 +210,8 @@ export default function RouteLandingPage({ onOpenBooking }) {
     robotsMeta.setAttribute('content', 'index, follow');
 
     const pageTitle = `${from} to ${to} Taxi Service | Book One-Way & Round Trip Cab — EMPERIAL CABS`;
-    const pageDesc = baseFare
-      ? `Book verified AC cab from ${from} to ${to} starting at ₹${baseFare}. Zero hidden charges, clean cars & 24/7 doorstep pickup across Gujarat.`
+    const pageDesc = minPrice
+      ? `Book verified AC cab from ${from} to ${to} starting at ₹${minPrice}. Zero hidden charges, clean cars & 24/7 doorstep pickup across Gujarat.`
       : `Book verified AC cab from ${from} to ${to}. Zero hidden charges, clean cars & 24/7 doorstep pickup across Gujarat.`;
     
     document.title = pageTitle;
@@ -137,7 +260,7 @@ export default function RouteLandingPage({ onOpenBooking }) {
           ],
           "offers": {
             "@type": "Offer",
-            "price": String(baseFare || 0),
+            "price": String(minPrice || 0),
             "priceCurrency": "INR",
             "availability": "https://schema.org/InStock",
             "validFrom": "2026-01-01"
@@ -159,7 +282,7 @@ export default function RouteLandingPage({ onOpenBooking }) {
               "name": `What is the taxi fare from ${from} to ${to}?`,
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": `One-way taxi fare from ${from} to ${to} with EMPERIAL CABS starts at ₹${baseFare} for an executive AC sedan (Swift/Aura) and ₹${suvFare} for a spacious 7-seater SUV (Ertiga).`
+                "text": `One-way taxi fare from ${from} to ${to} with EMPERIAL CABS starts at ₹${minPrice}. Exact fixed fares configured by dispatch: ${displayVehicles.map(v => `${v.name}: ₹${v.resolvedPrice}`).join(', ')}.`
               }
             },
             {
@@ -167,7 +290,7 @@ export default function RouteLandingPage({ onOpenBooking }) {
               "name": `How much time does it take to travel from ${from} to ${to} by cab?`,
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": `The road distance between ${from} and ${to} is approximately ${distanceKm} km. A private cab trip typically takes about ${duration} via ${highway}.`
+                "text": `The road distance between ${from} and ${to} is approximately ${distanceKm} km. A private cab trip typically takes about ${duration || 'comfortable travel time'} via ${highway}.`
               }
             },
             {
@@ -198,14 +321,23 @@ export default function RouteLandingPage({ onOpenBooking }) {
       if (el) el.remove();
       robotsMeta.setAttribute('content', 'index, follow');
     };
-  }, [routeSlug, from, to, isDirect, baseFare, distanceKm, duration, highway, suvFare]);
+  }, [routeSlug, from, to, isDirect, minPrice, distanceKm, duration, highway, displayVehicles]);
 
   // Direct 1-Click Booking
-  const handleBookNow = () => {
+  const handleBookNow = (veh = null) => {
+    const chosenVeh = veh || displayVehicles[0] || null;
+    const bookingPayload = {
+      pickup: `${from}, Gujarat`,
+      dropoff: `${to}, Gujarat`,
+      vehicleId: chosenVeh?.id || '',
+      vehicleName: chosenVeh?.name || '',
+      fare: chosenVeh?.resolvedPrice || minPrice
+    };
+
     if (onOpenBooking) {
-      onOpenBooking({ pickup: `${from}, Gujarat`, dropoff: `${to}, Gujarat` });
+      onOpenBooking(bookingPayload);
     } else {
-      navigate(`/book-ride?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+      navigate(`/book-ride?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&vehicle=${encodeURIComponent(chosenVeh?.id || '')}`);
     }
   };
 
@@ -258,11 +390,11 @@ export default function RouteLandingPage({ onOpenBooking }) {
   const faqs = [
     {
       q: `What is the taxi fare from ${from} to ${to}?`,
-      a: `One-way cab fare from ${from} to ${to} starts at ₹${baseFare} for an executive sedan (Swift Dzire / Aura), ₹${suvFare} for an Ertiga 7-seater, and ₹${luxuryFare} for Innova Crysta. All rates are all-inclusive with zero hidden costs.`
+      a: `One-way cab fare from ${from} to ${to} starts at ₹${minPrice} with EMPERIAL CABS. Verified car fares: ${displayVehicles.map(v => `${v.name} at ₹${v.resolvedPrice}`).join(', ')}. All rates are all-inclusive fixed fares with zero hidden costs.`
     },
     {
       q: `How long does the journey take from ${from} to ${to}?`,
-      a: `The approximate driving distance is ${distanceKm} km, and travel time is usually around ${duration} depending on traffic and route conditions via ${highway}.`
+      a: `The approximate driving distance is ${distanceKm} km, and travel time is usually around ${duration || 'comfortable travel time'} depending on traffic and route conditions via ${highway}.`
     },
     {
       q: `Are toll taxes and driver allowances included?`,
@@ -274,7 +406,7 @@ export default function RouteLandingPage({ onOpenBooking }) {
     },
     {
       q: `What types of vehicles are available on this route?`,
-      a: `We maintain a modern, commercial-permitted fleet including 4-seater executive sedans, spacious 6–7 seater SUVs (Ertiga / Innova), and green eco electric vehicles.`
+      a: `We maintain a modern fleet configured by our dispatch team including ${displayVehicles.map(v => v.name).join(', ')} with verified commercial chauffeurs.`
     }
   ];
 
@@ -323,12 +455,12 @@ export default function RouteLandingPage({ onOpenBooking }) {
                 <div className="metric-divider"></div>
                 <div className="metric-item">
                   <span className="metric-label">Starting Fare</span>
-                  <span className="metric-value text-green">{isDirect && baseFare ? `₹${baseFare}` : '₹15 / km'}</span>
+                  <span className="metric-value text-green">{isDirect && minPrice ? `₹${minPrice}` : '₹15 / km'}</span>
                 </div>
               </div>
 
               <div className="route-cta-group">
-                <button onClick={handleBookNow} className="btn-route-primary">
+                <button onClick={() => handleBookNow()} className="btn-route-primary">
                   <span>Book {from} to {to} Cab</span>
                   <ArrowRight size={18} />
                 </button>
@@ -366,14 +498,12 @@ export default function RouteLandingPage({ onOpenBooking }) {
                 </div>
 
                 <div className="fare-highlight-box">
-                  <div className="fare-row">
-                    <span>Sedan (Swift / Aura)</span>
-                    <strong>{isDirect && sedanFare ? `₹${sedanFare}` : '₹15 / km'}</strong>
-                  </div>
-                  <div className="fare-row">
-                    <span>SUV (Ertiga 7-Seater)</span>
-                    <strong>{isDirect && suvFare ? `₹${suvFare}` : '₹22 / km'}</strong>
-                  </div>
+                  {displayVehicles.slice(0, 3).map(veh => (
+                    <div className="fare-row" key={veh.id}>
+                      <span>{veh.name} ({veh.passengers || '4 Persons'})</span>
+                      <strong>₹{veh.resolvedPrice || minPrice}</strong>
+                    </div>
+                  ))}
                   <div className="fare-row">
                     <span>Trip Type</span>
                     <span className="tag-oneway">One-Way / Round Trip</span>
@@ -386,7 +516,7 @@ export default function RouteLandingPage({ onOpenBooking }) {
                   <div className="perk-item"><CheckCircle2 size={16} /> 24x7 emergency and trip support</div>
                 </div>
 
-                <button onClick={handleBookNow} className="btn-book-full">
+                <button onClick={() => handleBookNow(displayVehicles[0])} className="btn-book-full">
                   Instant Online Booking
                 </button>
               </div>
@@ -395,84 +525,65 @@ export default function RouteLandingPage({ onOpenBooking }) {
         </div>
       </section>
 
-      {/* VEHICLE TIER COMPARISON */}
+      {/* VEHICLE TIER COMPARISON - DYNAMICALLY RENDERED WITH REAL ADMIN VEHICLE DATA */}
       <section className="section vehicle-tier-section">
         <div className="container">
           <div className="section-header text-center">
             <span className="section-badge">Fleet Options</span>
             <h2>Select Your Preferred Vehicle for {from} to {to}</h2>
             <p className="section-desc">
-              Choose from our well-maintained, commercially insured fleet tailored for executive travel, family holidays, and airport runs.
+              Choose from our well-maintained, commercially insured fleet tailored for executive travel, family holidays, and airport runs with fixed prices set by dispatch.
             </p>
           </div>
 
           <div className="vehicles-pricing-grid">
-            {/* Sedan */}
-            <div className="veh-card">
-              <div className="veh-header">
-                <h3>Executive Sedan</h3>
-                <span className="veh-model">Maruti Swift Dzire / Hyundai Aura</span>
-              </div>
-              <div className="veh-capacity">
-                <Users size={16} /> 4 Passengers + Luggage
-              </div>
-              <div className="veh-price-block">
-                <span className="currency">₹</span>
-                <span className="amount">{sedanFare}</span>
-                <span className="period">All-Inclusive Fixed Fare</span>
-              </div>
-              <ul className="veh-features">
-                <li><CheckCircle2 size={15} /> Air Conditioned throughout</li>
-                <li><CheckCircle2 size={15} /> Generous boot space for bags</li>
-                <li><CheckCircle2 size={15} /> Highly fuel-efficient & smooth</li>
-              </ul>
-              <button onClick={handleBookNow} className="btn-veh-select">Select Sedan</button>
-            </div>
+            {displayVehicles.map((veh, idx) => {
+              const isFeatured = idx === 1 || (veh.name && (veh.name.toLowerCase().includes('ertiga') || veh.name.toLowerCase().includes('eartice')));
+              return (
+                <div key={veh.id || idx} className={`veh-card ${isFeatured ? 'featured-card' : ''}`}>
+                  {isFeatured && <div className="popular-badge">Most Popular Choice</div>}
+                  
+                  {veh.image && (
+                    <div className="veh-img-box">
+                      <img 
+                        src={veh.image} 
+                        alt={veh.name} 
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                    </div>
+                  )}
 
-            {/* SUV */}
-            <div className="veh-card featured-card">
-              <div className="popular-badge">Most Popular for Families</div>
-              <div className="veh-header">
-                <h3>Spacious 7-Seater SUV</h3>
-                <span className="veh-model">Maruti Suzuki Ertiga</span>
-              </div>
-              <div className="veh-capacity">
-                <Users size={16} /> 6–7 Passengers + Luggage
-              </div>
-              <div className="veh-price-block">
-                <span className="currency">₹</span>
-                <span className="amount">{suvFare}</span>
-                <span className="period">All-Inclusive Fixed Fare</span>
-              </div>
-              <ul className="veh-features">
-                <li><CheckCircle2 size={15} /> Extra legroom for long highway trips</li>
-                <li><CheckCircle2 size={15} /> Rear AC vents for passenger comfort</li>
-                <li><CheckCircle2 size={15} /> Ideal for outstation family travel</li>
-              </ul>
-              <button onClick={handleBookNow} className="btn-veh-select btn-featured">Select 7-Seater</button>
-            </div>
+                  <div className="veh-header">
+                    <h3>{veh.name}</h3>
+                    <span className="veh-model">{veh.description || `${veh.passengers || '4 Persons'} • AC Outstation Cab`}</span>
+                  </div>
 
-            {/* Luxury */}
-            <div className="veh-card">
-              <div className="veh-header">
-                <h3>Executive Luxury</h3>
-                <span className="veh-model">Toyota Innova Crysta</span>
-              </div>
-              <div className="veh-capacity">
-                <Users size={16} /> 7 Passengers + Heavy Luggage
-              </div>
-              <div className="veh-price-block">
-                <span className="currency">₹</span>
-                <span className="amount">{luxuryFare}</span>
-                <span className="period">All-Inclusive Fixed Fare</span>
-              </div>
-              <ul className="veh-features">
-                <li><CheckCircle2 size={15} /> Plush captain seats & cabin luxury</li>
-                <li><CheckCircle2 size={15} /> Maximum safety & suspension quality</li>
-                <li><CheckCircle2 size={15} /> Premier VIP mobility experience</li>
-              </ul>
-              <button onClick={handleBookNow} className="btn-veh-select">Select Luxury</button>
-            </div>
+                  <div className="veh-capacity">
+                    <Users size={16} /> {veh.passengers || '4 Persons'} + Luggage
+                  </div>
+
+                  <div className="veh-price-block">
+                    <span className="currency">₹</span>
+                    <span className="amount">{veh.resolvedPrice || minPrice}</span>
+                    <span className="period">All-Inclusive Fixed Fare</span>
+                  </div>
+
+                  <ul className="veh-features">
+                    <li><CheckCircle2 size={15} /> Air Conditioned throughout</li>
+                    <li><CheckCircle2 size={15} /> Verified commercial chauffeur</li>
+                    <li><CheckCircle2 size={15} /> Generous boot space for bags</li>
+                    <li><CheckCircle2 size={15} /> Clean & sanitized executive cabin</li>
+                  </ul>
+
+                  <button 
+                    onClick={() => handleBookNow(veh)} 
+                    className={`btn-veh-select ${isFeatured ? 'btn-featured' : ''}`}
+                  >
+                    Select {veh.name}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -485,7 +596,7 @@ export default function RouteLandingPage({ onOpenBooking }) {
               <span className="section-badge">Trip Overview</span>
               <h2>About Traveling from {from} to {to}</h2>
               <p className="guide-text">
-                The road journey from <strong>{from}</strong> to <strong>{to}</strong> spans approximately <strong>{distanceKm} km</strong> and takes around <strong>{duration}</strong> via {highway}.
+                The road journey from <strong>{from}</strong> to <strong>{to}</strong> spans approximately <strong>{distanceKm} km</strong> and takes around <strong>{duration || 'comfortable travel time'}</strong> via {highway}.
               </p>
               <p className="guide-text">
                 Choosing a private taxi with EMPERIAL CABS ensures you travel on your own schedule without waiting for bus timetables or crowded public transit. Whether you are traveling for corporate meetings, academic visits, airport transfers, or leisure, our chauffeurs ensure a smooth ride.
@@ -595,9 +706,9 @@ export default function RouteLandingPage({ onOpenBooking }) {
       <div className="sticky-mobile-route-bar">
         <div className="bar-info">
           <span className="bar-sub">{from} &rarr; {to}</span>
-          <span className="bar-price">From ₹{baseFare}</span>
+          <span className="bar-price">From ₹{minPrice}</span>
         </div>
-        <button onClick={handleBookNow} className="btn-mobile-book">
+        <button onClick={() => handleBookNow(displayVehicles[0])} className="btn-mobile-book">
           Book Cab
         </button>
       </div>

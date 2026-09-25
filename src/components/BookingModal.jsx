@@ -6,7 +6,7 @@ import { X, MapPin, Navigation, Car, Clock, ShieldCheck, CheckCircle } from 'luc
 import { notifyAdmin } from '../services/notificationEngine';
 import './BookingModal.css';
 
-export default function BookingModal({ isOpen, onClose }) {
+export default function BookingModal({ isOpen, onClose, initialData }) {
   const [pickup, setPickup] = useState('');
   const [dropoff, setDropoff] = useState('');
   const [vehicles, setVehicles] = useState([]);
@@ -15,6 +15,14 @@ export default function BookingModal({ isOpen, onClose }) {
   const [matchedRoute, setMatchedRoute] = useState(null);
 
   const [activeRide, setActiveRide] = useState(null);
+
+  useEffect(() => {
+    if (isOpen && initialData) {
+      if (initialData.pickup) setPickup(initialData.pickup);
+      if (initialData.dropoff) setDropoff(initialData.dropoff);
+      if (initialData.vehicleId) setVehicleId(initialData.vehicleId);
+    }
+  }, [isOpen, initialData]);
 
   useEffect(() => {
     const checkActiveRide = () => {

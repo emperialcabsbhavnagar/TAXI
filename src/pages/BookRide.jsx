@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import db from '../services/dbService';
 import { 
   MapPin, 
@@ -48,6 +49,7 @@ const isRoutePriced = (r) => {
 };
 
 export default function BookRide() {
+  const location = useLocation();
   const [places, setPlaces] = useState([]);
   const [destinations, setDestinations] = useState([]);
   const [vehicles, setVehicles] = useState([]);
@@ -72,6 +74,27 @@ export default function BookRide() {
   const [matchedRouteData, setMatchedRouteData] = useState(null);
   
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
+
+  // Parse URL Query Parameters if user navigated directly from a Route landing page
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(location.search);
+      const qFrom = params.get('from');
+      const qTo = params.get('to');
+      const qVeh = params.get('vehicle') || params.get('vehicleId');
+      if (qFrom) {
+        setPickupLocation(qFrom);
+        setPickupCity(qFrom);
+      }
+      if (qTo) {
+        setDropoffDestination(qTo);
+        setDropoffCity(qTo);
+      }
+      if (qVeh) {
+        setSelectedVehicleId(qVeh);
+      }
+    } catch (e) {}
+  }, [location.search]);
   
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');

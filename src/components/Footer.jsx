@@ -1,10 +1,61 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Phone, Mail, MapPin, Smartphone } from 'lucide-react';
 import logoImg from '../assets/images/logo.svg';
+import { loadAllRoutesFromMySQL } from '../services/mysqlService';
+import { slugify } from '../data/seoKeywordsData';
 import './Footer.css';
 
 export default function Footer() {
+  const [popularRoutes, setPopularRoutes] = useState(() => {
+    try {
+      const saved = localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const valid = parsed.filter(r => r && r.pickup && r.dropoff);
+          if (valid.length > 0) return valid.slice(0, 6);
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  useEffect(() => {
+    const loadRoutes = () => {
+      try {
+        const saved = localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            const valid = parsed.filter(r => r && r.pickup && r.dropoff);
+            if (valid.length > 0) {
+              setPopularRoutes(valid.slice(0, 6));
+            }
+          }
+        }
+      } catch (e) {}
+
+      loadAllRoutesFromMySQL().then(fetched => {
+        if (Array.isArray(fetched) && fetched.length > 0) {
+          const valid = fetched.filter(r => r && r.pickup && r.dropoff);
+          if (valid.length > 0) {
+            setPopularRoutes(valid.slice(0, 6));
+          }
+        }
+      }).catch(() => {});
+    };
+
+    loadRoutes();
+
+    window.addEventListener('storage', loadRoutes);
+    window.addEventListener('EMPERIAL CABS_destinations_updated', loadRoutes);
+    return () => {
+      window.removeEventListener('storage', loadRoutes);
+      window.removeEventListener('EMPERIAL CABS_destinations_updated', loadRoutes);
+    };
+  }, []);
+
   return (
     <footer className="cabsy-footer">
       <div className="container">
@@ -36,16 +87,29 @@ export default function Footer() {
               </ul>
             </div>
 
-            {/* Popular Gujarat Routes */}
+            {/* Popular Gujarat Routes - Dynamically generated from Admin routes */}
             <div className="footer-col">
               <h4 className="footer-title">Popular Routes</h4>
               <ul className="footer-links">
-                <li><Link to="/taxi/bhavnagar-to-ahmedabad">Bhavnagar to Ahmedabad</Link></li>
-                <li><Link to="/taxi/bhavnagar-to-vadodara">Bhavnagar to Vadodara</Link></li>
-                <li><Link to="/taxi/bhavnagar-to-surat">Bhavnagar to Surat</Link></li>
-                <li><Link to="/taxi/bhavnagar-to-rajkot">Bhavnagar to Rajkot</Link></li>
-                <li><Link to="/taxi/ahmedabad-to-bhavnagar">Ahmedabad to Bhavnagar</Link></li>
-                <li><Link to="/routes" style={{ color: '#10B981', fontWeight: '700' }}>View All 800+ Routes &rarr;</Link></li>
+                {popularRoutes.length > 0 ? (
+                  popularRoutes.map((r, idx) => {
+                    const slug = `${slugify(r.pickup)}-to-${slugify(r.dropoff)}`;
+                    return (
+                      <li key={r.id || idx}>
+                        <Link to={`/taxi/${slug}`}>{r.pickup} to {r.dropoff}</Link>
+                      </li>
+                    );
+                  })
+                ) : (
+                  <>
+                    <li><Link to="/taxi/bhavnagar-to-ahmedabad">Bhavnagar to Ahmedabad</Link></li>
+                    <li><Link to="/taxi/bhavnagar-to-vadodara">Bhavnagar to Vadodara</Link></li>
+                    <li><Link to="/taxi/bhavnagar-to-surat">Bhavnagar to Surat</Link></li>
+                    <li><Link to="/taxi/bhavnagar-to-rajkot">Bhavnagar to Rajkot</Link></li>
+                    <li><Link to="/taxi/ahmedabad-to-bhavnagar">Ahmedabad to Bhavnagar</Link></li>
+                  </>
+                )}
+                <li><Link to="/routes" style={{ color: '#10B981', fontWeight: '700' }}>View All Routes &rarr;</Link></li>
               </ul>
             </div>
 
