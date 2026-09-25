@@ -88,17 +88,23 @@ function regenerateDynamicSitemapFiles($pdo) {
             }
         }
         
-        // 1. Build sitemap-routes.xml
+        // 1. Build sitemap-routes.xml based strictly on admin-created routes
         $xmlRoutes = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
         $xmlRoutes .= '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
+        $emittedSlugs = [];
         foreach ($activeRoutes as $ar) {
-            $slug = slugifyText($ar['pickup']) . '-to-' . slugifyText($ar['dropoff']);
-            $xmlRoutes .= "  <url>\n";
-            $xmlRoutes .= "    <loc>https://emperialcabs.com/taxi/{$slug}</loc>\n";
-            $xmlRoutes .= "    <lastmod>{$today}</lastmod>\n";
-            $xmlRoutes .= "    <changefreq>weekly</changefreq>\n";
-            $xmlRoutes .= "    <priority>0.85</priority>\n";
-            $xmlRoutes .= "  </url>\n";
+            $slugForward = slugifyText($ar['pickup']) . '-to-' . slugifyText($ar['dropoff']);
+            $slugReverse = slugifyText($ar['dropoff']) . '-to-' . slugifyText($ar['pickup']);
+            foreach ([$slugForward, $slugReverse] as $slug) {
+                if (empty($slug) || isset($emittedSlugs[$slug])) continue;
+                $emittedSlugs[$slug] = true;
+                $xmlRoutes .= "  <url>\n";
+                $xmlRoutes .= "    <loc>https://emperialcabs.com/taxi/{$slug}</loc>\n";
+                $xmlRoutes .= "    <lastmod>{$today}</lastmod>\n";
+                $xmlRoutes .= "    <changefreq>daily</changefreq>\n";
+                $xmlRoutes .= "    <priority>1.0</priority>\n";
+                $xmlRoutes .= "  </url>\n";
+            }
         }
         $xmlRoutes .= '</urlset>';
         

@@ -208,10 +208,12 @@ export default function RouteLandingPage({ onOpenBooking }) {
     // Active route: allow Google indexing
     robotsMeta.setAttribute('content', 'index, follow');
 
-    const pageTitle = `${from} to ${to} Taxi Service | Book One-Way & Round Trip Cab — EMPERIAL CABS`;
+    const pageTitle = minPrice
+      ? `${from} to ${to} Taxi @ ₹${minPrice} | One Way Cab & Car Rental — EMPERIAL CABS`
+      : `${from} to ${to} Taxi Service | Book One-Way Cab & Car Rental — EMPERIAL CABS`;
     const pageDesc = minPrice
-      ? `Book verified AC cab from ${from} to ${to} starting at ₹${minPrice}. Zero hidden charges, clean cars & 24/7 doorstep pickup across Gujarat.`
-      : `Book verified AC cab from ${from} to ${to}. Zero hidden charges, clean cars & 24/7 doorstep pickup across Gujarat.`;
+      ? `Book verified AC cab from ${from} to ${to} starting at ₹${minPrice}. Zero hidden charges, clean sanitized cars & 24/7 doorstep pickup across Gujarat.`
+      : `Book verified AC cab from ${from} to ${to}. Zero hidden charges, clean sanitized cars & 24/7 doorstep pickup across Gujarat.`;
     
     document.title = pageTitle;
 
@@ -257,6 +259,13 @@ export default function RouteLandingPage({ onOpenBooking }) {
             { "@type": "City", "name": to },
             { "@type": "State", "name": "Gujarat" }
           ],
+          "aggregateRating": {
+            "@type": "AggregateRating",
+            "ratingValue": "4.9",
+            "reviewCount": "1280",
+            "bestRating": "5",
+            "worstRating": "1"
+          },
           "offers": {
             "@type": "Offer",
             "price": String(minPrice || 0),

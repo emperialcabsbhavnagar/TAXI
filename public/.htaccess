@@ -12,6 +12,9 @@ DirectoryIndex index.html index.php
   RewriteRule ^api/db$ /api/db.php [L,QSA]
   RewriteRule ^api/db\.php$ - [L]
 
+  # Dynamic live sitemaps for Google Search Engine crawlers
+  RewriteRule ^sitemap-routes\.xml$ /sitemap-routes.php [L]
+
   # Allow direct access to real existing files and directories
   RewriteRule ^index\.html$ - [L]
   RewriteCond %{REQUEST_FILENAME} -f [OR]
