@@ -200,7 +200,7 @@ export default function SelectCarScreen({
         time: matchedRoute?.duration || `${Math.round(effectiveDistanceKm * 1.4)} min`,
         ratePerKm,
         totalFareNum: totalFare,
-        price: `₹${totalFare.toLocaleString('en-IN')}`,
+        price: isVehicleFixed ? `₹${totalFare.toLocaleString('en-IN')}` : `₹${ratePerKm}/km`,
         isFixedPrice: isVehicleFixed
       };
     });
@@ -245,13 +245,20 @@ export default function SelectCarScreen({
               <div style={{ background: '#F0FDF4', border: '1.5px solid #BBF7D0', color: '#059669', padding: '6px 14px', borderRadius: '16px', fontSize: '13px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 8px rgba(16,185,129,0.1)' }}>
                 <span>●</span> {hasFixedPrice 
                   ? (tripType === 'round-trip' ? 'Round Trip • Fixed Route' : 'One-Way • Fixed Route')
-                  : (tripType === 'round-trip' ? `Round Trip • ${effectiveDistanceKm} KM` : `One-Way • ${effectiveDistanceKm} KM`)}
+                  : (tripType === 'round-trip' ? `Round Trip • Per KM Rate` : `One-Way • ${effectiveDistanceKm} KM`)}
               </div>
             </div>
 
             <p style={{ fontFamily: 'League Spartan', fontSize: '15px', fontWeight: '800', color: '#0F172A', letterSpacing: '0.3px', margin: '0 0 10px 0', textTransform: 'uppercase' }}>
               {hasFixedPrice ? 'SELECT FLEET VEHICLE (FIXED ROUTE FARE)' : 'SELECT FLEET VEHICLE (RATE / KM)'}
             </p>
+
+            {!hasFixedPrice && (
+              <div style={{ background: '#FFFBEB', border: '1.5px solid #FDE68A', borderRadius: '12px', padding: '10px 14px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px', color: '#92400E', fontSize: '12px', fontWeight: '700' }}>
+                <span style={{ fontSize: '14px' }}>ℹ️</span>
+                <span><strong>Important Note:</strong> 1 Day 300 KM fixed minimum. Toll, State Tax & Parking extra!</span>
+              </div>
+            )}
             
             {/* Scrollable Car Selection Cards */}
             <div style={{ 

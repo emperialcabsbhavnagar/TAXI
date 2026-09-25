@@ -689,14 +689,29 @@ export default function BookRide() {
 
                 {/* STEP 3: VEHICLE CHOICE */}
                 <div className="form-section mt-3">
-                  <label className="section-title">
-                    <Car size={16} color="#0f172a" /> 3. Choose Vehicle Class
-                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                    <label className="section-title" style={{ margin: 0 }}>
+                      <Car size={16} color="#0f172a" /> 3. Choose Vehicle Class
+                    </label>
+                    {tripType === 'custom-trip' && (
+                      <span style={{ fontSize: '12px', fontWeight: '800', color: '#059669', background: '#ECFDF5', padding: '3px 10px', borderRadius: '8px', border: '1px solid #A7F3D0' }}>
+                        Per KM Rate System
+                      </span>
+                    )}
+                  </div>
+
+                  {tripType === 'custom-trip' && (
+                    <div style={{ background: '#FFFBEB', border: '1.5px solid #FDE68A', borderRadius: '12px', padding: '10px 14px', marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px', color: '#92400E', fontSize: '13px', fontWeight: '700' }}>
+                      <span style={{ fontSize: '15px' }}>ℹ️</span>
+                      <span><strong>Important Note:</strong> 1 Day 300 KM fixed minimum. Toll, State Tax & Parking extra!</span>
+                    </div>
+                  )}
 
                   <div className="vehicle-light-grid mt-2">
                     {vehicles.map(v => {
                       const fareInfo = getVehicleFare(v);
                       const isAvail = fareInfo.available;
+                      const isCustomMode = tripType === 'custom-trip';
                       return (
                         <div 
                           key={v.id} 
@@ -721,10 +736,14 @@ export default function BookRide() {
                                   Fixed Total
                                 </span>
                               </>
-                            ) : isAvail ? (
+                            ) : isCustomMode ? (
                               <>
-                                <span className="vehicle-price">₹{Number(fareInfo.fare).toFixed(0)}</span>
-                                <small className="text-muted" style={{ fontSize: '10px' }}>Est. Total ({noOfDays} {noOfDays > 1 ? 'Days' : 'Day'})</small>
+                                <span className="vehicle-price" style={{ color: '#0F172A', fontWeight: '800', fontSize: '1.05rem' }}>
+                                  ₹{v.rate} <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748B' }}>/ KM</span>
+                                </span>
+                                <span style={{ fontSize: '10px', color: '#047857', background: '#ECFDF5', padding: '1px 6px', borderRadius: '4px', fontWeight: '800' }}>
+                                  Per KM Rate
+                                </span>
                               </>
                             ) : (
                               <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700' }}>Price Not Set</span>
@@ -878,25 +897,31 @@ export default function BookRide() {
 
                     {(tripType === 'one-way' || tripType === 'custom-trip') && (
                       <div className="summary-row">
-                        <span>Rate Type:</span>
-                        <strong style={{ color: '#0f172a' }}>{fixedPrice && tripType !== 'custom-trip' ? 'Fixed Route Fare' : `₹${currentVehicle.rate} / km`}</strong>
+                        <span>Rate Structure:</span>
+                        <strong style={{ color: '#0f172a' }}>
+                          {tripType === 'custom-trip' 
+                            ? `₹${currentVehicle.rate} / KM (1 Day 300 KM fix)` 
+                            : (fixedPrice ? 'Fixed Route Fare' : `₹${currentVehicle.rate} / km`)
+                          }
+                        </strong>
                       </div>
                     )}
                   </div>
 
                   <div className="fare-big-box mt-3">
                     <div className="fare-label">
-                      {tripType === 'custom-trip' ? 'Total Fare Rate' : 'Estimated Total Fare'}
+                      {tripType === 'custom-trip' ? 'Billing Rate' : 'Estimated Total Fare'}
                     </div>
                     <div className="fare-price">
                       {tripType === 'custom-trip' ? `₹${currentVehicle.rate} / KM` : `₹${calculatedFare}`}
                     </div>
-                    {tripType !== 'custom-trip' && (
+                    {tripType === 'custom-trip' ? (
+                      <small className="fare-note" style={{ color: '#b45309', fontWeight: '700', fontSize: '11px', lineHeight: '1.4' }}>
+                        * 1 Day 300 KM fixed minimum. Toll, State Tax & Parking extra as per actual receipts.
+                      </small>
+                    ) : (
                       <small className="fare-note">
-                        {tripType === 'round-trip' 
-                          ? 'Includes Return Journey (2× Distance)' 
-                          : 'Fixed transparent pricing based on KM'
-                        }
+                        Fixed transparent pricing with zero surge
                       </small>
                     )}
                   </div>
