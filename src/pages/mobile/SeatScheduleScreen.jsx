@@ -3,6 +3,7 @@ import InteractiveMap from '../../components/InteractiveMap';
 import { getCoordsForPlace, generateRoutePolyline, calculateDistanceKm } from '../../utils/locationCoords';
 import { INITIAL_VEHICLES } from '../AdminPortal';
 import { db } from '../../services/dbService';
+import { getRoutePriceFromMySQL, loadAllRoutesFromMySQL } from '../../services/mysqlService';
 import { Gift, ArrowLeft, Sparkles, CheckCircle2 } from 'lucide-react';
 
 export default function SeatScheduleScreen({ 
@@ -59,6 +60,46 @@ export default function SeatScheduleScreen({
     : effectiveDistance;
   const avgKmPerDay = isCustomMode ? Math.round(estTotalKm / (noOfDays || 1)) : estTotalKm;
 
+  const [matchedRoute, setMatchedRoute] = useState(() => {
+    try {
+      const savedDest = localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
+      if (savedDest) {
+        const parsedD = JSON.parse(savedDest);
+        if (Array.isArray(parsedD) && parsedD.length > 0) {
+          const pClean = (pickupLoc || '').toLowerCase().trim();
+          const dClean = (dropoffLoc || '').toLowerCase().trim();
+          return parsedD.find(r => 
+            (r.pickup && r.dropoff) &&
+            (((r.pickup.toLowerCase().includes(pClean) || pClean.includes(r.pickup.toLowerCase())) &&
+              (r.dropoff.toLowerCase().includes(dClean) || dClean.includes(r.dropoff.toLowerCase()))) ||
+             ((r.pickup.toLowerCase().includes(dClean) || dClean.includes(r.pickup.toLowerCase())) &&
+              (r.dropoff.toLowerCase().includes(pClean) || pClean.includes(r.dropoff.toLowerCase()))))
+          ) || null;
+        }
+      }
+    } catch (e) {}
+    return null;
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    if (pickupLoc && dropoffLoc) {
+      getRoutePriceFromMySQL(pickupLoc, dropoffLoc).then(liveRoute => {
+        if (!isMounted || !liveRoute) return;
+        let cp = liveRoute.car_prices || {};
+        if (typeof cp === 'string') {
+          try { cp = JSON.parse(cp); } catch(e) { cp = {}; }
+        }
+        setMatchedRoute({
+          ...liveRoute,
+          price: Number(liveRoute.price) || 0,
+          car_prices: cp
+        });
+      }).catch(() => {});
+    }
+    return () => { isMounted = false; };
+  }, [pickupLoc, dropoffLoc]);
+
   // Load configured vehicles from Admin Portal
   const getFleetVehicles = () => {
     let rawList = [];
@@ -80,9 +121,43 @@ export default function SeatScheduleScreen({
       .filter(v => (v.status || 'Active').toLowerCase() === 'active')
       .map((v, idx) => {
         const r = Number(v.ratePerKm || v.pricePerKm || v.rate) || 5;
-        const fare = isCustomMode 
-          ? Math.round(r * estTotalKm)
-          : Math.round(r * effectiveDistance);
+        let fare = 0;
+        let isFixed = false;
+
+        let directPrice = null;
+        if (matchedRoute && matchedRoute.car_prices && typeof matchedRoute.car_prices === 'object') {
+          directPrice = matchedRoute.car_prices[v.id] ?? matchedRoute.car_prices[v.name];
+          if (directPrice === null || directPrice === undefined || directPrice === '') {
+            const vNameLower = (v.name || '').toLowerCase().trim();
+            const vIdLower = (v.id || '').toLowerCase().trim();
+            for (const [k, val] of Object.entries(matchedRoute.car_prices)) {
+              const kL = k.toLowerCase().trim();
+              if (kL === vIdLower || kL === vNameLower) {
+                directPrice = val;
+                break;
+              }
+            }
+          }
+        }
+
+        if (directPrice !== null && directPrice !== undefined && directPrice !== '' && !isNaN(Number(directPrice)) && Number(directPrice) > 0) {
+          const numP = Number(directPrice);
+          fare = tripType === 'round-trip' ? numP * 2 : numP;
+          isFixed = true;
+        } else if (matchedRoute && matchedRoute.price && Number(matchedRoute.price) > 0) {
+          const isSevenSeater = (v.passengers && v.passengers.includes('7')) || (v.name && (v.name.toLowerCase().includes('ertiga') || v.name.toLowerCase().includes('innova')));
+          const isLuxury = v.name && (v.name.toLowerCase().includes('innova') || v.name.toLowerCase().includes('crysta'));
+          const multiplier = isLuxury ? 1.7 : (isSevenSeater ? 1.35 : 1.0);
+          const oneWay = Math.round(Number(matchedRoute.price) * multiplier);
+          fare = tripType === 'round-trip' ? oneWay * 2 : oneWay;
+          isFixed = true;
+        } else {
+          fare = isCustomMode 
+            ? Math.round(r * estTotalKm)
+            : Math.round(r * effectiveDistance);
+          isFixed = false;
+        }
+
         return {
           id: v.id || `CAR-${101 + idx}`,
           name: v.name,
@@ -90,7 +165,8 @@ export default function SeatScheduleScreen({
           ratePerKm: r,
           totalFareNum: fare,
           price: `₹${fare.toLocaleString('en-IN')}`,
-          tag: v.status || 'Active'
+          isFixedPrice: isFixed,
+          tag: isFixed ? 'Fixed Rate' : (v.status || 'Active')
         };
       });
   };

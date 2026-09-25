@@ -37,22 +37,27 @@ export default function SelectCarScreen({
 
   const getMatchedRoute = () => {
     try {
+      const matchFn = r => {
+        if (!r || !r.pickup || !r.dropoff) return false;
+        const p1 = (pickupLoc || '').toLowerCase();
+        const d1 = (dropoffLoc || '').toLowerCase();
+        const rp = (r.pickup || '').toLowerCase();
+        const rd = (r.dropoff || '').toLowerCase();
+        const fwd = (p1.includes(rp) || rp.includes(p1)) && (d1.includes(rd) || rd.includes(d1));
+        const rev = (p1.includes(rd) || rd.includes(p1)) && (d1.includes(rp) || rp.includes(d1));
+        return fwd || rev;
+      };
+
       const routesList = (Array.isArray(cloudRoutes) && cloudRoutes.length > 0) ? cloudRoutes : [];
       if (routesList.length > 0) {
-        const matched = routesList.find(r => 
-          (pickupLoc && r.pickup && (r.pickup.toLowerCase().includes(pickupLoc.toLowerCase()) || pickupLoc.toLowerCase().includes(r.pickup.toLowerCase()))) &&
-          (dropoffLoc && r.dropoff && (r.dropoff.toLowerCase().includes(dropoffLoc.toLowerCase()) || dropoffLoc.toLowerCase().includes(r.dropoff.toLowerCase())))
-        );
+        const matched = routesList.find(matchFn);
         if (matched) return matched;
       }
       const savedDest = localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
       if (savedDest) {
         const parsedD = JSON.parse(savedDest);
         if (Array.isArray(parsedD) && parsedD.length > 0) {
-          const matched = parsedD.find(r => 
-            (pickupLoc && r.pickup && (r.pickup.toLowerCase().includes(pickupLoc.toLowerCase()) || pickupLoc.toLowerCase().includes(r.pickup.toLowerCase()))) &&
-            (dropoffLoc && r.dropoff && (r.dropoff.toLowerCase().includes(dropoffLoc.toLowerCase()) || dropoffLoc.toLowerCase().includes(r.dropoff.toLowerCase())))
-          );
+          const matched = parsedD.find(matchFn);
           if (matched) return matched;
         }
       }
@@ -154,9 +159,21 @@ export default function SelectCarScreen({
       let isVehicleFixed = false;
 
       // 1. Check exact car price configured for this vehicle on this route
-      const directCarPrice = (matchedRoute && matchedRoute.car_prices) 
+      let directCarPrice = (matchedRoute && matchedRoute.car_prices) 
         ? (matchedRoute.car_prices[v.id] ?? matchedRoute.car_prices[v.name]) 
         : null;
+
+      if (!directCarPrice && matchedRoute?.car_prices && typeof matchedRoute.car_prices === 'object') {
+        const vNameNorm = (v.name || '').toLowerCase().trim();
+        const vIdNorm = (v.id || '').toLowerCase().trim();
+        for (const [key, val] of Object.entries(matchedRoute.car_prices)) {
+          const kNorm = key.toLowerCase().trim();
+          if (kNorm === vNameNorm || kNorm === vIdNorm) {
+            directCarPrice = val;
+            break;
+          }
+        }
+      }
 
       if (directCarPrice !== null && directCarPrice !== undefined && directCarPrice !== '' && !isNaN(Number(directCarPrice)) && Number(directCarPrice) > 0) {
         const numP = Number(directCarPrice);

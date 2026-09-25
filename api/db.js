@@ -541,8 +541,21 @@ export async function handleMySQLRequest(action, data = {}) {
       }
 
       case 'getRoutes': {
-        const [rows] = await executeQuery('SELECT * FROM routes ORDER BY pickup ASC, dropoff ASC');
-        return { success: true, routes: rows || [] };
+        const [rows] = await executeQuery("SELECT * FROM routes WHERE price > 0 OR (car_prices IS NOT NULL AND car_prices != '' AND car_prices != '{}') ORDER BY pickup ASC, dropoff ASC");
+        const validRoutes = (rows || []).filter(r => {
+          const basePrice = Number(r.price || 0);
+          if (basePrice > 0) return true;
+          if (r.car_prices) {
+            try {
+              const cp = typeof r.car_prices === 'string' ? JSON.parse(r.car_prices) : r.car_prices;
+              if (cp && typeof cp === 'object') {
+                return Object.values(cp).some(v => Number(v) > 0);
+              }
+            } catch (e) {}
+          }
+          return false;
+        });
+        return { success: true, routes: validRoutes };
       }
 
       case 'getRoute':
@@ -550,11 +563,39 @@ export async function handleMySQLRequest(action, data = {}) {
         const cleanPickup = String(data.pickup || '').trim();
         const cleanDropoff = String(data.dropoff || '').trim();
         if (!cleanPickup || !cleanDropoff) return { success: false, error: 'Pickup and dropoff are required' };
-        const [rows] = await executeQuery(
-          'SELECT * FROM routes WHERE (pickup = ? AND dropoff = ?) OR (pickup = ? AND dropoff = ?) LIMIT 1',
+
+        // 1. Try exact match first
+        const [exactRows] = await executeQuery(
+          "SELECT * FROM routes WHERE ((pickup = ? AND dropoff = ?) OR (pickup = ? AND dropoff = ?)) AND (price > 0 OR (car_prices IS NOT NULL AND car_prices != '' AND car_prices != '{}')) LIMIT 1",
           [cleanPickup, cleanDropoff, cleanDropoff, cleanPickup]
         );
-        return { success: true, route: (rows && rows[0]) ? rows[0] : null };
+        if (exactRows && exactRows.length > 0) {
+          return { success: true, route: exactRows[0] };
+        }
+
+        // 2. Try flexible substring match
+        const [flexRows] = await executeQuery(
+          `SELECT * FROM routes 
+           WHERE (
+             (LOCATE(LOWER(pickup), LOWER(?)) > 0 OR LOCATE(LOWER(?), LOWER(pickup)) > 0)
+             AND
+             (LOCATE(LOWER(dropoff), LOWER(?)) > 0 OR LOCATE(LOWER(?), LOWER(dropoff)) > 0)
+           ) OR (
+             (LOCATE(LOWER(pickup), LOWER(?)) > 0 OR LOCATE(LOWER(?), LOWER(pickup)) > 0)
+             AND
+             (LOCATE(LOWER(dropoff), LOWER(?)) > 0 OR LOCATE(LOWER(?), LOWER(dropoff)) > 0)
+           )
+           AND (price > 0 OR (car_prices IS NOT NULL AND car_prices != '' AND car_prices != '{}'))
+           LIMIT 1`,
+          [
+            cleanPickup, cleanPickup,
+            cleanDropoff, cleanDropoff,
+            cleanDropoff, cleanDropoff,
+            cleanPickup, cleanPickup
+          ]
+        );
+
+        return { success: true, route: (flexRows && flexRows[0]) ? flexRows[0] : null };
       }
 
       case 'saveRoute': {
@@ -565,6 +606,23 @@ export async function handleMySQLRequest(action, data = {}) {
         if (!cleanPickup || !cleanDropoff) return { success: false, error: 'Pickup and dropoff are required' };
         const numPrice = (Number.isNaN(Number(price)) || price === null || price === undefined) ? 0 : Number(price);
         const carPricesStr = car_prices ? (typeof car_prices === 'object' ? JSON.stringify(car_prices) : String(car_prices)) : null;
+
+        // STRICT MANDATE: Check if price > 0 OR car_prices has at least one positive price
+        let hasPositivePrice = (numPrice > 0);
+        if (!hasPositivePrice && car_prices) {
+          try {
+            const cpObj = typeof car_prices === 'string' ? JSON.parse(car_prices) : car_prices;
+            if (cpObj && typeof cpObj === 'object') {
+              hasPositivePrice = Object.values(cpObj).some(v => Number(v) > 0);
+            }
+          } catch (e) {}
+        }
+
+        // Only create/persist if price is entered (> 0). Otherwise delete or skip!
+        if (!hasPositivePrice) {
+          await executeQuery('DELETE FROM routes WHERE id = ? OR (pickup = ? AND dropoff = ?)', [routeId, cleanPickup, cleanDropoff]);
+          return { success: true, message: 'Route without positive price omitted/removed' };
+        }
 
         const sql = `
           INSERT INTO routes (id, pickup, dropoff, price, duration, car_prices)
@@ -592,11 +650,30 @@ export async function handleMySQLRequest(action, data = {}) {
         `;
         for (const r of routes) {
           if (r && r.pickup && r.dropoff) {
-            const rId = r.id || `DEST-${Date.now()}-${count}`;
+            const p = String(r.pickup).trim();
+            const d = String(r.dropoff).trim();
             const numPrice = (Number.isNaN(Number(r.price)) || r.price === null || r.price === undefined) ? 0 : Number(r.price);
             const carPricesStr = r.car_prices ? (typeof r.car_prices === 'object' ? JSON.stringify(r.car_prices) : String(r.car_prices)) : null;
-            await executeQuery(sql, [rId, String(r.pickup).trim(), String(r.dropoff).trim(), numPrice, String(r.duration || '').trim(), carPricesStr]);
-            count++;
+
+            // Verify positive pricing
+            let hasPositivePrice = (numPrice > 0);
+            if (!hasPositivePrice && r.car_prices) {
+              try {
+                const cpObj = typeof r.car_prices === 'string' ? JSON.parse(r.car_prices) : r.car_prices;
+                if (cpObj && typeof cpObj === 'object') {
+                  hasPositivePrice = Object.values(cpObj).some(v => Number(v) > 0);
+                }
+              } catch (e) {}
+            }
+
+            if (hasPositivePrice) {
+              const rId = r.id || `DEST-${Date.now()}-${count}`;
+              await executeQuery(sql, [rId, p, d, numPrice, String(r.duration || '').trim(), carPricesStr]);
+              count++;
+            } else if (r.id) {
+              // Delete route if price was cleared to 0 or empty
+              await executeQuery('DELETE FROM routes WHERE id = ? OR (pickup = ? AND dropoff = ?)', [r.id, p, d]);
+            }
           }
         }
         return { success: true, count };

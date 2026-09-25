@@ -722,9 +722,12 @@ export default function AdminPortal() {
   }, [activeVehicles]);
 
   const filteredDestinations = useMemo(() => {
-    if (!destSearchQuery.trim()) return destinations;
+    const validOnly = destinations.filter(d => 
+      Number(d.price) > 0 || (d.car_prices && typeof d.car_prices === 'object' && Object.values(d.car_prices).some(p => Number(p) > 0))
+    );
+    if (!destSearchQuery.trim()) return validOnly;
     const q = destSearchQuery.toLowerCase().trim();
-    return destinations.filter(d => 
+    return validOnly.filter(d => 
       (d.pickup && d.pickup.toLowerCase().includes(q)) ||
       (d.dropoff && d.dropoff.toLowerCase().includes(q)) ||
       (d.id && String(d.id).toLowerCase().includes(q))
@@ -856,15 +859,17 @@ export default function AdminPortal() {
         }
 
         if (mysqlRoutes !== null && Array.isArray(mysqlRoutes)) {
-          const formattedRoutes = mysqlRoutes.map(r => ({
-            id: r.id,
-            name: `${r.pickup} → ${r.dropoff}`,
-            pickup: r.pickup,
-            dropoff: r.dropoff,
-            price: Number(r.price) || 0,
-            duration: r.duration || '',
-            car_prices: r.car_prices || {}
-          }));
+          const formattedRoutes = mysqlRoutes
+            .filter(r => Number(r.price) > 0 || (r.car_prices && (typeof r.car_prices === 'object' ? Object.values(r.car_prices).some(p => Number(p) > 0) : true)))
+            .map(r => ({
+              id: r.id,
+              name: `${r.pickup} → ${r.dropoff}`,
+              pickup: r.pickup,
+              dropoff: r.dropoff,
+              price: Number(r.price) || 0,
+              duration: r.duration || '',
+              car_prices: r.car_prices || {}
+            }));
           setDestinations(formattedRoutes);
           safeStorageSetItem('cabsy_destinations', formattedRoutes);
           try {
@@ -1024,6 +1029,11 @@ export default function AdminPortal() {
       if (firstCarP) basePrice = Number(firstCarP);
     }
 
+    if (!basePrice || basePrice <= 0) {
+      alert("Please enter a valid fare price greater than ₹0. A route cannot be created without a price!");
+      return;
+    }
+
     const created = {
       id: `DEST-${Date.now()}`,
       name: `${pickupVal} → ${dropoffVal}`,
@@ -1060,6 +1070,11 @@ export default function AdminPortal() {
     if (!basePrice) {
       const firstCarP = Object.values(carPrices).find(p => p !== '' && !isNaN(Number(p)) && Number(p) > 0);
       if (firstCarP) basePrice = Number(firstCarP);
+    }
+
+    if (!basePrice || basePrice <= 0) {
+      alert("Please enter a valid fare price greater than ₹0 for this route.");
+      return;
     }
 
     const updatedDest = {
@@ -1194,9 +1209,10 @@ export default function AdminPortal() {
         ...(prevData.carPrices || {}),
         [carId]: value
       };
-      let basePrice = prevData.price;
-      if (!basePrice || basePrice === '') {
-        basePrice = value;
+      let basePrice = '';
+      const firstValid = Object.values(updatedCarPrices).find(val => String(val).trim() !== '' && !isNaN(Number(val)) && Number(val) > 0);
+      if (firstValid) {
+        basePrice = String(firstValid);
       }
       return {
         ...prev,
@@ -1219,52 +1235,80 @@ export default function AdminPortal() {
     let updatedList = [...destinations];
     let savedCount = 0;
     const batchToPersist = [];
+    const routesToDelete = [];
 
     Object.entries(batchMatrixModal.rates).forEach(([destPlace, rateData]) => {
       if (!rateData) return;
       const carPrices = rateData.carPrices || {};
-      const hasAnyCarPrice = Object.values(carPrices).some(val => val !== '' && val !== null && !isNaN(Number(val)) && Number(val) >= 0);
-      const hasBasePrice = rateData.price !== '' && rateData.price !== null && rateData.price !== undefined && Number(rateData.price) >= 0;
-
-      if (hasAnyCarPrice || hasBasePrice) {
-        let numPrice = hasBasePrice ? Number(rateData.price) : 0;
-        if (!numPrice && hasAnyCarPrice) {
-          const firstVal = Object.values(carPrices).find(val => val !== '' && !isNaN(Number(val)) && Number(val) > 0);
-          if (firstVal) numPrice = Number(firstVal);
+      const validCarPrices = {};
+      Object.entries(carPrices).forEach(([cId, cVal]) => {
+        if (cVal !== '' && cVal !== null && !isNaN(Number(cVal)) && Number(cVal) > 0) {
+          const numVal = Number(cVal);
+          validCarPrices[cId] = numVal;
+          const vehObj = activeVehicles.find(v => v.id === cId || v.name === cId);
+          if (vehObj) {
+            validCarPrices[vehObj.id] = numVal;
+            validCarPrices[vehObj.name] = numVal;
+          }
         }
+      });
 
-        const existingIdx = updatedList.findIndex(d => 
-          d && d.pickup && d.dropoff &&
-          d.pickup.toLowerCase().trim() === origin.toLowerCase().trim() && 
-          d.dropoff.toLowerCase().trim() === destPlace.toLowerCase().trim()
-        );
+      let numPrice = (rateData.price !== '' && rateData.price !== null && !isNaN(Number(rateData.price)) && Number(rateData.price) > 0)
+        ? Number(rateData.price)
+        : 0;
 
-        const formattedDuration = formatDurationHrMin(rateData.hours, rateData.mins);
+      if (!numPrice && Object.keys(validCarPrices).length > 0) {
+        numPrice = Object.values(validCarPrices)[0];
+      }
 
+      const hasValidPrice = numPrice > 0 || Object.keys(validCarPrices).length > 0;
+
+      const existingIdx = updatedList.findIndex(d => 
+        d && d.pickup && d.dropoff &&
+        d.pickup.toLowerCase().trim() === origin.toLowerCase().trim() && 
+        d.dropoff.toLowerCase().trim() === destPlace.toLowerCase().trim()
+      );
+
+      const formattedDuration = formatDurationHrMin(rateData.hours, rateData.mins);
+
+      if (hasValidPrice) {
         if (existingIdx >= 0) {
           updatedList[existingIdx] = {
             ...updatedList[existingIdx],
             price: numPrice,
             duration: formattedDuration || updatedList[existingIdx].duration || '',
-            car_prices: carPrices
+            car_prices: validCarPrices
           };
           batchToPersist.push(updatedList[existingIdx]);
         } else {
           const newRoute = {
-            id: `DEST-${Math.floor(100 + Math.random() * 900)}`,
+            id: `DEST-${Date.now()}-${savedCount}`,
             name: `${origin} → ${destPlace}`,
             pickup: origin,
             dropoff: destPlace,
             price: numPrice,
             duration: formattedDuration || '',
-            car_prices: carPrices
+            car_prices: validCarPrices
           };
           updatedList.push(newRoute);
           batchToPersist.push(newRoute);
         }
         savedCount++;
+      } else {
+        // If NO price is added, DO NOT create it! If it existed, remove it.
+        if (existingIdx >= 0) {
+          const toRemove = updatedList[existingIdx];
+          routesToDelete.push(toRemove.id);
+          updatedList.splice(existingIdx, 1);
+        }
       }
     });
+
+    if (routesToDelete.length > 0) {
+      routesToDelete.forEach(id => {
+        deleteRouteFromMySQL(id).catch(() => {});
+      });
+    }
 
     if (batchToPersist.length > 0) {
       saveRoutesBatchToMySQL(batchToPersist).catch(err => {
@@ -1272,12 +1316,16 @@ export default function AdminPortal() {
       });
     }
 
-    setDestinations(updatedList);
-    safeStorageSetItem('cabsy_destinations', updatedList);
+    const finalCleanList = updatedList.filter(d => 
+      Number(d.price) > 0 || (d.car_prices && Object.values(d.car_prices).some(p => Number(p) > 0))
+    );
+
+    setDestinations(finalCleanList);
+    safeStorageSetItem('cabsy_destinations', finalCleanList);
     try {
-      localStorage.setItem('cabsy_routes', JSON.stringify(updatedList));
+      localStorage.setItem('cabsy_routes', JSON.stringify(finalCleanList));
     } catch(e) {}
-    window.dispatchEvent(new CustomEvent('EMPERIAL CABS_destinations_updated', { detail: updatedList }));
+    window.dispatchEvent(new CustomEvent('EMPERIAL CABS_destinations_updated', { detail: finalCleanList }));
     setBatchMatrixModal({ open: false, originPlace: '', rates: {} });
   };
 

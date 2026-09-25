@@ -56,18 +56,35 @@ export default function PopularRoutes() {
     }).catch(() => {});
   }, []);
 
-  // Strictly display only routes configured by Admin in MySQL
+  // Strictly display only routes configured by Admin in MySQL with valid positive pricing
   const allRoutesList = dbRoutes
-    .filter(r => r && r.pickup && r.dropoff)
-    .map(r => ({
-      from: r.pickup,
-      to: r.dropoff,
-      distanceKm: r.distanceKm ? Number(r.distanceKm) : 0,
-      duration: r.duration || '',
-      highway: r.highway || 'Direct Route',
-      baseFare: Number(r.price) || 0,
-      badge: 'Direct Route'
-    }));
+    .filter(r => {
+      if (!r || !r.pickup || !r.dropoff) return false;
+      const baseP = Number(r.price) || 0;
+      if (baseP > 0) return true;
+      if (r.car_prices && typeof r.car_prices === 'object') {
+        return Object.values(r.car_prices).some(v => Number(v) > 0);
+      }
+      return false;
+    })
+    .map(r => {
+      const baseP = Number(r.price) || 0;
+      let carPriceVals = [];
+      if (r.car_prices && typeof r.car_prices === 'object') {
+        carPriceVals = Object.values(r.car_prices).map(Number).filter(v => v > 0);
+      }
+      const startingFare = baseP > 0 ? (carPriceVals.length > 0 ? Math.min(baseP, ...carPriceVals) : baseP) : (carPriceVals.length > 0 ? Math.min(...carPriceVals) : 0);
+
+      return {
+        from: r.pickup,
+        to: r.dropoff,
+        distanceKm: r.distanceKm ? Number(r.distanceKm) : 0,
+        duration: r.duration || '',
+        highway: r.highway || 'Direct Route',
+        baseFare: startingFare,
+        badge: 'Direct Route'
+      };
+    });
 
   // Filter routes based on user search query
   const filteredRoutes = allRoutesList.filter(r => {

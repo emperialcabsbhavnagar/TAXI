@@ -431,9 +431,28 @@ switch ($action) {
         break;
 
     case 'getRoutes':
-        $stmt = $pdo->query("SELECT * FROM routes ORDER BY pickup ASC, dropoff ASC");
+        $stmt = $pdo->query("SELECT * FROM routes WHERE price > 0 OR (car_prices IS NOT NULL AND car_prices != '' AND car_prices != '{}') ORDER BY pickup ASC, dropoff ASC");
         $rows = $stmt->fetchAll();
-        echo json_encode(['success' => true, 'routes' => $rows]);
+        $validRoutes = [];
+        foreach ($rows as $r) {
+            $basePrice = floatval($r['price'] ?? 0);
+            $hasCarPrice = false;
+            if (!empty($r['car_prices'])) {
+                $cp = is_string($r['car_prices']) ? json_decode($r['car_prices'], true) : $r['car_prices'];
+                if (is_array($cp)) {
+                    foreach ($cp as $v) {
+                        if (floatval($v) > 0) {
+                            $hasCarPrice = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if ($basePrice > 0 || $hasCarPrice) {
+                $validRoutes[] = $r;
+            }
+        }
+        echo json_encode(['success' => true, 'routes' => $validRoutes]);
         break;
 
     case 'getRoute':
@@ -444,7 +463,9 @@ switch ($action) {
             echo json_encode(['success' => false, 'error' => 'Pickup and dropoff are required']);
             exit();
         }
-        $stmt = $pdo->prepare("SELECT * FROM routes WHERE (pickup = :p1 AND dropoff = :d1) OR (pickup = :d2 AND dropoff = :p2) LIMIT 1");
+
+        // 1. Try exact match first (only routes with price > 0 or valid car_prices)
+        $stmt = $pdo->prepare("SELECT * FROM routes WHERE ((pickup = :p1 AND dropoff = :d1) OR (pickup = :d2 AND dropoff = :p2)) AND (price > 0 OR (car_prices IS NOT NULL AND car_prices != '' AND car_prices != '{}')) LIMIT 1");
         $stmt->execute([
             ':p1' => $pickup,
             ':d1' => $dropoff,
@@ -452,6 +473,30 @@ switch ($action) {
             ':p2' => $dropoff
         ]);
         $route = $stmt->fetch();
+
+        // 2. If exact match not found, try flexible substring / LOCATE matching
+        if (!$route) {
+            $stmt = $pdo->prepare("SELECT * FROM routes 
+                WHERE (
+                    (LOCATE(LOWER(pickup), LOWER(:p1)) > 0 OR LOCATE(LOWER(:p2), LOWER(pickup)) > 0)
+                    AND
+                    (LOCATE(LOWER(dropoff), LOWER(:d1)) > 0 OR LOCATE(LOWER(:d2), LOWER(dropoff)) > 0)
+                ) OR (
+                    (LOCATE(LOWER(pickup), LOWER(:d3)) > 0 OR LOCATE(LOWER(:d4), LOWER(pickup)) > 0)
+                    AND
+                    (LOCATE(LOWER(dropoff), LOWER(:p3)) > 0 OR LOCATE(LOWER(:p4), LOWER(dropoff)) > 0)
+                )
+                AND (price > 0 OR (car_prices IS NOT NULL AND car_prices != '' AND car_prices != '{}'))
+                LIMIT 1");
+            $stmt->execute([
+                ':p1' => $pickup, ':p2' => $pickup,
+                ':d1' => $dropoff, ':d2' => $dropoff,
+                ':d3' => $dropoff, ':d4' => $dropoff,
+                ':p3' => $pickup, ':p4' => $pickup
+            ]);
+            $route = $stmt->fetch();
+        }
+
         echo json_encode(['success' => true, 'route' => $route ?: null]);
         break;
 
@@ -463,6 +508,28 @@ switch ($action) {
         $duration = trim($data['duration'] ?? '');
         $car_prices = isset($data['car_prices']) ? (is_array($data['car_prices']) ? json_encode($data['car_prices']) : $data['car_prices']) : null;
         if (!$pickup || !$dropoff) { echo json_encode(['success' => false, 'error' => 'Pickup and dropoff are required']); exit(); }
+
+        // STRICT MANDATE: Check if price > 0 OR car_prices has at least one positive price
+        $hasPositivePrice = ($price > 0);
+        if (!$hasPositivePrice && !empty($car_prices)) {
+            $cp = is_string($car_prices) ? json_decode($car_prices, true) : $car_prices;
+            if (is_array($cp)) {
+                foreach ($cp as $v) {
+                    if (floatval($v) > 0) {
+                        $hasPositivePrice = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Only create/persist if price is entered (> 0). Otherwise delete or skip!
+        if (!$hasPositivePrice) {
+            $delStmt = $pdo->prepare("DELETE FROM routes WHERE id = :id OR (pickup = :pickup AND dropoff = :dropoff)");
+            $delStmt->execute([':id' => $id, ':pickup' => $pickup, ':dropoff' => $dropoff]);
+            echo json_encode(['success' => true, 'message' => 'Route without positive price omitted/removed']);
+            exit();
+        }
 
         $stmt = $pdo->prepare("INSERT INTO routes (id, pickup, dropoff, price, duration, car_prices)
                                VALUES (:id, :pickup, :dropoff, :price, :duration, :car_prices)
@@ -494,19 +561,45 @@ switch ($action) {
                                        price = VALUES(price),
                                        duration = VALUES(duration),
                                        car_prices = VALUES(car_prices)");
+            $delStmt = $pdo->prepare("DELETE FROM routes WHERE id = :id OR (pickup = :pickup AND dropoff = :dropoff)");
+
             foreach ($routes as $r) {
                 if (!empty($r['pickup']) && !empty($r['dropoff'])) {
-                    $id = !empty($r['id']) ? $r['id'] : ('DEST-' . round(microtime(true) * 1000) . '-' . $count);
-                    $car_prices = isset($r['car_prices']) ? (is_array($r['car_prices']) ? json_encode($r['car_prices']) : $r['car_prices']) : null;
-                    $stmt->execute([
-                        ':id' => $id,
-                        ':pickup' => trim($r['pickup']),
-                        ':dropoff' => trim($r['dropoff']),
-                        ':price' => floatval($r['price'] ?? 0),
-                        ':duration' => trim($r['duration'] ?? ''),
-                        ':car_prices' => $car_prices
-                    ]);
-                    $count++;
+                    $p = trim($r['pickup']);
+                    $d = trim($r['dropoff']);
+                    $priceVal = floatval($r['price'] ?? 0);
+                    $cpRaw = $r['car_prices'] ?? null;
+                    $cpJson = is_array($cpRaw) ? json_encode($cpRaw) : $cpRaw;
+
+                    // Verify positive pricing
+                    $hasPositivePrice = ($priceVal > 0);
+                    if (!$hasPositivePrice && !empty($cpRaw)) {
+                        $cpArr = is_array($cpRaw) ? $cpRaw : json_decode($cpRaw, true);
+                        if (is_array($cpArr)) {
+                            foreach ($cpArr as $v) {
+                                if (floatval($v) > 0) {
+                                    $hasPositivePrice = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if ($hasPositivePrice) {
+                        $id = !empty($r['id']) ? $r['id'] : ('DEST-' . round(microtime(true) * 1000) . '-' . $count);
+                        $stmt->execute([
+                            ':id' => $id,
+                            ':pickup' => $p,
+                            ':dropoff' => $d,
+                            ':price' => $priceVal,
+                            ':duration' => trim($r['duration'] ?? ''),
+                            ':car_prices' => $cpJson
+                        ]);
+                        $count++;
+                    } else if (!empty($r['id'])) {
+                        // Delete route if price was cleared to 0 or empty
+                        $delStmt->execute([':id' => $r['id'], ':pickup' => $p, ':dropoff' => $d]);
+                    }
                 }
             }
             $pdo->commit();

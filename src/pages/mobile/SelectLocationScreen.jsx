@@ -71,13 +71,23 @@ export default function SelectLocationScreen({
     return DEFAULT_PLACES;
   });
 
+  const isRoutePriced = (r) => {
+    if (!r || !r.pickup || !r.dropoff) return false;
+    const baseP = Number(r.price) || 0;
+    if (baseP > 0) return true;
+    if (r.car_prices && typeof r.car_prices === 'object') {
+      return Object.values(r.car_prices).some(v => Number(v) > 0);
+    }
+    return false;
+  };
+
   const [routes, setRoutes] = useState(() => {
     try {
       const savedDestinations = safeStorageGetItem('cabsy_destinations') || localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
       if (savedDestinations) {
         const parsed = typeof savedDestinations === 'string' ? JSON.parse(savedDestinations) : savedDestinations;
         if (Array.isArray(parsed)) {
-          return parsed.filter(r => r && r.pickup && r.dropoff);
+          return parsed.filter(isRoutePriced);
         }
       }
     } catch (e) {}
@@ -117,7 +127,7 @@ export default function SelectLocationScreen({
       if (savedDestinations) {
         const parsedD = typeof savedDestinations === 'string' ? JSON.parse(savedDestinations) : savedDestinations;
         if (Array.isArray(parsedD)) {
-          setRoutes(parsedD.filter(r => r && r.pickup && r.dropoff));
+          setRoutes(parsedD.filter(isRoutePriced));
         }
       }
     } catch (e) {
@@ -134,15 +144,17 @@ export default function SelectLocationScreen({
 
     loadAllRoutesFromMySQL().then(mysqlRoutes => {
       if (mysqlRoutes !== null && Array.isArray(mysqlRoutes)) {
-        const formattedRoutes = mysqlRoutes.map(r => ({
-          id: r.id,
-          name: `${r.pickup} → ${r.dropoff}`,
-          pickup: r.pickup,
-          dropoff: r.dropoff,
-          price: Number(r.price) || 0,
-          duration: r.duration || '',
-          car_prices: r.car_prices || {}
-        }));
+        const formattedRoutes = mysqlRoutes
+          .map(r => ({
+            id: r.id,
+            name: `${r.pickup} → ${r.dropoff}`,
+            pickup: r.pickup,
+            dropoff: r.dropoff,
+            price: Number(r.price) || 0,
+            duration: r.duration || '',
+            car_prices: r.car_prices || {}
+          }))
+          .filter(isRoutePriced);
         setRoutes(formattedRoutes);
         try {
           localStorage.setItem('cabsy_destinations', JSON.stringify(formattedRoutes));
@@ -157,7 +169,7 @@ export default function SelectLocationScreen({
 
     const handleSync = (e) => {
       if (e?.detail && Array.isArray(e.detail)) {
-        setRoutes(e.detail.filter(r => r && r.pickup && r.dropoff));
+        setRoutes(e.detail.filter(isRoutePriced));
       } else {
         loadAdminConfig();
       }
@@ -514,6 +526,12 @@ export default function SelectLocationScreen({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {routes.map((route, idx) => {
                   const isSelected = (pickupLoc === route.pickup && dropoffLoc === route.dropoff);
+                  const baseP = Number(route.price) || 0;
+                  let carPriceVals = [];
+                  if (route.car_prices && typeof route.car_prices === 'object') {
+                    carPriceVals = Object.values(route.car_prices).map(Number).filter(v => v > 0);
+                  }
+                  const startingPrice = baseP > 0 ? (carPriceVals.length > 0 ? Math.min(baseP, ...carPriceVals) : baseP) : (carPriceVals.length > 0 ? Math.min(...carPriceVals) : null);
 
                   return (
                     <div 
@@ -538,15 +556,42 @@ export default function SelectLocationScreen({
                           </span>
                         </div>
                       )}
-                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                          <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#22C55E' }}></span>
-                          <div style={{ width: '2px', height: '18px', background: '#CBD5E1' }}></div>
-                          <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#EF4444' }}></span>
+                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flex: 1 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#22C55E' }}></span>
+                            <div style={{ width: '2px', height: '18px', background: '#CBD5E1' }}></div>
+                            <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#EF4444' }}></span>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <div style={{ fontSize: '14px', fontWeight: '700', color: '#0F172A', fontFamily: 'Space Grotesk, sans-serif' }}>{route.pickup}</div>
+                            <div style={{ fontSize: '14px', fontWeight: '700', color: '#0F172A', fontFamily: 'Space Grotesk, sans-serif' }}>{route.dropoff}</div>
+                          </div>
                         </div>
-                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#0F172A', fontFamily: 'Space Grotesk, sans-serif' }}>{route.pickup}</div>
-                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#0F172A', fontFamily: 'Space Grotesk, sans-serif' }}>{route.dropoff}</div>
+
+                        {/* Price & Duration Badge */}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                          {startingPrice && (
+                            <div style={{
+                              background: '#ECFDF5',
+                              color: '#047857',
+                              padding: '4px 10px',
+                              borderRadius: '10px',
+                              fontFamily: 'League Spartan, sans-serif',
+                              fontSize: '15px',
+                              fontWeight: '800',
+                              border: '1px solid #A7F3D0',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              From ₹{startingPrice.toLocaleString('en-IN')}
+                            </div>
+                          )}
+                          {route.duration && (
+                            <span style={{ fontSize: '11px', color: '#64748B', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Clock size={12} color="#64748B" />
+                              {route.duration}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

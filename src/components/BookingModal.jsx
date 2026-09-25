@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import db from '../services/dbService';
 import { INITIAL_VEHICLES } from '../pages/AdminPortal';
-import { loadAllVehiclesFromMySQL } from '../services/mysqlService';
+import { loadAllVehiclesFromMySQL, getRoutePriceFromMySQL } from '../services/mysqlService';
 import { X, MapPin, Navigation, Car, Clock, ShieldCheck, CheckCircle } from 'lucide-react';
 import { notifyAdmin } from '../services/notificationEngine';
 import './BookingModal.css';
@@ -12,6 +12,7 @@ export default function BookingModal({ isOpen, onClose }) {
   const [vehicles, setVehicles] = useState([]);
   const [vehicleId, setVehicleId] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [matchedRoute, setMatchedRoute] = useState(null);
 
   const [activeRide, setActiveRide] = useState(null);
 
@@ -62,13 +63,100 @@ export default function BookingModal({ isOpen, onClose }) {
     };
   }, []);
 
+  // Lookup matched route whenever pickup or dropoff changes
+  useEffect(() => {
+    if (!pickup.trim() || !dropoff.trim()) {
+      setMatchedRoute(null);
+      return;
+    }
+
+    let isCurrent = true;
+    const pNorm = pickup.toLowerCase().trim();
+    const dNorm = dropoff.toLowerCase().trim();
+
+    // Check localStorage cache first
+    try {
+      const savedRoutes = localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
+      if (savedRoutes) {
+        const parsed = JSON.parse(savedRoutes);
+        if (Array.isArray(parsed)) {
+          const found = parsed.find(r => {
+            if (!r || !r.pickup || !r.dropoff) return false;
+            const rp = r.pickup.toLowerCase().trim();
+            const rd = r.dropoff.toLowerCase().trim();
+            const fwd = (pNorm.includes(rp) || rp.includes(pNorm)) && (dNorm.includes(rd) || rd.includes(dNorm));
+            const rev = (pNorm.includes(rd) || rd.includes(pNorm)) && (dNorm.includes(rp) || rp.includes(dNorm));
+            return fwd || rev;
+          });
+          if (found && isCurrent) {
+            setMatchedRoute(found);
+          }
+        }
+      }
+    } catch (e) {}
+
+    // Live MySQL check
+    getRoutePriceFromMySQL(pickup, dropoff).then(liveRoute => {
+      if (!isCurrent) return;
+      if (liveRoute && (Number(liveRoute.price) > 0 || liveRoute.car_prices)) {
+        setMatchedRoute({
+          id: liveRoute.id,
+          pickup: liveRoute.pickup,
+          dropoff: liveRoute.dropoff,
+          price: Number(liveRoute.price) || 0,
+          duration: liveRoute.duration || '',
+          car_prices: liveRoute.car_prices || {}
+        });
+      }
+    }).catch(() => {});
+
+    return () => { isCurrent = false; };
+  }, [pickup, dropoff]);
+
   if (!isOpen) return null;
 
   const selectedVeh = vehicles.find(v => v.id === vehicleId) || vehicles[0] || INITIAL_VEHICLES[0];
   const ratePerKm = parseFloat(selectedVeh.rate || 15.0);
-  const estimatedDist = pickup && dropoff ? 12.5 : 8.0; // km
-  const estimatedFare = (estimatedDist * ratePerKm + 50.0).toFixed(2);
-  const estimatedTime = Math.round(estimatedDist * 2.2);
+  const estimatedDist = pickup && dropoff ? (matchedRoute?.distanceKm ? Number(matchedRoute.distanceKm) : 154) : 8.0; // km
+  
+  let calculatedFare = 0;
+  let isFixed = false;
+
+  if (matchedRoute) {
+    let directCarPrice = (matchedRoute.car_prices) 
+      ? (matchedRoute.car_prices[selectedVeh.id] ?? matchedRoute.car_prices[selectedVeh.name]) 
+      : null;
+
+    if (!directCarPrice && matchedRoute.car_prices && typeof matchedRoute.car_prices === 'object') {
+      const vNameNorm = (selectedVeh.name || '').toLowerCase().trim();
+      const vIdNorm = (selectedVeh.id || '').toLowerCase().trim();
+      for (const [key, val] of Object.entries(matchedRoute.car_prices)) {
+        const kNorm = key.toLowerCase().trim();
+        if (kNorm === vNameNorm || kNorm === vIdNorm) {
+          directCarPrice = val;
+          break;
+        }
+      }
+    }
+
+    if (directCarPrice !== null && directCarPrice !== undefined && directCarPrice !== '' && !isNaN(Number(directCarPrice)) && Number(directCarPrice) > 0) {
+      calculatedFare = Number(directCarPrice);
+      isFixed = true;
+    } else if (matchedRoute.price && Number(matchedRoute.price) > 0) {
+      const isSevenSeater = (selectedVeh.passengers && selectedVeh.passengers.includes('7')) || (selectedVeh.name && (selectedVeh.name.toLowerCase().includes('ertiga') || selectedVeh.name.toLowerCase().includes('innova')));
+      const isLuxury = selectedVeh.name && (selectedVeh.name.toLowerCase().includes('innova') || selectedVeh.name.toLowerCase().includes('crysta'));
+      const multiplier = isLuxury ? 1.7 : (isSevenSeater ? 1.35 : 1.0);
+      calculatedFare = Math.round(Number(matchedRoute.price) * multiplier);
+      isFixed = true;
+    }
+  }
+
+  if (!isFixed) {
+    calculatedFare = Math.round(estimatedDist * ratePerKm + 50.0);
+  }
+
+  const estimatedFare = calculatedFare.toFixed(2);
+  const estimatedTime = matchedRoute?.duration || `${Math.round(estimatedDist * 1.5)} min`;
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -92,8 +180,8 @@ export default function BookingModal({ isOpen, onClose }) {
     // Send Phone/Desktop Push Notification & Bell Notif to Admin
     notifyAdmin({
       type: 'inquiry',
-      title: '🚖 New Ride Inquiry Received!',
-      body: `New booking for ${newInq.customerName}: ${newInq.pickup} → ${newInq.dropoff} (₹${parseFloat(estimatedFare).toFixed(2)})`
+      title: 'New Ride Inquiry Received',
+      body: `New booking for ${newInq.customerName}: ${newInq.pickup} -> ${newInq.dropoff} (Rs ${parseFloat(estimatedFare).toFixed(2)})`
     });
 
     setSubmitted(true);
