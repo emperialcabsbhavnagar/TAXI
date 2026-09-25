@@ -1006,18 +1006,6 @@ switch ($action) {
                 ':customer_phone_update' => $customer_phone
             ]);
 
-            // Also send a silent push notification into customer_notifications so mobile app detects it immediately
-            try {
-                $pingId = 'loc_' . uniqid();
-                $pingStmt = $pdo->prepare("INSERT INTO customer_notifications (id, target_phone, target_email, title, body, type, extra_data, delivered)
-                                           VALUES (:id, :phone, NULL, 'Live Location Request', 'Admin requested live GPS', 'LOCATION_PING', :extra, 0)");
-                $pingStmt->execute([
-                    ':id' => $pingId,
-                    ':phone' => $customer_phone,
-                    ':extra' => json_encode(['inquiryId' => $inquiry_id, 'timestamp' => time()])
-                ]);
-            } catch (Exception $e) {}
-
             echo json_encode(['success' => true, 'inquiryId' => $inquiry_id, 'message' => 'Live location requested']);
         } else {
             echo json_encode(['success' => false, 'error' => 'Missing inquiryId']);

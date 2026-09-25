@@ -364,6 +364,10 @@ export default function MobileAppView() {
         const cloudNotifs = await fetchNotificationsFromMySQL(searchPhone, uEmail).catch(() => []);
         if (!isCancelled && Array.isArray(cloudNotifs) && cloudNotifs.length > 0) {
           for (const cn of cloudNotifs) {
+            if (cn.type === 'LOCATION_PING') {
+              markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+              continue;
+            }
             const cnKey = `cabsy_cloud_notif_delivered_${cn.id}`;
             if (!localStorage.getItem(cnKey)) {
               localStorage.setItem(cnKey, 'true');
