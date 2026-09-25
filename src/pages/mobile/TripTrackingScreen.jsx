@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import InteractiveMap from '../../components/InteractiveMap';
 import BottomNavBar from '../../components/BottomNavBar';
 import { getCoordsForPlace, generateRoutePolyline, calculateDistanceKm } from '../../utils/locationCoords';
-import { loadAllInquiriesFromMySQL } from '../../services/mysqlService';
-import { RotateCcw } from 'lucide-react';
+import { loadAllInquiriesFromMySQL, updateInquiryStatusInMySQL } from '../../services/mysqlService';
+import { sendSystemPushNotification } from '../../services/notificationEngine';
+import { Geolocation } from '@capacitor/geolocation';
+import { RotateCcw, CheckCircle2 } from 'lucide-react';
 
 export default function TripTrackingScreen({ userCoords, pickupLoc, dropoffLoc, activeTab, setActiveTab, onNavigateTab, onCompleteRide }) {
   const [activeRide, setActiveRide] = useState(null);
   const [liveGpsCoords, setLiveGpsCoords] = useState(null);
+  const hasCompletedRef = useRef(false);
 
   // 1. Sync Active Ride Data from Hostinger MySQL / localStorage (Sub-second Multi-Device Sync)
   useEffect(() => {
@@ -82,26 +85,50 @@ export default function TripTrackingScreen({ userCoords, pickupLoc, dropoffLoc, 
     };
   }, [onCompleteRide]);
 
-  // 2. Watch Real Device GPS Location Live in Real-Time
-  useEffect(() => {
-    if (!navigator.geolocation) return;
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        if (pos && pos.coords) {
+  // 2. Battery-Efficient On-Demand GPS Location (Takes 2s snapshot and immediately shuts off GPS)
+  const fetchSingleSnapshotGps = async () => {
+    try {
+      if (window.Capacitor?.isNativePlatform?.()) {
+        const perm = await Geolocation.checkPermissions().catch(() => null);
+        if (perm?.location !== 'granted') {
+          await Geolocation.requestPermissions().catch(() => null);
+        }
+        const pos = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 4000,
+          maximumAge: 5000
+        });
+        if (pos?.coords) {
           setLiveGpsCoords({
             lat: pos.coords.latitude,
             lng: pos.coords.longitude
           });
+          return;
         }
-      },
-      (err) => {
-        console.warn("GPS watch position notice:", err);
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 1000 }
-    );
-    return () => {
-      if (watchId !== undefined) navigator.geolocation.clearWatch(watchId);
-    };
+      }
+    } catch (e) {}
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (pos && pos.coords) {
+            setLiveGpsCoords({
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude
+            });
+          }
+        },
+        (err) => console.warn("GPS snapshot notice:", err),
+        { enableHighAccuracy: true, timeout: 4000, maximumAge: 5000 }
+      );
+    }
+  };
+
+  useEffect(() => {
+    fetchSingleSnapshotGps();
+    // Non-continuous periodic refresh every 25 seconds while tracking, turning off GPS between polls
+    const interval = setInterval(fetchSingleSnapshotGps, 25000);
+    return () => clearInterval(interval);
   }, []);
 
   const rawPickup = activeRide?.pickup || pickupLoc || "Bhavnagar, Gujarat";
@@ -133,6 +160,66 @@ export default function TripTrackingScreen({ userCoords, pickupLoc, dropoffLoc, 
   useEffect(() => {
     setMapCenter(currentLivePos);
   }, [currentLivePos.lat, currentLivePos.lng]);
+
+  // 3. Auto-Complete Trip when customer reaches destination (within 250m)
+  const handleAutoCompleteRide = async () => {
+    if (!activeRide || hasCompletedRef.current) return;
+    hasCompletedRef.current = true;
+
+    const finalFare = Number(activeRide.fare || activeRide.totalFareNum || 0);
+    const completedRide = {
+      ...activeRide,
+      status: 'Completed',
+      fare: finalFare,
+      totalFareNum: finalFare,
+      completedAt: new Date().toISOString()
+    };
+
+    // 1. Update localStorage inquiries & completed trip
+    try {
+      const saved = localStorage.getItem('cabsy_inquiries');
+      if (saved) {
+        const list = JSON.parse(saved);
+        const updated = list.map(i => i.id === activeRide.id ? completedRide : i);
+        localStorage.setItem('cabsy_inquiries', JSON.stringify(updated));
+      }
+      localStorage.setItem('EMPERIAL CABS_last_completed_trip', JSON.stringify(completedRide));
+      localStorage.removeItem('EMPERIAL CABS_active_trip');
+    } catch (e) {}
+
+    // 2. Sync to Hostinger MySQL
+    try {
+      await updateInquiryStatusInMySQL(activeRide.id, 'Completed', activeRide.driver || 'Assigned Driver', finalFare);
+    } catch (e) {}
+
+    // 3. Dispatch global events
+    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new CustomEvent('EMPERIAL CABS_trip_completed', { detail: completedRide }));
+
+    // 4. Send native status bar notification to phone
+    sendSystemPushNotification(
+      '🏁 Destination Reached - Trip Completed!',
+      `You have arrived safely at ${actualDropoff}. Total Fare: ₹${finalFare}. Thank you for riding with Emperial Cabs!`,
+      'completed-' + activeRide.id
+    );
+
+    // 5. Navigate to Trip Receipt screen
+    if (onCompleteRide) {
+      setTimeout(() => onCompleteRide(), 600);
+    }
+  };
+
+  // Check geofence arrival: auto-complete when car/customer reaches destination
+  useEffect(() => {
+    if (!activeRide || hasCompletedRef.current) return;
+    const isOngoing = activeRide.status === 'In Progress' || activeRide.status === 'On Ride';
+    if (!isOngoing) return;
+
+    // Check if within 250m (0.25 km) of destination
+    if (realDistKmNum > 0 && realDistKmNum <= 0.25) {
+      handleAutoCompleteRide();
+    }
+  }, [realDistKmNum, activeRide]);
 
   return (
     <div className="real-mobile-app" style={{ background: '#0F172A', position: 'relative', width: '100%', height: '100vh', minHeight: '100vh', overflow: 'hidden' }}>
@@ -237,22 +324,43 @@ export default function TripTrackingScreen({ userCoords, pickupLoc, dropoffLoc, 
               <RotateCcw size={20} color="#FFFFFF" />
             </button>
 
-            <button 
-              onClick={onCompleteRide}
-              style={{
-                background: '#EF4444',
-                color: '#FFFFFF',
-                border: 'none',
-                padding: '10px 24px',
-                borderRadius: '24px',
-                fontWeight: '900',
-                fontSize: '15px',
-                cursor: 'pointer',
-                boxShadow: '0 4px 16px rgba(239, 68, 68, 0.4)'
-              }}
-            >
-              Exit
-            </button>
+            {realDistKmNum <= 0.3 ? (
+              <button 
+                onClick={handleAutoCompleteRide}
+                style={{
+                  background: '#22C55E',
+                  color: '#0F172A',
+                  border: 'none',
+                  padding: '10px 18px',
+                  borderRadius: '24px',
+                  fontWeight: '900',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 4px 16px rgba(34, 197, 94, 0.4)'
+                }}
+              >
+                <CheckCircle2 size={16} /> Arrived (Complete)
+              </button>
+            ) : (
+              <button 
+                onClick={onCompleteRide}
+                style={{
+                  background: '#334155',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  padding: '10px 20px',
+                  borderRadius: '24px',
+                  fontWeight: '800',
+                  fontSize: '14px',
+                  cursor: 'pointer'
+                }}
+              >
+                Exit
+              </button>
+            )}
           </div>
         </div>
       </div>

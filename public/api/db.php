@@ -269,6 +269,18 @@ switch ($action) {
                     delivered INT DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
+
+                CREATE TABLE IF NOT EXISTS trip_live_locations (
+                    inquiry_id VARCHAR(64) PRIMARY KEY,
+                    customer_phone VARCHAR(64) DEFAULT NULL,
+                    status VARCHAR(32) DEFAULT 'REQUESTED',
+                    lat DECIMAL(10, 7) DEFAULT NULL,
+                    lng DECIMAL(10, 7) DEFAULT NULL,
+                    maps_link TEXT DEFAULT NULL,
+                    requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    responded_at TIMESTAMP NULL DEFAULT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                );
             ");
 
             try {
@@ -964,6 +976,124 @@ switch ($action) {
             $stmt->execute([$id]);
         }
         echo json_encode(['success' => true]);
+        break;
+
+    case 'requestLiveLocation':
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS trip_live_locations (
+                inquiry_id VARCHAR(64) PRIMARY KEY,
+                customer_phone VARCHAR(64) DEFAULT NULL,
+                status VARCHAR(32) DEFAULT 'REQUESTED',
+                lat DECIMAL(10, 7) DEFAULT NULL,
+                lng DECIMAL(10, 7) DEFAULT NULL,
+                maps_link TEXT DEFAULT NULL,
+                requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                responded_at TIMESTAMP NULL DEFAULT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )");
+        } catch (Exception $e) {}
+
+        $inquiry_id = trim($data['inquiryId'] ?? ($data['id'] ?? ''));
+        $customer_phone = trim($data['customerPhone'] ?? ($data['phone'] ?? ''));
+
+        if (!empty($inquiry_id)) {
+            $stmt = $pdo->prepare("INSERT INTO trip_live_locations (inquiry_id, customer_phone, status, requested_at)
+                                   VALUES (:inquiry_id, :customer_phone, 'REQUESTED', NOW())
+                                   ON DUPLICATE KEY UPDATE customer_phone = :customer_phone_update, status = 'REQUESTED', requested_at = NOW()");
+            $stmt->execute([
+                ':inquiry_id' => $inquiry_id,
+                ':customer_phone' => $customer_phone,
+                ':customer_phone_update' => $customer_phone
+            ]);
+
+            // Also send a silent push notification into customer_notifications so mobile app detects it immediately
+            try {
+                $pingId = 'loc_' . uniqid();
+                $pingStmt = $pdo->prepare("INSERT INTO customer_notifications (id, target_phone, target_email, title, body, type, extra_data, delivered)
+                                           VALUES (:id, :phone, NULL, 'Live Location Request', 'Admin requested live GPS', 'LOCATION_PING', :extra, 0)");
+                $pingStmt->execute([
+                    ':id' => $pingId,
+                    ':phone' => $customer_phone,
+                    ':extra' => json_encode(['inquiryId' => $inquiry_id, 'timestamp' => time()])
+                ]);
+            } catch (Exception $e) {}
+
+            echo json_encode(['success' => true, 'inquiryId' => $inquiry_id, 'message' => 'Live location requested']);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Missing inquiryId']);
+        }
+        break;
+
+    case 'checkLocationRequest':
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS trip_live_locations (
+                inquiry_id VARCHAR(64) PRIMARY KEY,
+                customer_phone VARCHAR(64) DEFAULT NULL,
+                status VARCHAR(32) DEFAULT 'REQUESTED',
+                lat DECIMAL(10, 7) DEFAULT NULL,
+                lng DECIMAL(10, 7) DEFAULT NULL,
+                maps_link TEXT DEFAULT NULL,
+                requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                responded_at TIMESTAMP NULL DEFAULT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )");
+        } catch (Exception $e) {}
+
+        $inquiry_id = trim($data['inquiryId'] ?? ($data['id'] ?? ''));
+        $phone = preg_replace('/\D/', '', trim($data['phone'] ?? ''));
+        $phone10 = strlen($phone) >= 10 ? substr($phone, -10) : $phone;
+
+        $stmt = $pdo->prepare("SELECT * FROM trip_live_locations 
+                               WHERE (inquiry_id = :inq OR (customer_phone IS NOT NULL AND customer_phone != '' AND RIGHT(customer_phone, 10) = :phone10))
+                                 AND status = 'REQUESTED'
+                                 AND requested_at >= NOW() - INTERVAL 120 SECOND
+                               ORDER BY requested_at DESC LIMIT 1");
+        $stmt->execute([
+            ':inq' => $inquiry_id,
+            ':phone10' => $phone10
+        ]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($row) {
+            echo json_encode(['success' => true, 'hasRequest' => true, 'request' => $row]);
+        } else {
+            echo json_encode(['success' => true, 'hasRequest' => false]);
+        }
+        break;
+
+    case 'respondLiveLocation':
+        $inquiry_id = trim($data['inquiryId'] ?? ($data['id'] ?? ''));
+        $phone = preg_replace('/\D/', '', trim($data['phone'] ?? ''));
+        $phone10 = strlen($phone) >= 10 ? substr($phone, -10) : $phone;
+        $lat = isset($data['lat']) ? floatval($data['lat']) : null;
+        $lng = isset($data['lng']) ? floatval($data['lng']) : null;
+        $maps_link = trim($data['mapsLink'] ?? '');
+
+        if (empty($maps_link) && $lat !== null && $lng !== null) {
+            $maps_link = "https://www.google.com/maps?q={$lat},{$lng}";
+        }
+
+        $stmt = $pdo->prepare("UPDATE trip_live_locations 
+                               SET status = 'RESPONDED', lat = :lat, lng = :lng, maps_link = :maps_link, responded_at = NOW()
+                               WHERE inquiry_id = :inq OR (customer_phone IS NOT NULL AND customer_phone != '' AND RIGHT(customer_phone, 10) = :phone10)");
+        $stmt->execute([
+            ':lat' => $lat,
+            ':lng' => $lng,
+            ':maps_link' => $maps_link,
+            ':inq' => $inquiry_id,
+            ':phone10' => $phone10
+        ]);
+
+        echo json_encode(['success' => true, 'mapsLink' => $maps_link]);
+        break;
+
+    case 'getLiveLocation':
+        $inquiry_id = trim($data['inquiryId'] ?? ($data['id'] ?? ''));
+        $stmt = $pdo->prepare("SELECT * FROM trip_live_locations WHERE inquiry_id = :inq LIMIT 1");
+        $stmt->execute([':inq' => $inquiry_id]);
+        $loc = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        echo json_encode(['success' => true, 'location' => $loc]);
         break;
 
     default:

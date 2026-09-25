@@ -2,8 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import './MobileAppView.css';
 import { db } from '../services/dbService';
-import { saveInquiryToMySQL, saveCustomerToMySQL, loadAllCustomersFromMySQL, loadAllInquiriesFromMySQL, fetchNotificationsFromMySQL, markNotificationDeliveredInMySQL } from '../services/mysqlService';
+import { saveInquiryToMySQL, saveCustomerToMySQL, loadAllCustomersFromMySQL, loadAllInquiriesFromMySQL, fetchNotificationsFromMySQL, markNotificationDeliveredInMySQL, checkLocationRequestInMySQL, respondLiveLocationInMySQL, updateInquiryStatusInMySQL } from '../services/mysqlService';
 import { notifyAdmin, notifyCustomer, sendSystemPushNotification, requestNotificationPermission } from '../services/notificationEngine';
+import { Geolocation } from '@capacitor/geolocation';
+import { getCoordsForPlace, calculateDistanceKm } from '../utils/locationCoords';
 
 // Import Modular Mobile Screen Components
 import PreloaderScreen from './mobile/PreloaderScreen';
@@ -367,6 +369,74 @@ export default function MobileAppView() {
               localStorage.setItem(cnKey, 'true');
               sendSystemPushNotification(cn.title, cn.body, 'cloud-' + cn.id);
               markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+            }
+          }
+        }
+
+        // 4. Poll On-Demand Live GPS Location Requests from Admin
+        // Customer phone only turns on GPS for 2 seconds snapshot, generates map link, and turns off location
+        for (const inqId of Array.from(localInqIds)) {
+          const reqCheck = await checkLocationRequestInMySQL(inqId, searchPhone).catch(() => null);
+          if (reqCheck && reqCheck.hasRequest && reqCheck.request) {
+            const locReq = reqCheck.request;
+            const handledKey = `cabsy_loc_handled_${locReq.inquiry_id}_${locReq.requested_at}`;
+            if (!sessionStorage.getItem(handledKey)) {
+              sessionStorage.setItem(handledKey, 'true');
+
+              // Single-shot GPS: active for 2s only, then completely shuts off GPS
+              let coords = null;
+              try {
+                if (window.Capacitor?.isNativePlatform?.()) {
+                  const perm = await Geolocation.checkPermissions().catch(() => null);
+                  if (perm?.location !== 'granted') {
+                    await Geolocation.requestPermissions().catch(() => null);
+                  }
+                  const pos = await Geolocation.getCurrentPosition({
+                    enableHighAccuracy: true,
+                    timeout: 4500,
+                    maximumAge: 5000
+                  });
+                  if (pos?.coords) {
+                    coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                  }
+                }
+              } catch (e) {}
+
+              if (!coords && navigator.geolocation) {
+                coords = await new Promise((resolve) => {
+                  navigator.geolocation.getCurrentPosition(
+                    (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+                    () => resolve(null),
+                    { enableHighAccuracy: true, timeout: 4500, maximumAge: 5000 }
+                  );
+                });
+              }
+
+              if (coords) {
+                const mapsLink = `https://www.google.com/maps?q=${coords.lat},${coords.lng}`;
+                await respondLiveLocationInMySQL(locReq.inquiry_id, searchPhone, coords.lat, coords.lng, mapsLink).catch(() => {});
+                setUserCoords(coords);
+
+                // Auto-complete trip if within 0.25km of destination dropoff
+                const matchingInq = localInqs.find(i => i.id === locReq.inquiry_id);
+                if (matchingInq && (matchingInq.status === 'In Progress' || matchingInq.status === 'On Ride')) {
+                  const destCoords = getCoordsForPlace(matchingInq.dropoff);
+                  const distKm = calculateDistanceKm(coords.lat, coords.lng, destCoords.lat, destCoords.lng);
+                  if (distKm > 0 && distKm <= 0.25) {
+                    const finalFare = Number(matchingInq.fare || matchingInq.totalFareNum || 0);
+                    const completed = { ...matchingInq, status: 'Completed', fare: finalFare, totalFareNum: finalFare, completedAt: new Date().toISOString() };
+                    localStorage.setItem('cabsy_inquiries', JSON.stringify(localInqs.map(i => i.id === matchingInq.id ? completed : i)));
+                    localStorage.setItem('EMPERIAL CABS_last_completed_trip', JSON.stringify(completed));
+                    localStorage.removeItem('EMPERIAL CABS_active_trip');
+                    updateInquiryStatusInMySQL(matchingInq.id, 'Completed', matchingInq.driver || 'Assigned Driver', finalFare).catch(() => {});
+                    sendSystemPushNotification('🏁 Destination Reached - Trip Completed!', `You have safely arrived at ${matchingInq.dropoff}. Total Fare: ₹${finalFare}.`);
+                    window.dispatchEvent(new Event('storage'));
+                    window.dispatchEvent(new CustomEvent('EMPERIAL CABS_trip_completed', { detail: completed }));
+                    setAppStage('RECEIPT');
+                  }
+                }
+              }
+              break;
             }
           }
         }

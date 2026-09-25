@@ -515,4 +515,31 @@ export const markNotificationDeliveredInMySQL = async (id) => {
   return res && res.success;
 };
 
+/**
+ * On-Demand Live GPS Location Pipeline
+ * Customer device only activates GPS for 2s on request, generates map link, and turns off location
+ */
+export const requestLiveLocationInMySQL = async (inquiryId, customerPhone = '') => {
+  if (!inquiryId) return false;
+  const res = await sendRequest('requestLiveLocation', { inquiryId, customerPhone });
+  return res && res.success;
+};
+
+export const checkLocationRequestInMySQL = async (inquiryId = '', phone = '') => {
+  const res = await sendRequest('checkLocationRequest', { inquiryId, phone });
+  return res && res.success ? res : { success: false, hasRequest: false };
+};
+
+export const respondLiveLocationInMySQL = async (inquiryId, phone = '', lat, lng, mapsLink = '') => {
+  const res = await sendRequest('respondLiveLocation', { inquiryId, phone, lat, lng, mapsLink });
+  return res && res.success ? res : null;
+};
+
+export const getLiveLocationFromMySQL = async (inquiryId) => {
+  if (!inquiryId) return null;
+  const res = await sendRequest('getLiveLocation', { inquiryId });
+  return res && res.success && res.location ? res.location : null;
+};
+
+
 

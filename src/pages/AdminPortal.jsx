@@ -34,8 +34,11 @@ import {
   loadSettingsFromMySQL,
   saveSettingToMySQL,
   saveNotificationToMySQL,
+  requestLiveLocationInMySQL,
+  getLiveLocationFromMySQL,
   safeStorageSetItem
 } from '../services/mysqlService';
+import { getCoordsForPlace, calculateDistanceKm } from '../utils/locationCoords';
 import { 
   notifyAdmin, 
   notifyCustomer, 
@@ -80,6 +83,7 @@ import {
   CheckCircle,
   Award,
   Navigation,
+  ExternalLink,
   Gift,
   Sparkles,
   Menu,
@@ -482,6 +486,7 @@ export default function AdminPortal() {
   const [messageCategoryFilter, setMessageCategoryFilter] = useState('All');
   const [messageSearchQuery, setMessageSearchQuery] = useState('');
   const [actionLoadingId, setActionLoadingId] = useState(null);
+  const [liveLocations, setLiveLocations] = useState({});
   const [companyShare, setCompanyShare] = useState(() => {
     const saved = localStorage.getItem('cabsy_company_share');
     return saved ? Number(saved) : 20;
@@ -1758,6 +1763,66 @@ export default function AdminPortal() {
     }, 300);
   };
 
+  const handleGetLiveLocation = async (inq) => {
+    if (!inq) return;
+    const actionKey = 'loc_' + inq.id;
+    if (actionLoadingId === actionKey) return;
+    setActionLoadingId(actionKey);
+
+    try {
+      // 1. Send live GPS request to Hostinger MySQL
+      await requestLiveLocationInMySQL(inq.id, inq.customerPhone);
+
+      // 2. Poll every 1s for up to 15 seconds for customer device response
+      let attempts = 0;
+      const maxAttempts = 15;
+      const pollTimer = setInterval(async () => {
+        attempts++;
+        try {
+          const res = await getLiveLocationFromMySQL(inq.id);
+          if (res && res.status === 'RESPONDED' && res.lat && res.lng) {
+            clearInterval(pollTimer);
+            setActionLoadingId(null);
+
+            const lat = Number(res.lat);
+            const lng = Number(res.lng);
+            const mapsLink = res.maps_link || `https://www.google.com/maps?q=${lat},${lng}`;
+
+            // Calculate distance to dropoff destination
+            const destCoords = getCoordsForPlace(inq.dropoff);
+            const distKm = calculateDistanceKm(lat, lng, destCoords.lat, destCoords.lng);
+
+            setLiveLocations(prev => ({
+              ...prev,
+              [inq.id]: {
+                lat,
+                lng,
+                mapsLink,
+                distToDropoff: distKm > 0 ? distKm.toFixed(1) : '0.0',
+                timeStr: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                reached: distKm > 0 && distKm <= 0.25
+              }
+            }));
+
+            // If car/customer has reached destination (<= 250m), auto-trigger trip completion
+            if (distKm > 0 && distKm <= 0.25) {
+              handleCompleteTrip(inq.id);
+            }
+            return;
+          }
+        } catch (e) {}
+
+        if (attempts >= maxAttempts) {
+          clearInterval(pollTimer);
+          setActionLoadingId(null);
+          alert(`Customer device (${inq.customerPhone || inq.id}) did not respond within 15 seconds. Please ensure the customer app is open.`);
+        }
+      }, 1000);
+    } catch (err) {
+      setActionLoadingId(null);
+    }
+  };
+
   const handleCancelInquiry = (inquiryId) => {
     if (!inquiryId) return;
     const actionKey = 'cancel_' + inquiryId;
@@ -2890,6 +2955,31 @@ export default function AdminPortal() {
                                 </button>
                               )}
 
+                              {/* 3. GET LIVE LOCATION BUTTON */}
+                              <button 
+                                className="btn-action-gps"
+                                disabled={actionLoadingId === 'loc_' + inq.id}
+                                onClick={() => handleGetLiveLocation(inq)}
+                                title="Get 2s Live GPS Snapshot & Google Maps Link"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  padding: '7px 12px',
+                                  borderRadius: '16px',
+                                  fontWeight: '800',
+                                  fontSize: '0.82rem',
+                                  whiteSpace: 'nowrap',
+                                  background: '#0284C7',
+                                  color: '#FFFFFF',
+                                  border: 'none',
+                                  opacity: actionLoadingId === 'loc_' + inq.id ? 0.7 : 1,
+                                  cursor: actionLoadingId === 'loc_' + inq.id ? 'not-allowed' : 'pointer'
+                                }}
+                              >
+                                <Navigation size={13} /> {actionLoadingId === 'loc_' + inq.id ? 'Getting GPS (2s)...' : 'Get Live Location'}
+                              </button>
+
                               <button 
                                 className="btn-action-view"
                                 disabled={!!actionLoadingId}
@@ -2910,6 +3000,26 @@ export default function AdminPortal() {
                                 <Eye size={14} /> View
                               </button>
                             </div>
+                            {liveLocations[inq.id] && (
+                              <div style={{ marginTop: '6px', textAlign: 'right' }}>
+                                <a 
+                                  href={liveLocations[inq.id].mapsLink} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer" 
+                                  style={{ 
+                                    display: 'inline-flex', 
+                                    alignItems: 'center', 
+                                    gap: '4px', 
+                                    fontSize: '0.78rem', 
+                                    color: '#16A34A', 
+                                    fontWeight: '800', 
+                                    textDecoration: 'underline' 
+                                  }}
+                                >
+                                  <ExternalLink size={11} /> Open in Google Maps ({liveLocations[inq.id].distToDropoff} km to dropoff)
+                                </a>
+                              </div>
+                            )}
                           </td>
                         </tr>
                       );
@@ -2994,6 +3104,28 @@ export default function AdminPortal() {
                             <CheckCircle size={14} /> {actionLoadingId === 'complete_' + inq.id ? 'Completing...' : 'Complete Trip'}
                           </button>
                         )}
+                        {/* LIVE LOCATION ON-DEMAND BUTTON */}
+                        <button 
+                          className="btn-action-gps"
+                          disabled={actionLoadingId === 'loc_' + inq.id}
+                          onClick={() => handleGetLiveLocation(inq)}
+                          style={{
+                            padding: '7px 12px',
+                            borderRadius: '10px',
+                            fontWeight: '800',
+                            fontSize: '13px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            background: '#0284C7',
+                            color: '#FFFFFF',
+                            border: 'none',
+                            cursor: actionLoadingId === 'loc_' + inq.id ? 'not-allowed' : 'pointer',
+                            opacity: actionLoadingId === 'loc_' + inq.id ? 0.7 : 1
+                          }}
+                        >
+                          <Navigation size={13} /> {actionLoadingId === 'loc_' + inq.id ? 'Getting GPS (2s)...' : 'Get Live Location'}
+                        </button>
                         <button 
                           className="btn-action-view"
                           onClick={() => setReceiptModal({ open: true, inquiry: inq })}
@@ -3002,6 +3134,55 @@ export default function AdminPortal() {
                           <Eye size={14} /> View
                         </button>
                       </div>
+                      {/* DISPLAY RECEIVED LIVE LOCATION WITH DIRECT CLICKABLE GOOGLE MAPS LINK */}
+                      {liveLocations[inq.id] && (
+                        <div style={{
+                          background: '#F0FDF4',
+                          border: '1.5px solid #86EFAC',
+                          borderRadius: '10px',
+                          padding: '10px 12px',
+                          marginTop: '10px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '6px'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '800', color: '#166534', fontSize: '12px' }}>
+                              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22C55E', display: 'inline-block' }}></span>
+                              <span>Live Location ({liveLocations[inq.id].timeStr})</span>
+                            </div>
+                            {liveLocations[inq.id].distToDropoff != null && (
+                              <span style={{ fontSize: '11px', color: '#0369A1', fontWeight: '800' }}>
+                                {liveLocations[inq.id].distToDropoff} km to dropoff
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#334155' }}>
+                            GPS: <strong>{liveLocations[inq.id].lat.toFixed(5)}, {liveLocations[inq.id].lng.toFixed(5)}</strong>
+                          </div>
+                          <a 
+                            href={liveLocations[inq.id].mapsLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '6px',
+                              background: '#16A34A',
+                              color: '#FFFFFF',
+                              padding: '8px 12px',
+                              borderRadius: '8px',
+                              fontWeight: '800',
+                              fontSize: '12px',
+                              textDecoration: 'none',
+                              boxShadow: '0 2px 6px rgba(22, 163, 74, 0.25)'
+                            }}
+                          >
+                            <ExternalLink size={13} /> Open Live Location in Google Maps ↗
+                          </a>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
