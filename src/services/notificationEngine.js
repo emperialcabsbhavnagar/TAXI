@@ -65,13 +65,25 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
   // 1. Mobile Phone Native System Notification Panel (Android APK via Capacitor LocalNotifications)
   try {
     if (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform()) {
+      try {
+        await LocalNotifications.createChannel({
+          id: 'emperial_cabs_channel',
+          name: 'EMPERIAL CABS Booking & Driver Alerts',
+          description: 'Live trip status, driver details and booking confirmation',
+          importance: 5,
+          visibility: 1,
+          vibration: true
+        });
+      } catch (ce) {}
+
       await LocalNotifications.schedule({
         notifications: [
           {
             title: title,
             body: body,
             id: Math.floor(Math.random() * 1000000) + 1,
-            schedule: { at: new Date(Date.now() + 100) },
+            schedule: { at: new Date(Date.now() + 50) },
+            channelId: 'emperial_cabs_channel',
             sound: undefined,
             attachments: undefined,
             actionTypeId: '',

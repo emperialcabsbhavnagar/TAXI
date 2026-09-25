@@ -436,6 +436,42 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
                     </div>
                   </div>
 
+                  {/* Chauffeur, Driver Number & Plate Details */}
+                  {(() => {
+                    const hasDriverAssigned = Boolean(inq.driver && inq.driver !== 'Unassigned' && inq.driver !== '-');
+                    if (hasDriverAssigned) {
+                      return (
+                        <div style={{ margin: '8px 0 12px 0', padding: '10px 12px', background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                          <div>
+                            <div style={{ fontSize: '13px', fontWeight: '800', color: '#065F46', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span>Chauffeur: {inq.driver}</span>
+                            </div>
+                            {(inq.driverPhone || inq.driverNumber) && (
+                              <a 
+                                href={`tel:${inq.driverPhone || inq.driverNumber}`} 
+                                onClick={e => e.stopPropagation()} 
+                                style={{ fontSize: '12px', color: '#047857', fontWeight: '700', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}
+                              >
+                                📞 {inq.driverPhone || inq.driverNumber}
+                              </a>
+                            )}
+                          </div>
+                          {(inq.plate || inq.vehiclePlate || inq.carPlate) && (
+                            <span style={{ background: '#F59E0B', color: '#0F172A', padding: '3px 8px', borderRadius: '6px', fontWeight: '900', fontSize: '11px', fontFamily: 'Space Grotesk', letterSpacing: '0.8px', border: '1px solid #FFFFFF' }}>
+                              {inq.plate || inq.vehiclePlate || inq.carPlate}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <div style={{ margin: '6px 0 10px 0', padding: '6px 10px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '10px', fontSize: '12px', color: '#B45309', fontWeight: '700' }}>
+                          ⏳ Assigning Dedicated Chauffeur...
+                        </div>
+                      );
+                    }
+                  })()}
+
                   {/* Car, Fare & Action Buttons */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #F1F5F9', paddingTop: '10px' }}>
                     <div>
@@ -448,28 +484,31 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <button 
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedInquiry(inq);
-                          setEditForm(inq);
-                          setIsEditing(false);
-                        }}
-                        style={{
-                          background: '#F1F5F9',
-                          border: '1px solid #CBD5E1',
-                          color: '#0F172A',
-                          padding: '6px 12px',
-                          borderRadius: '12px',
-                          fontFamily: 'League Spartan',
-                          fontWeight: '800',
-                          fontSize: '13px',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        View Receipt
-                      </button>
+                      {/* Hide receipt button until driver is assigned */}
+                      {Boolean(inq.driver && inq.driver !== 'Unassigned' && inq.driver !== '-') && (
+                        <button 
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedInquiry(inq);
+                            setEditForm(inq);
+                            setIsEditing(false);
+                          }}
+                          style={{
+                            background: '#F1F5F9',
+                            border: '1px solid #CBD5E1',
+                            color: '#0F172A',
+                            padding: '6px 12px',
+                            borderRadius: '12px',
+                            fontFamily: 'League Spartan',
+                            fontWeight: '800',
+                            fontSize: '13px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          View Receipt
+                        </button>
+                      )}
 
                       {badge.canCancel && (
                         <button 
@@ -559,8 +598,16 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F0FDF4', border: '1.5px solid #BBF7D0', padding: '14px', borderRadius: '16px', marginBottom: '20px' }}>
                   <div>
                     <span style={{ fontSize: '12px', fontWeight: '800', color: '#059669', display: 'block' }}>
-                      VEHICLE {selectedInquiry.driver ? `• ${selectedInquiry.driver}` : ''}
+                      VEHICLE {selectedInquiry.driver ? `• Chauffeur: ${selectedInquiry.driver}` : ''}
                     </span>
+                    {(selectedInquiry.driverPhone || selectedInquiry.driverNumber) && (
+                      <a 
+                        href={`tel:${selectedInquiry.driverPhone || selectedInquiry.driverNumber}`} 
+                        style={{ fontSize: '12px', color: '#047857', fontWeight: '700', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', margin: '2px 0 4px 0' }}
+                      >
+                        📞 {selectedInquiry.driverPhone || selectedInquiry.driverNumber}
+                      </a>
+                    )}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
                       <span style={{ fontSize: '16px', fontWeight: '800', color: '#0F172A', fontFamily: 'League Spartan' }}>{selectedInquiry.vehicle || selectedInquiry.carName || selectedInquiry.selectedCar || 'SWIFT'}</span>
                       {(selectedInquiry.plate || selectedInquiry.vehiclePlate || selectedInquiry.carPlate) && (

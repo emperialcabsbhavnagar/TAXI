@@ -361,11 +361,23 @@ switch ($action) {
         $status = $data['status'] ?? 'Pending';
         $driver = $data['driver'] ?? null;
         $vehicle = $data['vehicle'] ?? null;
+        $driverPhone = $data['driverPhone'] ?? $data['driverNumber'] ?? null;
+        $plate = $data['plate'] ?? $data['vehiclePlate'] ?? $data['carPlate'] ?? null;
         
         $updates = ["status = :status"];
         $params = [':status' => $status, ':id' => $id];
         if ($driver !== null) { $updates[] = "driver = :driver"; $params[':driver'] = $driver; }
         if ($vehicle !== null) { $updates[] = "vehicle = :vehicle"; $params[':vehicle'] = $vehicle; }
+        if ($driverPhone !== null) {
+            try { $pdo->exec("ALTER TABLE inquiries ADD COLUMN driverPhone VARCHAR(64) DEFAULT NULL"); } catch (Exception $e) {}
+            $updates[] = "driverPhone = :driverPhone";
+            $params[':driverPhone'] = $driverPhone;
+        }
+        if ($plate !== null) {
+            try { $pdo->exec("ALTER TABLE inquiries ADD COLUMN plate VARCHAR(64) DEFAULT NULL"); } catch (Exception $e) {}
+            $updates[] = "plate = :plate";
+            $params[':plate'] = $plate;
+        }
         
         $sql = "UPDATE inquiries SET " . implode(", ", $updates) . " WHERE id = :id";
         $stmt = $pdo->prepare($sql);

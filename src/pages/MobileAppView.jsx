@@ -291,6 +291,69 @@ export default function MobileAppView() {
     }
   };
 
+  // Live watcher for driver assignment updates: triggers native notification panel on phone
+  useEffect(() => {
+    let isCancelled = false;
+    const checkDriverAssignedNotifs = async () => {
+      try {
+        const savedPhone = localStorage.getItem('cabsy_user_phone') || phoneNumber || '';
+        const savedProfile = localStorage.getItem('cabsy_user_profile');
+        const userProf = savedProfile ? JSON.parse(savedProfile) : null;
+        const uPhone = (userProf?.phone || savedPhone || '').replace(/\D/g, '');
+        const uEmail = (userProf?.email || authEmail || '').toLowerCase().trim();
+        if (!uPhone && !uEmail) return;
+
+        const remoteInqs = await loadAllInquiriesFromMySQL().catch(() => []);
+        if (isCancelled || !Array.isArray(remoteInqs) || remoteInqs.length === 0) return;
+
+        for (const inq of remoteInqs) {
+          if (!inq) continue;
+          const iPhone = (inq.customerPhone || '').replace(/\D/g, '');
+          const iEmail = (inq.customerEmail || '').toLowerCase().trim();
+          const isUserMatch = (uPhone && iPhone && uPhone.slice(-10) === iPhone.slice(-10)) ||
+                              (uEmail && iEmail && uEmail === iEmail);
+
+          if (!isUserMatch) continue;
+
+          // If driver is assigned and status is Confirmed, Assigned, or In Progress
+          const hasDriver = inq.driver && inq.driver !== 'Unassigned' && inq.driver !== '-';
+          if (hasDriver) {
+            const notifKey = `cabsy_driver_assigned_notified_${inq.id}_${inq.driver}_${inq.plate || ''}`;
+            if (!localStorage.getItem(notifKey)) {
+              localStorage.setItem(notifKey, 'true');
+              
+              const carName = inq.vehicle || inq.selectedCar || inq.carName || 'SWIFT';
+              const plateNo = inq.plate || inq.vehiclePlate || inq.carPlate || 'GJ-04-AB-1234';
+              const driverName = inq.driver;
+              const driverContact = inq.driverPhone || inq.driverNumber || '+91 98250 99887';
+
+              notifyCustomer({
+                type: 'driver_assigned',
+                title: 'Booking Confirmed - Driver Assigned!',
+                body: `Car: ${carName} | Plate: ${plateNo} | Driver: ${driverName} (${driverContact})`,
+                customerPhone: inq.customerPhone,
+                customerEmail: inq.customerEmail,
+                extraData: {
+                  driver: driverName,
+                  driverPhone: driverContact,
+                  vehicle: carName,
+                  plate: plateNo
+                }
+              });
+            }
+          }
+        }
+      } catch (e) {}
+    };
+
+    const interval = setInterval(checkDriverAssignedNotifs, 3000);
+    checkDriverAssignedNotifs();
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+    };
+  }, [phoneNumber, authEmail]);
+
   // Helper to complete onboarding & store persistent user profile
   const completeOnboarding = (customProfile) => {
     try {

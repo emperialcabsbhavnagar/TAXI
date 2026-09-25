@@ -689,6 +689,46 @@ export default function AdminPortal() {
   const [selectedDriverId, setSelectedDriverId] = useState('');
   const [selectedAssignVehicle, setSelectedAssignVehicle] = useState('');
   const [selectedAssignPlate, setSelectedAssignPlate] = useState('');
+
+  // Auto-set vehicle, driver, and number plate when Assign Driver modal opens based on customer selection
+  useEffect(() => {
+    if (assignModal.open && assignModal.inquiry) {
+      const inq = assignModal.inquiry;
+      const targetCar = (inq.vehicle || inq.selectedCar || inq.carName || '').trim();
+
+      // 1. Auto-match vehicle from fleet
+      const matchedVeh = (vehicles || []).find(v => 
+        (v.name && targetCar && v.name.toLowerCase().trim() === targetCar.toLowerCase()) ||
+        (v.name && targetCar && (v.name.toLowerCase().includes(targetCar.toLowerCase()) || targetCar.toLowerCase().includes(v.name.toLowerCase()))) ||
+        (v.id && targetCar && v.id.toLowerCase() === targetCar.toLowerCase())
+      ) || (vehicles || []).find(v => v.name && v.name.toLowerCase().includes('swift')) || (vehicles && vehicles[0]);
+
+      const vehName = matchedVeh ? matchedVeh.name : (targetCar || 'SWIFT');
+      setSelectedAssignVehicle(vehName);
+
+      // 2. Auto-match driver suitable for this car or first active driver
+      const matchedDriver = (drivers || []).find(d => 
+        d.status === 'Active' && 
+        d.vehicle && (
+          d.vehicle.toLowerCase().includes(vehName.toLowerCase()) || 
+          vehName.toLowerCase().includes(d.vehicle.toLowerCase())
+        )
+      ) || (drivers || []).find(d => d.status === 'Active') || (drivers && drivers[0]);
+
+      if (matchedDriver) {
+        setSelectedDriverId(matchedDriver.id);
+      }
+
+      // 3. Auto-populate number plate based on vehicle or driver
+      const plate = (matchedVeh && matchedVeh.plate) 
+        ? matchedVeh.plate 
+        : (matchedDriver && matchedDriver.plate) 
+          ? matchedDriver.plate 
+          : 'GJ-04-AB-1234';
+      setSelectedAssignPlate(plate);
+    }
+  }, [assignModal.open, assignModal.inquiry, vehicles, drivers]);
+
   const [newDriverForm, setNewDriverForm] = useState({ name: '', phone: '', vehicle: 'Empire Regular', plate: '' });
   const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', email: '' });
   const [newInquiryForm, setNewInquiryForm] = useState({ customerName: '', customerPhone: '', pickup: '', dropoff: '', vehicle: 'Empire Regular', fare: 35.00 });
@@ -1496,9 +1536,10 @@ export default function AdminPortal() {
     if (actionLoadingId === actionKey) return;
     setActionLoadingId(actionKey);
 
-    const driverObj = drivers.find(d => d.id === selectedDriverId) || drivers[0] || { name: 'Assigned Driver', id: 'DRV-DEF', plate: 'CAB-001' };
+    const driverObj = drivers.find(d => d.id === selectedDriverId) || drivers[0] || { name: 'Assigned Driver', id: 'DRV-DEF', plate: 'GJ-04-AB-1234', phone: '+91 98250 99887' };
     const chosenVehicle = selectedAssignVehicle || inq.vehicle || 'SWIFT';
     const chosenPlate = selectedAssignPlate || driverObj.plate || 'GJ-04-AB-1234';
+    const driverPhone = driverObj.phone || driverObj.contact || '+91 98250 99887';
 
     const updatedInquiries = inquiries.map(item => {
       if (item.id === inq.id) {
@@ -1506,6 +1547,9 @@ export default function AdminPortal() {
           ...item,
           status: 'Confirmed',
           driver: driverObj.name,
+          driverName: driverObj.name,
+          driverPhone: driverPhone,
+          driverNumber: driverPhone,
           vehicle: chosenVehicle,
           carName: chosenVehicle,
           selectedCar: chosenVehicle,
@@ -1520,13 +1564,18 @@ export default function AdminPortal() {
     setInquiries(updatedInquiries);
     localStorage.setItem('cabsy_inquiries', JSON.stringify(updatedInquiries));
 
-    // Sync status to Hostinger MySQL
+    // Sync status, driver, vehicle, driverPhone, and plate to Hostinger MySQL
     if (inq.id) {
       updateInquiryStatusInMySQL(
         inq.id,
         'Confirmed',
         driverObj.name,
-        chosenVehicle
+        chosenVehicle,
+        inq.fare,
+        0,
+        0,
+        driverPhone,
+        chosenPlate
       ).catch(() => {});
     }
 
@@ -1543,13 +1592,19 @@ export default function AdminPortal() {
 
     autoSyncCustomer(inq.customerName, inq.customerPhone, inq.fare);
     
-    // Direct notification to customer for booking confirmation & driver assignment
+    // Direct notification to customer with car, driver, driver number, and car numberplate
     notifyCustomer({
       type: 'confirmed',
-      title: '✅ Ride Booking Confirmed!',
-      body: `Your booking for ${inq.pickup} → ${inq.dropoff} is confirmed! Driver: ${driverObj.name} (${driverObj.plate})`,
+      title: 'Booking Confirmed - Driver Assigned!',
+      body: `Car: ${chosenVehicle} | Plate: ${chosenPlate} | Driver: ${driverObj.name} (${driverPhone})`,
       customerPhone: inq.customerPhone,
-      customerEmail: inq.customerEmail
+      customerEmail: inq.customerEmail,
+      extraData: {
+        driver: driverObj.name,
+        driverPhone: driverPhone,
+        vehicle: chosenVehicle,
+        plate: chosenPlate
+      }
     });
 
     window.dispatchEvent(new Event('storage'));
@@ -2416,7 +2471,14 @@ export default function AdminPortal() {
                           <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#EF4444', marginRight: '6px' }}></span>
                           {inq.dropoff}
                         </td>
-                        <td data-label="Vehicle"><span className="pill-badge-sm" style={{ whiteSpace: 'nowrap', fontWeight: '700' }}>{inq.vehicle}</span></td>
+                        <td data-label="Vehicle">
+                          <span className="pill-badge-sm" style={{ whiteSpace: 'nowrap', fontWeight: '700' }}>{inq.vehicle || 'SWIFT'}</span>
+                          {(inq.plate || inq.vehiclePlate || inq.carPlate) && (
+                            <div style={{ fontSize: '11px', fontWeight: '800', fontFamily: 'Space Grotesk', color: '#0F172A', marginTop: '2px', background: '#FEF3C7', padding: '2px 6px', borderRadius: '4px', display: 'inline-block', border: '1px solid #FDE68A' }}>
+                              {inq.plate || inq.vehiclePlate || inq.carPlate}
+                            </div>
+                          )}
+                        </td>
                         <td data-label="Fare">
                           <strong className="text-green" style={{ fontSize: '0.95rem' }}>₹{Number(inq.fare).toFixed(2)}</strong>
                           {inq.walletDiscountUsed > 0 && (
@@ -2426,8 +2488,17 @@ export default function AdminPortal() {
                           )}
                         </td>
                         <td data-label="Driver">
-                          {inq.driver && inq.driver !== '-' ? (
-                            <span className="font-bold flex align-center gap-1" style={{ color: '#059669' }}><UserCheck size={14} /> {inq.driver}</span>
+                          {inq.driver && inq.driver !== '-' && inq.driver !== 'Unassigned' ? (
+                            <div>
+                              <span className="font-bold flex align-center gap-1" style={{ color: '#059669' }}>
+                                <UserCheck size={14} /> {inq.driver}
+                              </span>
+                              {(inq.driverPhone || inq.driverNumber) && (
+                                <div className="text-muted text-xs font-bold" style={{ marginTop: '2px' }}>
+                                  📞 {inq.driverPhone || inq.driverNumber}
+                                </div>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-muted italic">Unassigned</span>
                           )}
@@ -2439,29 +2510,32 @@ export default function AdminPortal() {
                         </td>
                         <td data-label="Actions" style={{ paddingRight: '6px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', justifyContent: 'flex-start' }}>
-                            <button 
-                              className="btn-action-view"
-                              title="View Detailed Trip Receipt & Coupon Info"
-                              disabled={actionLoadingId === 'receipt_' + inq.id}
-                              style={{
-                                background: '#EFF6FF',
-                                color: '#1D4ED8',
-                                border: '1px solid #BFDBFE',
-                                padding: '5px 7px',
-                                borderRadius: '7px',
-                                fontSize: '11px',
-                                fontWeight: '800',
-                                cursor: actionLoadingId ? 'not-allowed' : 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '2px',
-                                whiteSpace: 'nowrap',
-                                opacity: actionLoadingId ? 0.7 : 1
-                              }}
-                              onClick={() => setReceiptModal({ open: true, inquiry: inq })}
-                            >
-                              <Eye size={11} /> View Receipt
-                            </button>
+                            {/* Hide receipt button until driver is assigned */}
+                            {inq.driver && inq.driver !== '-' && inq.driver !== 'Unassigned' && (
+                              <button 
+                                className="btn-action-view"
+                                title="View Detailed Trip Receipt & Coupon Info"
+                                disabled={actionLoadingId === 'receipt_' + inq.id}
+                                style={{
+                                  background: '#EFF6FF',
+                                  color: '#1D4ED8',
+                                  border: '1px solid #BFDBFE',
+                                  padding: '5px 7px',
+                                  borderRadius: '7px',
+                                  fontSize: '11px',
+                                  fontWeight: '800',
+                                  cursor: actionLoadingId ? 'not-allowed' : 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '2px',
+                                  whiteSpace: 'nowrap',
+                                  opacity: actionLoadingId ? 0.7 : 1
+                                }}
+                                onClick={() => setReceiptModal({ open: true, inquiry: inq })}
+                              >
+                                <Eye size={11} /> View Receipt
+                              </button>
+                            )}
 
                             {inq.status === 'Pending' && (
                               <button 
@@ -2569,7 +2643,14 @@ export default function AdminPortal() {
 
                     {/* Vehicle & Fare Row */}
                     <div className="hostinger-card-footer">
-                      <span className="hostinger-vehicle-badge">{inq.vehicle}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span className="hostinger-vehicle-badge">{inq.vehicle || 'SWIFT'}</span>
+                        {(inq.plate || inq.vehiclePlate || inq.carPlate) && (
+                          <span style={{ fontSize: '11px', fontWeight: '800', background: '#FEF3C7', color: '#0F172A', padding: '2px 6px', borderRadius: '4px', border: '1px solid #FDE68A', fontFamily: 'Space Grotesk' }}>
+                            {inq.plate || inq.vehiclePlate || inq.carPlate}
+                          </span>
+                        )}
+                      </div>
                       <div style={{ textAlign: 'right' }}>
                         <span className="hostinger-fare-tag">₹{Number(inq.fare).toFixed(2)}</span>
                         {inq.walletDiscountUsed > 0 && (
@@ -2581,33 +2662,43 @@ export default function AdminPortal() {
                     </div>
 
                     {/* Driver Assignment Line */}
-                    {inq.driver && inq.driver !== '-' && (
-                      <div className="hostinger-driver-line">
-                        <UserCheck size={13} color="#059669" /> Driver: <strong>{inq.driver}</strong>
+                    {inq.driver && inq.driver !== '-' && inq.driver !== 'Unassigned' && (
+                      <div className="hostinger-driver-line" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#F0FDF4', padding: '6px 10px', borderRadius: '8px', border: '1px solid #BBF7D0', margin: '6px 0' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#059669', fontSize: '12px', fontWeight: '800' }}>
+                          <UserCheck size={13} color="#059669" /> Driver: <strong>{inq.driver}</strong>
+                        </span>
+                        {(inq.driverPhone || inq.driverNumber) && (
+                          <span style={{ fontSize: '11px', color: '#047857', fontWeight: '700' }}>
+                            📞 {inq.driverPhone || inq.driverNumber}
+                          </span>
+                        )}
                       </div>
                     )}
 
                     {/* Aligned Action Buttons Bar */}
                     <div className="hostinger-card-actions">
-                      <button 
-                        className="btn-action-view"
-                        disabled={actionLoadingId === 'receipt_' + inq.id}
-                        style={{
-                          background: '#EFF6FF',
-                          color: '#1D4ED8',
-                          border: '1px solid #BFDBFE',
-                          padding: '6px 10px',
-                          borderRadius: '8px',
-                          fontSize: '12px',
-                          fontWeight: '800',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px'
-                        }}
-                        onClick={() => setReceiptModal({ open: true, inquiry: inq })}
-                      >
-                        <Eye size={12} /> Receipt
-                      </button>
+                      {/* Hide receipt button until driver is assigned */}
+                      {inq.driver && inq.driver !== '-' && inq.driver !== 'Unassigned' && (
+                        <button 
+                          className="btn-action-view"
+                          disabled={actionLoadingId === 'receipt_' + inq.id}
+                          style={{
+                            background: '#EFF6FF',
+                            color: '#1D4ED8',
+                            border: '1px solid #BFDBFE',
+                            padding: '6px 10px',
+                            borderRadius: '8px',
+                            fontSize: '12px',
+                            fontWeight: '800',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                          onClick={() => setReceiptModal({ open: true, inquiry: inq })}
+                        >
+                          <Eye size={12} /> Receipt
+                        </button>
+                      )}
 
                       {inq.status === 'Pending' && (
                         <button 
@@ -5741,7 +5832,19 @@ export default function AdminPortal() {
                 <div style={{ fontSize: '13px', color: '#334155', marginTop: '6px', fontWeight: '700' }}>
                   Driver: <span style={{ color: '#059669' }}>{receiptModal.inquiry.driver || 'Unassigned'}</span>
                 </div>
-                <div style={{ fontSize: '12px', color: '#64748B' }}>Vehicle: <strong>{receiptModal.inquiry.vehicle || 'Standard'}</strong></div>
+                {(receiptModal.inquiry.driverPhone || receiptModal.inquiry.driverNumber) && (
+                  <div style={{ fontSize: '12px', color: '#047857', fontWeight: '700', marginTop: '2px' }}>
+                    📞 Driver Phone: <strong>{receiptModal.inquiry.driverPhone || receiptModal.inquiry.driverNumber}</strong>
+                  </div>
+                )}
+                <div style={{ fontSize: '12px', color: '#64748B', marginTop: '2px' }}>
+                  Vehicle: <strong>{receiptModal.inquiry.vehicle || 'Standard'}</strong>
+                </div>
+                {(receiptModal.inquiry.plate || receiptModal.inquiry.vehiclePlate || receiptModal.inquiry.carPlate) && (
+                  <div style={{ fontSize: '12px', color: '#0F172A', fontWeight: '800', fontFamily: 'Space Grotesk', marginTop: '2px' }}>
+                    Number Plate: <span style={{ background: '#FEF3C7', padding: '2px 6px', borderRadius: '4px', border: '1px solid #FDE68A' }}>{receiptModal.inquiry.plate || receiptModal.inquiry.vehiclePlate || receiptModal.inquiry.carPlate}</span>
+                  </div>
+                )}
               </div>
             </div>
 
