@@ -2,8 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import './MobileAppView.css';
 import { db } from '../services/dbService';
-import { saveInquiryToMySQL, saveCustomerToMySQL, loadAllCustomersFromMySQL, loadAllInquiriesFromMySQL } from '../services/mysqlService';
-import { notifyAdmin, notifyCustomer, requestNotificationPermission } from '../services/notificationEngine';
+import { saveInquiryToMySQL, saveCustomerToMySQL, loadAllCustomersFromMySQL, loadAllInquiriesFromMySQL, fetchNotificationsFromMySQL, markNotificationDeliveredInMySQL } from '../services/mysqlService';
+import { notifyAdmin, notifyCustomer, sendSystemPushNotification, requestNotificationPermission } from '../services/notificationEngine';
 
 // Import Modular Mobile Screen Components
 import PreloaderScreen from './mobile/PreloaderScreen';
@@ -291,7 +291,7 @@ export default function MobileAppView() {
     }
   };
 
-  // Live watcher for driver assignment updates: triggers native notification panel on phone
+  // Live watcher for driver assignment updates and cloud push notifications: triggers native notification panel on phone
   useEffect(() => {
     let isCancelled = false;
     const checkDriverAssignedNotifs = async () => {
@@ -301,45 +301,72 @@ export default function MobileAppView() {
         const userProf = savedProfile ? JSON.parse(savedProfile) : null;
         const uPhone = (userProf?.phone || savedPhone || '').replace(/\D/g, '');
         const uEmail = (userProf?.email || authEmail || '').toLowerCase().trim();
-        if (!uPhone && !uEmail) return;
 
+        // 1. Get all local inquiries on this device
+        let localInqs = [];
+        try {
+          const raw = localStorage.getItem('cabsy_inquiries');
+          if (raw) localInqs = JSON.parse(raw);
+        } catch (e) {}
+        const localInqIds = new Set(localInqs.map(i => i.id).filter(Boolean));
+        const localPhones = new Set(localInqs.map(i => (i.customerPhone || '').replace(/\D/g, '')).filter(Boolean));
+        if (uPhone) localPhones.add(uPhone);
+
+        // 2. Poll MySQL inquiries for driver assignment
         const remoteInqs = await loadAllInquiriesFromMySQL().catch(() => []);
-        if (isCancelled || !Array.isArray(remoteInqs) || remoteInqs.length === 0) return;
+        if (!isCancelled && Array.isArray(remoteInqs) && remoteInqs.length > 0) {
+          for (const inq of remoteInqs) {
+            if (!inq) continue;
+            const iPhone = (inq.customerPhone || '').replace(/\D/g, '');
+            const iEmail = (inq.customerEmail || '').toLowerCase().trim();
 
-        for (const inq of remoteInqs) {
-          if (!inq) continue;
-          const iPhone = (inq.customerPhone || '').replace(/\D/g, '');
-          const iEmail = (inq.customerEmail || '').toLowerCase().trim();
-          const isUserMatch = (uPhone && iPhone && uPhone.slice(-10) === iPhone.slice(-10)) ||
-                              (uEmail && iEmail && uEmail === iEmail);
+            const isUserMatch = localInqIds.has(inq.id) ||
+                                (iPhone && Array.from(localPhones).some(p => p.slice(-10) === iPhone.slice(-10))) ||
+                                (uEmail && iEmail && uEmail === iEmail);
 
-          if (!isUserMatch) continue;
+            if (!isUserMatch) continue;
 
-          // If driver is assigned and status is Confirmed, Assigned, or In Progress
-          const hasDriver = inq.driver && inq.driver !== 'Unassigned' && inq.driver !== '-';
-          if (hasDriver) {
-            const notifKey = `cabsy_driver_assigned_notified_${inq.id}_${inq.driver}_${inq.plate || ''}`;
-            if (!localStorage.getItem(notifKey)) {
-              localStorage.setItem(notifKey, 'true');
-              
-              const carName = inq.vehicle || inq.selectedCar || inq.carName || 'SWIFT';
-              const plateNo = inq.plate || inq.vehiclePlate || inq.carPlate || 'GJ-04-AB-1234';
-              const driverName = inq.driver;
-              const driverContact = inq.driverPhone || inq.driverNumber || '+91 98250 99887';
+            // If driver is assigned and status is Confirmed, Assigned, or In Progress
+            const hasDriver = inq.driver && inq.driver !== 'Unassigned' && inq.driver !== '-';
+            if (hasDriver) {
+              const notifKey = `cabsy_driver_assigned_notified_${inq.id}_${inq.driver}_${inq.plate || ''}`;
+              if (!localStorage.getItem(notifKey)) {
+                localStorage.setItem(notifKey, 'true');
+                
+                const carName = inq.vehicle || inq.selectedCar || inq.carName || 'SWIFT';
+                const plateNo = inq.plate || inq.vehiclePlate || inq.carPlate || 'GJ-04-AB-1234';
+                const driverName = inq.driver;
+                const driverContact = inq.driverPhone || inq.driverNumber || '+91 98250 99887';
 
-              notifyCustomer({
-                type: 'driver_assigned',
-                title: 'Booking Confirmed - Driver Assigned!',
-                body: `Car: ${carName} | Plate: ${plateNo} | Driver: ${driverName} (${driverContact})`,
-                customerPhone: inq.customerPhone,
-                customerEmail: inq.customerEmail,
-                extraData: {
-                  driver: driverName,
-                  driverPhone: driverContact,
-                  vehicle: carName,
-                  plate: plateNo
-                }
-              });
+                notifyCustomer({
+                  type: 'driver_assigned',
+                  title: 'Booking Confirmed - Driver Assigned!',
+                  body: `Car: ${carName} | Plate: ${plateNo} | Driver: ${driverName} (${driverContact})`,
+                  customerPhone: inq.customerPhone,
+                  customerEmail: inq.customerEmail,
+                  extraData: {
+                    driver: driverName,
+                    driverPhone: driverContact,
+                    vehicle: carName,
+                    plate: plateNo
+                  }
+                });
+              }
+            }
+          }
+        }
+
+        // 3. Poll MySQL cloud push notifications dispatched by Admin (e.g. from Customer Directory)
+        const checkPhones = Array.from(localPhones);
+        const searchPhone = checkPhones[0] || uPhone || '';
+        const cloudNotifs = await fetchNotificationsFromMySQL(searchPhone, uEmail).catch(() => []);
+        if (!isCancelled && Array.isArray(cloudNotifs) && cloudNotifs.length > 0) {
+          for (const cn of cloudNotifs) {
+            const cnKey = `cabsy_cloud_notif_delivered_${cn.id}`;
+            if (!localStorage.getItem(cnKey)) {
+              localStorage.setItem(cnKey, 'true');
+              sendSystemPushNotification(cn.title, cn.body, 'cloud-' + cn.id);
+              markNotificationDeliveredInMySQL(cn.id).catch(() => {});
             }
           }
         }

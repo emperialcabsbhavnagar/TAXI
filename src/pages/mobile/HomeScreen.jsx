@@ -735,8 +735,8 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
                       </div>
                     </div>
                     {(completedModal.plate || completedModal.vehiclePlate || completedModal.carPlate) && (
-                      <div style={{ background: '#F59E0B', color: '#0F172A', padding: '4px 10px', borderRadius: '8px', fontWeight: '900', fontSize: '12px', fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '1px', border: '1.5px solid #FFFFFF', boxShadow: '0 2px 6px rgba(0,0,0,0.1)' }}>
-                        {completedModal.plate || completedModal.vehiclePlate || completedModal.carPlate}
+                      <div style={{ background: '#FFFFFF', color: '#0F172A', padding: '4px 10px', borderRadius: '8px', fontWeight: '900', fontSize: '12px', fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '0.8px', border: '1.5px solid #CBD5E1', boxShadow: '0 2px 6px rgba(0,0,0,0.06)', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                        🚗 {completedModal.plate || completedModal.vehiclePlate || completedModal.carPlate}
                       </div>
                     )}
                   </div>

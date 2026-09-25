@@ -33,6 +33,7 @@ import {
   updateContactMessageStatusInMySQL,
   loadSettingsFromMySQL,
   saveSettingToMySQL,
+  saveNotificationToMySQL,
   safeStorageSetItem
 } from '../services/mysqlService';
 import { 
@@ -6251,6 +6252,14 @@ export default function AdminPortal() {
                     customerEmail: sendNotifModal.customer.email,
                     customerPhone: sendNotifModal.customer.phone
                   });
+
+                  saveNotificationToMySQL({
+                    target_phone: sendNotifModal.customer.phone,
+                    target_email: sendNotifModal.customer.email,
+                    title: sendNotifModal.title,
+                    body: sendNotifModal.body,
+                    type: sendNotifModal.type || 'reward'
+                  }).catch(e => console.warn('Cloud notification sync notice:', e));
 
                   alert(`✅ Push Notification Sent!\n\nTarget: ${sendNotifModal.customer.name} (${sendNotifModal.customer.email})\nTitle: ${sendNotifModal.title}`);
                   setSendNotifModal({ open: false, customer: null, title: '', body: '', type: 'reward' });

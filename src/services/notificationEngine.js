@@ -4,14 +4,20 @@
  * and Automated Ecosystem Pre-Trip Scheduler.
  */
 
+import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { saveNotificationToMySQL } from './mysqlService';
 
 // Request system tray push notification permission
 export const requestNotificationPermission = async () => {
   try {
-    if (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform()) {
-      const res = await LocalNotifications.requestPermissions();
-      if (res && res.display === 'granted') return true;
+    if (typeof window !== 'undefined' && Capacitor.isNativePlatform()) {
+      const check = await LocalNotifications.checkPermissions();
+      if (check && check.display !== 'granted') {
+        const res = await LocalNotifications.requestPermissions();
+        return res && res.display === 'granted';
+      }
+      return true;
     }
   } catch (e) {
     console.warn("Capacitor request permission error:", e);
@@ -64,26 +70,27 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
 
   // 1. Mobile Phone Native System Notification Panel (Android APK via Capacitor LocalNotifications)
   try {
-    if (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform()) {
+    if (typeof window !== 'undefined' && Capacitor.isNativePlatform()) {
       try {
         await LocalNotifications.createChannel({
           id: 'emperial_cabs_channel',
-          name: 'EMPERIAL CABS Booking & Driver Alerts',
-          description: 'Live trip status, driver details and booking confirmation',
+          name: 'EMPERIAL CABS Alerts',
+          description: 'Live ride confirmation, driver details, and fleet alerts',
           importance: 5,
           visibility: 1,
           vibration: true
         });
       } catch (ce) {}
 
+      const notifId = Math.floor(Math.random() * 1000000) + 1;
       await LocalNotifications.schedule({
         notifications: [
           {
             title: title,
             body: body,
-            id: Math.floor(Math.random() * 1000000) + 1,
-            schedule: { at: new Date(Date.now() + 50) },
+            id: notifId,
             channelId: 'emperial_cabs_channel',
+            smallIcon: 'ic_launcher',
             sound: undefined,
             attachments: undefined,
             actionTypeId: '',
@@ -204,6 +211,19 @@ export const notifyCustomer = ({ type = 'inquiry', title, body, customerPhone, c
       }
     } catch (e) {}
   }
+
+  // Cross-device Cloud Sync: Persist to Hostinger MySQL so user's phone receives notification
+  try {
+    saveNotificationToMySQL({
+      id: notifObj.id,
+      target_phone: customerPhone || '',
+      target_email: customerEmail || '',
+      title: title,
+      body: body,
+      type: type,
+      extra_data: extraData
+    }).catch(() => {});
+  } catch (e) {}
 
   return notifObj;
 };

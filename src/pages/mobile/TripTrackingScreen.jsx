@@ -201,8 +201,8 @@ export default function TripTrackingScreen({ userCoords, pickupLoc, dropoffLoc, 
               </div>
             </div>
             {(activeRide.plate || activeRide.vehiclePlate || activeRide.carPlate) && (
-              <div style={{ background: '#F59E0B', color: '#0F172A', padding: '4px 10px', borderRadius: '8px', fontWeight: '900', fontSize: '12px', fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '1px', border: '1.5px solid #FFFFFF' }}>
-                {activeRide.plate || activeRide.vehiclePlate || activeRide.carPlate}
+              <div style={{ background: '#FFFFFF', color: '#0F172A', padding: '4px 10px', borderRadius: '8px', fontWeight: '900', fontSize: '12px', fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '0.8px', border: '1.5px solid #CBD5E1', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                🚗 {activeRide.plate || activeRide.vehiclePlate || activeRide.carPlate}
               </div>
             )}
           </div>

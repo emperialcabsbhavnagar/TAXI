@@ -257,6 +257,18 @@ switch ($action) {
                     key_value LONGTEXT NOT NULL,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                 );
+
+                CREATE TABLE IF NOT EXISTS customer_notifications (
+                    id VARCHAR(64) PRIMARY KEY,
+                    target_phone VARCHAR(64) DEFAULT NULL,
+                    target_email VARCHAR(255) DEFAULT NULL,
+                    title VARCHAR(255) NOT NULL,
+                    body TEXT NOT NULL,
+                    type VARCHAR(64) DEFAULT 'inquiry',
+                    extra_data LONGTEXT DEFAULT NULL,
+                    delivered INT DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
             ");
 
             try {
@@ -885,6 +897,72 @@ switch ($action) {
         $stmt = $pdo->prepare("INSERT INTO settings (key_name, key_value) VALUES (?, ?)
                                ON DUPLICATE KEY UPDATE key_value = VALUES(key_value)");
         $stmt->execute([$key, $valStr]);
+        echo json_encode(['success' => true]);
+        break;
+
+    case 'saveCustomerNotification':
+        $id = !empty($data['id']) ? $data['id'] : ('notif_' . round(microtime(true) * 1000) . '_' . substr(md5(uniqid()), 0, 4));
+        $target_phone = trim($data['target_phone'] ?? ($data['customerPhone'] ?? ''));
+        $target_email = trim($data['target_email'] ?? ($data['customerEmail'] ?? ''));
+        $title = trim($data['title'] ?? 'New Notification');
+        $body = trim($data['body'] ?? '');
+        $type = trim($data['type'] ?? 'inquiry');
+        $extra_data = isset($data['extra_data']) ? (is_array($data['extra_data']) ? json_encode($data['extra_data']) : $data['extra_data']) : null;
+
+        $stmt = $pdo->prepare("INSERT INTO customer_notifications (id, target_phone, target_email, title, body, type, extra_data, delivered)
+                               VALUES (:id, :target_phone, :target_email, :title, :body, :type, :extra_data, 0)");
+        $stmt->execute([
+            ':id' => $id,
+            ':target_phone' => $target_phone,
+            ':target_email' => $target_email,
+            ':title' => $title,
+            ':body' => $body,
+            ':type' => $type,
+            ':extra_data' => $extra_data
+        ]);
+        echo json_encode(['success' => true, 'id' => $id]);
+        break;
+
+    case 'getCustomerNotifications':
+        $phone = trim($data['phone'] ?? ($_GET['phone'] ?? ''));
+        $email = trim($data['email'] ?? ($_GET['email'] ?? ''));
+        $cleanPhone = preg_replace('/\D/', '', $phone);
+        $cleanPhone10 = strlen($cleanPhone) >= 10 ? substr($cleanPhone, -10) : $cleanPhone;
+
+        $stmt = $pdo->prepare("SELECT * FROM customer_notifications 
+                               WHERE created_at >= NOW() - INTERVAL 48 HOUR
+                               ORDER BY created_at DESC LIMIT 50");
+        $stmt->execute();
+        $all = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $filtered = [];
+        foreach ($all as $row) {
+            $rPhone = preg_replace('/\D/', '', $row['target_phone'] ?? '');
+            $rPhone10 = strlen($rPhone) >= 10 ? substr($rPhone, -10) : $rPhone;
+            $rEmail = strtolower(trim($row['target_email'] ?? ''));
+
+            $match = false;
+            // Global broadcast notification (target empty)
+            if (empty($rPhone) && empty($rEmail)) {
+                $match = true;
+            } else if (!empty($cleanPhone10) && !empty($rPhone10) && $cleanPhone10 === $rPhone10) {
+                $match = true;
+            } else if (!empty($email) && !empty($rEmail) && strtolower($email) === $rEmail) {
+                $match = true;
+            }
+            if ($match) {
+                $filtered[] = $row;
+            }
+        }
+        echo json_encode(['success' => true, 'notifications' => $filtered]);
+        break;
+
+    case 'markNotificationDelivered':
+        $id = $data['id'] ?? null;
+        if ($id) {
+            $stmt = $pdo->prepare("UPDATE customer_notifications SET delivered = 1 WHERE id = ?");
+            $stmt->execute([$id]);
+        }
         echo json_encode(['success' => true]);
         break;
 

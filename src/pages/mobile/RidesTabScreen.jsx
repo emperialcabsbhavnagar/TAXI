@@ -3,7 +3,7 @@ import BottomNavBar from '../../components/BottomNavBar';
 import { INITIAL_VEHICLES } from '../AdminPortal';
 import { loadAllInquiriesFromMySQL, updateInquiryStatusInMySQL, saveInquiryToMySQL } from '../../services/mysqlService';
 import db from '../../services/dbService';
-import { Calendar, Clock3, CheckCircle2, XCircle, Car, ArrowRight, X, Edit3 } from 'lucide-react';
+import { Calendar, Clock3, CheckCircle2, XCircle, Car, ArrowRight, X, Edit3, User, Phone } from 'lucide-react';
 
 export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide }) {
   const [filter, setFilter] = useState('ALL'); // ALL, SUCCESS, REJECT
@@ -441,24 +441,25 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
                     const hasDriverAssigned = Boolean(inq.driver && inq.driver !== 'Unassigned' && inq.driver !== '-');
                     if (hasDriverAssigned) {
                       return (
-                        <div style={{ margin: '8px 0 12px 0', padding: '10px 12px', background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                        <div style={{ margin: '8px 0 12px 0', padding: '10px 12px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                           <div>
-                            <div style={{ fontSize: '13px', fontWeight: '800', color: '#065F46', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <div style={{ fontSize: '13px', fontWeight: '800', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <User size={14} style={{ color: '#059669', flexShrink: 0 }} />
                               <span>Chauffeur: {inq.driver}</span>
                             </div>
                             {(inq.driverPhone || inq.driverNumber) && (
                               <a 
                                 href={`tel:${inq.driverPhone || inq.driverNumber}`} 
                                 onClick={e => e.stopPropagation()} 
-                                style={{ fontSize: '12px', color: '#047857', fontWeight: '700', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}
+                                style={{ fontSize: '12px', color: '#059669', fontWeight: '700', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '3px' }}
                               >
-                                📞 {inq.driverPhone || inq.driverNumber}
+                                <Phone size={11} style={{ flexShrink: 0 }} /> {inq.driverPhone || inq.driverNumber}
                               </a>
                             )}
                           </div>
                           {(inq.plate || inq.vehiclePlate || inq.carPlate) && (
-                            <span style={{ background: '#F59E0B', color: '#0F172A', padding: '3px 8px', borderRadius: '6px', fontWeight: '900', fontSize: '11px', fontFamily: 'Space Grotesk', letterSpacing: '0.8px', border: '1px solid #FFFFFF' }}>
-                              {inq.plate || inq.vehiclePlate || inq.carPlate}
+                            <span style={{ background: '#FFFFFF', color: '#0F172A', padding: '4px 9px', borderRadius: '8px', fontWeight: '900', fontSize: '11px', fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '0.8px', border: '1.5px solid #CBD5E1', display: 'inline-flex', alignItems: 'center', gap: '5px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+                              🚗 {inq.plate || inq.vehiclePlate || inq.carPlate}
                             </span>
                           )}
                         </div>
@@ -597,22 +598,22 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F0FDF4', border: '1.5px solid #BBF7D0', padding: '14px', borderRadius: '16px', marginBottom: '20px' }}>
                   <div>
-                    <span style={{ fontSize: '12px', fontWeight: '800', color: '#059669', display: 'block' }}>
-                      VEHICLE {selectedInquiry.driver ? `• Chauffeur: ${selectedInquiry.driver}` : ''}
+                    <span style={{ fontSize: '12px', fontWeight: '800', color: '#059669', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <User size={13} /> Chauffeur: {selectedInquiry.driver || 'Assigned Driver'}
                     </span>
                     {(selectedInquiry.driverPhone || selectedInquiry.driverNumber) && (
                       <a 
                         href={`tel:${selectedInquiry.driverPhone || selectedInquiry.driverNumber}`} 
-                        style={{ fontSize: '12px', color: '#047857', fontWeight: '700', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', margin: '2px 0 4px 0' }}
+                        style={{ fontSize: '12px', color: '#047857', fontWeight: '700', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '5px', margin: '2px 0 4px 0' }}
                       >
-                        📞 {selectedInquiry.driverPhone || selectedInquiry.driverNumber}
+                        <Phone size={11} /> {selectedInquiry.driverPhone || selectedInquiry.driverNumber}
                       </a>
                     )}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
                       <span style={{ fontSize: '16px', fontWeight: '800', color: '#0F172A', fontFamily: 'League Spartan' }}>{selectedInquiry.vehicle || selectedInquiry.carName || selectedInquiry.selectedCar || 'SWIFT'}</span>
                       {(selectedInquiry.plate || selectedInquiry.vehiclePlate || selectedInquiry.carPlate) && (
-                        <span style={{ background: '#F59E0B', color: '#0F172A', padding: '2px 8px', borderRadius: '6px', fontWeight: '900', fontSize: '11px', fontFamily: 'Space Grotesk', letterSpacing: '1px', border: '1px solid #FFFFFF' }}>
-                          {selectedInquiry.plate || selectedInquiry.vehiclePlate || selectedInquiry.carPlate}
+                        <span style={{ background: '#FFFFFF', color: '#0F172A', padding: '3px 8px', borderRadius: '8px', fontWeight: '900', fontSize: '11px', fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '0.8px', border: '1.5px solid #CBD5E1', display: 'inline-flex', alignItems: 'center', gap: '5px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+                          🚗 {selectedInquiry.plate || selectedInquiry.vehiclePlate || selectedInquiry.carPlate}
                         </span>
                       )}
                     </div>

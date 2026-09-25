@@ -495,4 +495,24 @@ export const saveSettingToMySQL = async (key, value) => {
   return res && res.success;
 };
 
+/**
+ * Customer Push Notifications Sync Engine
+ */
+export const saveNotificationToMySQL = async (notif) => {
+  if (!notif) return false;
+  const res = await sendRequest('saveCustomerNotification', notif);
+  return res && res.success;
+};
+
+export const fetchNotificationsFromMySQL = async (phone = '', email = '') => {
+  const res = await sendRequest('getCustomerNotifications', { phone, email });
+  return res && res.success && Array.isArray(res.notifications) ? res.notifications : [];
+};
+
+export const markNotificationDeliveredInMySQL = async (id) => {
+  if (!id) return false;
+  const res = await sendRequest('markNotificationDelivered', { id });
+  return res && res.success;
+};
+
 
