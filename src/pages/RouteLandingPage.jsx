@@ -4,7 +4,6 @@ import {
   parseRouteSlug, 
   calculateRouteEstimate, 
   generateRouteKeywords, 
-  GUJARAT_PRIMARY_CITIES,
   slugify 
 } from '../data/seoKeywordsData';
 import { loadAllRoutesFromMySQL, loadAllVehiclesFromMySQL, getRoutePriceFromMySQL } from '../services/mysqlService';
@@ -410,10 +409,50 @@ export default function RouteLandingPage({ onOpenBooking }) {
     }
   ];
 
-  // Related nearby routes for internal link building & SEO crawl depth
-  const otherDestinations = GUJARAT_PRIMARY_CITIES
-    .filter(c => c.name.toLowerCase() !== from.toLowerCase() && c.name.toLowerCase() !== to.toLowerCase())
-    .slice(0, 8);
+  // Derive only real other routes configured by Admin in MySQL (excluding current route)
+  const otherAdminRoutes = useMemo(() => {
+    if (!Array.isArray(customRoutes) || customRoutes.length === 0) return [];
+
+    const fLower = (from || '').toLowerCase().trim();
+    const tLower = (to || '').toLowerCase().trim();
+
+    // Valid routes with pickup and dropoff
+    const valid = customRoutes.filter(r => {
+      if (!r || !r.pickup || !r.dropoff) return false;
+      const rf = r.pickup.toLowerCase().trim();
+      const rt = r.dropoff.toLowerCase().trim();
+      // Exclude current route in both directions
+      const isCurrent = (rf === fLower && rt === tLower) || (rf === tLower && rt === fLower);
+      return !isCurrent;
+    });
+
+    // 1. Routes starting from current 'from'
+    const fromMatches = valid.filter(r => r.pickup.toLowerCase().trim() === fLower);
+    // 2. Routes ending at current 'from' (or starting from 'to')
+    const relatedMatches = valid.filter(r => 
+      !fromMatches.includes(r) && 
+      (r.dropoff.toLowerCase().trim() === fLower || r.pickup.toLowerCase().trim() === tLower)
+    );
+    // 3. Other remaining active admin routes
+    const remaining = valid.filter(r => !fromMatches.includes(r) && !relatedMatches.includes(r));
+
+    const combined = [...fromMatches, ...relatedMatches, ...remaining];
+
+    return combined.slice(0, 8).map(r => {
+      let fare = Number(r.price) || 0;
+      if (r.car_prices && typeof r.car_prices === 'object') {
+        const prices = Object.values(r.car_prices).map(Number).filter(p => !isNaN(p) && p > 0);
+        if (prices.length > 0) {
+          fare = fare > 0 ? Math.min(fare, ...prices) : Math.min(...prices);
+        }
+      }
+      return {
+        ...r,
+        startingFare: fare,
+        slug: `${slugify(r.pickup)}-to-${slugify(r.dropoff)}`
+      };
+    });
+  }, [customRoutes, from, to]);
 
   return (
     <div className="route-landing-page">
@@ -676,31 +715,41 @@ export default function RouteLandingPage({ onOpenBooking }) {
         </div>
       </section>
 
-      {/* RELATED POPULAR GUJARAT ROUTES (SEO INTERNAL LINKING) */}
-      <section className="section other-routes-section">
-        <div className="container">
-          <div className="section-header">
-            <h3>Other Popular Outstation Taxi Routes from {from}</h3>
-            <p className="small-desc">Explore direct one-way and round-trip routes across Gujarat with fixed fares.</p>
-          </div>
+      {/* RELATED POPULAR GUJARAT ROUTES - DYNAMICALLY SOURCED ONLY FROM ADMIN ROUTES */}
+      {otherAdminRoutes.length > 0 && (
+        <section className="section other-routes-section">
+          <div className="container">
+            <div className="section-header">
+              <h3>
+                {otherAdminRoutes.some(r => r.pickup.toLowerCase().trim() === from.toLowerCase().trim())
+                  ? `Other Active Outstation Taxi Routes from ${from}`
+                  : `Other Active Outstation Taxi Routes in Gujarat`}
+              </h3>
+              <p className="small-desc">Explore direct one-way and round-trip routes across Gujarat configured with fixed fares.</p>
+            </div>
 
-          <div className="related-routes-grid">
-            {otherDestinations.map((dest, i) => {
-              const slug = `${slugify(from)}-to-${dest.slug}`;
-              return (
-                <Link key={i} to={`/taxi/${slug}`} className="related-route-card">
+            <div className="related-routes-grid">
+              {otherAdminRoutes.map((r, i) => (
+                <Link key={r.id || i} to={`/taxi/${r.slug}`} className="related-route-card">
                   <div className="route-arrow-title">
-                    <span>{from}</span>
+                    <span>{r.pickup}</span>
                     <ArrowRight size={14} />
-                    <span>{dest.name}</span>
+                    <span>{r.dropoff}</span>
                   </div>
-                  <span className="route-view-link">View Fares & Schedule &rarr;</span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
+                    <span className="route-view-link">View Fares & Schedule &rarr;</span>
+                    {r.startingFare > 0 && (
+                      <span style={{ fontSize: '13px', fontWeight: '800', color: '#059669', background: '#ECFDF5', padding: '2px 8px', borderRadius: '6px' }}>
+                        From ₹{r.startingFare}
+                      </span>
+                    )}
+                  </div>
                 </Link>
-              );
-            })}
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* STICKY BOTTOM MOBILE ACTION BAR */}
       <div className="sticky-mobile-route-bar">

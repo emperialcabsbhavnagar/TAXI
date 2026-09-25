@@ -408,13 +408,13 @@ export default function BookRide() {
       return;
     }
 
-    const finalPickupAddr = isCustomMode 
-      ? (exactPickupAddress.trim() ? `${exactPickupAddress.trim()}, ${finalPickupCity}` : `${finalPickupCity}, Gujarat`) 
-      : pickupLocation;
+    const finalPickupAddr = exactPickupAddress.trim() 
+      ? `${exactPickupAddress.trim()}, ${finalPickupCity}` 
+      : `${finalPickupCity}, Gujarat`;
 
-    const finalDropoffAddr = isCustomMode 
-      ? (exactDropoffAddress.trim() ? `${exactDropoffAddress.trim()}, ${finalDropoffCity}` : `${finalDropoffCity}, Main Spot`) 
-      : dropoffDestination;
+    const finalDropoffAddr = exactDropoffAddress.trim() 
+      ? `${exactDropoffAddress.trim()}, ${finalDropoffCity}` 
+      : `${finalDropoffCity}, Gujarat`;
 
     const newInquiryId = db.getNextInquiryId();
     const newInquiry = {
@@ -425,8 +425,8 @@ export default function BookRide() {
       dropoffCity: finalDropoffCity,
       pickup: finalPickupAddr,
       dropoff: finalDropoffAddr,
-      exactPickupAddress: isCustomMode ? exactPickupAddress : pickupLocation,
-      exactDropoffAddress: isCustomMode ? exactDropoffAddress : dropoffDestination,
+      exactPickupAddress: exactPickupAddress.trim() || finalPickupCity,
+      exactDropoffAddress: exactDropoffAddress.trim() || finalDropoffCity,
       vehicle: currentVehicle.name,
       fare: parseFloat(calculatedFare),
       tripType: isCustomMode ? `Round Trip (${noOfDays} Day${noOfDays > 1 ? 's' : ''})` : 'One Way Trip',
@@ -662,42 +662,71 @@ export default function BookRide() {
                     </div>
                   ) : (
                     /* ONE-WAY TRIP DROPDOWNS STRICTLY FILTERED TO CONFIGURED ACTIVE ROUTES */
-                    <div className="route-picker-row mt-2">
-                      <div className="field-group">
-                        <span className="field-label">From (Pick-up)</span>
-                        <select 
-                          className="light-select"
-                          value={pickupLocation}
-                          onChange={e => setPickupLocation(e.target.value)}
-                          required
+                    <div>
+                      <div className="route-picker-row mt-2">
+                        <div className="field-group">
+                          <span className="field-label">From (Pick-up City/Area)</span>
+                          <select 
+                            className="light-select"
+                            value={pickupLocation}
+                            onChange={e => setPickupLocation(e.target.value)}
+                            required
+                          >
+                            {availableFromCities.map((p, idx) => (
+                              <option key={idx} value={p}>{p}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <button 
+                          type="button" 
+                          className="light-btn-swap"
+                          title="Swap Pickup & Dropoff"
+                          onClick={handleSwapPlaces}
                         >
-                          {availableFromCities.map((p, idx) => (
-                            <option key={idx} value={p}>{p}</option>
-                          ))}
-                        </select>
+                          <ArrowRightLeft size={16} />
+                        </button>
+
+                        <div className="field-group">
+                          <span className="field-label">To (Drop-off Destination)</span>
+                          <select 
+                            className="light-select"
+                            value={dropoffDestination}
+                            onChange={e => setDropoffDestination(e.target.value)}
+                            required
+                          >
+                            {availableToCities.map((p, idx) => (
+                              <option key={idx} value={p}>{p}</option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
 
-                      <button 
-                        type="button" 
-                        className="light-btn-swap"
-                        title="Swap Pickup & Dropoff"
-                        onClick={handleSwapPlaces}
-                      >
-                        <ArrowRightLeft size={16} />
-                      </button>
+                      {/* EXACT PICKUP AND DROPOFF LOCATION INPUTS */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px', marginTop: '12px' }}>
+                        <div className="field-group">
+                          <span className="field-label" style={{ fontWeight: '700', color: '#334155' }}>EXACT PICKUP LOCATION / ADDRESS</span>
+                          <input 
+                            type="text"
+                            className="light-input"
+                            placeholder={`e.g. Airport Terminal, Railway Station, Hotel, or Home in ${pickupLocation || 'pickup location'}...`}
+                            value={exactPickupAddress}
+                            onChange={e => setExactPickupAddress(e.target.value)}
+                            required
+                          />
+                        </div>
 
-                      <div className="field-group">
-                        <span className="field-label">To (Drop-off)</span>
-                        <select 
-                          className="light-select"
-                          value={dropoffDestination}
-                          onChange={e => setDropoffDestination(e.target.value)}
-                          required
-                        >
-                          {availableToCities.map((p, idx) => (
-                            <option key={idx} value={p}>{p}</option>
-                          ))}
-                        </select>
+                        <div className="field-group">
+                          <span className="field-label" style={{ fontWeight: '700', color: '#334155' }}>EXACT DROPOFF LOCATION / ADDRESS</span>
+                          <input 
+                            type="text"
+                            className="light-input"
+                            placeholder={`e.g. Hotel, Office, Area, or Destination Address in ${dropoffDestination || 'destination'}...`}
+                            value={exactDropoffAddress}
+                            onChange={e => setExactDropoffAddress(e.target.value)}
+                            required
+                          />
+                        </div>
                       </div>
                     </div>
                   )}
@@ -874,9 +903,9 @@ export default function BookRide() {
                       <div>
                         <small>PICK-UP LOCATION</small>
                         <strong>
-                          {tripType === 'custom-trip' 
-                            ? (exactPickupAddress.trim() ? `${exactPickupAddress.trim()}, ${pickupCity || 'Bhavnagar'}` : `${pickupCity || 'Bhavnagar'}, Gujarat`)
-                            : pickupLocation
+                          {exactPickupAddress.trim() 
+                            ? `${exactPickupAddress.trim()} (${tripType === 'custom-trip' ? (pickupCity || 'Bhavnagar') : pickupLocation})`
+                            : (tripType === 'custom-trip' ? `${pickupCity || 'Bhavnagar'}, Gujarat` : pickupLocation)
                           }
                         </strong>
                       </div>
@@ -889,9 +918,9 @@ export default function BookRide() {
                       <div>
                         <small>DROP-OFF DESTINATION</small>
                         <strong>
-                          {tripType === 'custom-trip'
-                            ? (exactDropoffAddress.trim() ? `${exactDropoffAddress.trim()}, ${dropoffCity || 'Ahmedabad'}` : `${dropoffCity || 'Ahmedabad'}, Main Spot`)
-                            : dropoffDestination
+                          {exactDropoffAddress.trim()
+                            ? `${exactDropoffAddress.trim()} (${tripType === 'custom-trip' ? (dropoffCity || 'Ahmedabad') : dropoffDestination})`
+                            : (tripType === 'custom-trip' ? `${dropoffCity || 'Ahmedabad'}, Main Spot` : dropoffDestination)
                           }
                         </strong>
                       </div>

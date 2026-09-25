@@ -7,8 +7,9 @@
 }
 
 .directory-hero {
-  background: linear-gradient(135deg, #0B132B 0%, #1C2541 100%);
-  color: #FFFFFF;
+  background: linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 100%);
+  border-bottom: 1px solid #E2E8F0;
+  color: #0F172A;
   padding: 3.5rem 0 4.5rem;
 }
 
@@ -17,12 +18,12 @@
   align-items: center;
   gap: 0.5rem;
   font-size: 0.85rem;
-  color: #94A3B8;
+  color: #64748B;
   margin-bottom: 2rem;
 }
 
 .directory-breadcrumb a {
-  color: #94A3B8;
+  color: #64748B;
   text-decoration: none;
 }
 
@@ -31,22 +32,23 @@
 }
 
 .directory-breadcrumb span {
-  color: #F8FAFC;
-  font-weight: 600;
+  color: #0F172A;
+  font-weight: 700;
 }
 
 .directory-badge {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  background: rgba(16, 185, 129, 0.15);
-  border: 1px solid rgba(16, 185, 129, 0.35);
-  color: #34D399;
+  background: #ECFDF5;
+  border: 1px solid #A7F3D0;
+  color: #059669;
   font-size: 0.85rem;
-  font-weight: 700;
+  font-weight: 800;
   padding: 0.4rem 1rem;
   border-radius: 9999px;
   margin-bottom: 1.25rem;
+  box-shadow: 0 1px 3px rgba(16, 185, 129, 0.1);
 }
 
 .directory-title {
@@ -54,13 +56,13 @@
   font-weight: 800;
   letter-spacing: -0.025em;
   margin-bottom: 1.25rem;
-  color: #FFFFFF;
+  color: #0F172A;
 }
 
 .directory-subtitle {
   font-size: 1.05rem;
   line-height: 1.6;
-  color: #CBD5E1;
+  color: #475569;
   max-width: 680px;
   margin: 0 auto 2.5rem;
 }
@@ -77,29 +79,31 @@
   width: 100%;
   padding: 1.1rem 3.25rem 1.1rem 3.25rem;
   border-radius: 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(12px);
-  color: #FFFFFF;
+  border: 1.5px solid #CBD5E1;
+  background: #FFFFFF;
+  color: #0F172A;
   font-size: 1.05rem;
+  font-weight: 600;
   outline: none;
   transition: all 0.2s ease;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
 }
 
 .directory-search-bar input::placeholder {
   color: #94A3B8;
+  font-weight: 500;
 }
 
 .directory-search-bar input:focus {
-  background: rgba(255, 255, 255, 0.18);
+  background: #FFFFFF;
   border-color: #10B981;
-  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2);
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.15), 0 8px 24px rgba(0, 0, 0, 0.06);
 }
 
 .directory-search-bar .search-icon {
   position: absolute;
   left: 1.2rem;
-  color: #94A3B8;
+  color: #64748B;
   pointer-events: none;
 }
 
@@ -109,8 +113,13 @@
   background: none;
   border: none;
   color: #94A3B8;
-  font-size: 1rem;
+  font-size: 1.25rem;
   cursor: pointer;
+  padding: 4px;
+}
+
+.btn-clear-search:hover {
+  color: #0F172A;
 }
 
 /* ROUTES GRID SECTION */
