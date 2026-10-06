@@ -31,7 +31,7 @@ export default function PrivacyPolicy() {
             </p>
             <ul style={{ color: '#475569', lineHeight: '1.8', fontSize: '15px', paddingLeft: '24px' }}>
               <li><strong>Personal Details:</strong> Your name, mobile phone number, and email address for booking confirmations and OTP authentication.</li>
-              <li><strong>Location Data:</strong> Device location coordinates (precise or approximate) to determine pickup points, calculate optimal routes, and show real-time driver tracking on the map.</li>
+              <li><strong>Location Data:</strong> Device location coordinates (precise GPS and approximate network) accessed exclusively while the app is open and in use (foreground) to automatically detect pickup spots, display nearby available cabs on the map, calculate transparent route fares, and show live trip navigation. We do NOT collect or track your location in the background when the app is closed, and location data is never sold or shared with third-party advertisers.</li>
               <li><strong>Ride Details:</strong> Pickup address, destination, ride duration, fare, and payment confirmation status.</li>
             </ul>
           </section>

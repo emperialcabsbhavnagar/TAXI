@@ -199,7 +199,12 @@ export default function MobileAppView() {
         if (inProgressRide) {
           setAppStage('TRACKING');
         } else {
-          setAppStage('APP_HOME');
+          const locConfigured = localStorage.getItem('EMPERIAL CABS_location_configured') === 'true';
+          if (!locConfigured) {
+            setAppStage('LOCATION_PERM');
+          } else {
+            setAppStage('APP_HOME');
+          }
         }
       } else if (isOnboarded) {
         // Returning Logged-Out User -> Navigate to Login Screen
@@ -245,6 +250,7 @@ export default function MobileAppView() {
                 return currentStage;
               }
               if (currentStage === 'OTP_VERIFY') return 'LETS_YOU_IN';
+              if (currentStage === 'LOCATION_PERM') return 'APP_HOME';
               if (currentStage === 'SELECT_LOCATION_LIST' || currentStage === 'ACCOUNT_DETAILS') return 'APP_HOME';
               if (currentStage === 'GOING_SEAT_SCHEDULE') return 'SELECT_LOCATION_LIST';
               if (currentStage === 'SELECT_CAR') return 'GOING_SEAT_SCHEDULE';
@@ -633,8 +639,13 @@ export default function MobileAppView() {
         restoreTrips(finalProfile);
         window.dispatchEvent(new Event('storage'));
 
-        // Direct inside to Home (no profile creation needed)
-        setAppStage('APP_HOME');
+        // Check if location permission has been prompted yet
+        const locConfigured = localStorage.getItem('EMPERIAL CABS_location_configured') === 'true';
+        if (!locConfigured) {
+          setAppStage('LOCATION_PERM');
+        } else {
+          setAppStage('APP_HOME');
+        }
         return;
       }
     } catch (e) {
@@ -671,6 +682,8 @@ export default function MobileAppView() {
       localStorage.removeItem('EMPERIAL CABS_profile_completed');
       localStorage.removeItem('cabsy_user_phone');
       localStorage.removeItem('cabsy_user_email_otp_target');
+      localStorage.removeItem('EMPERIAL CABS_location_configured');
+      localStorage.removeItem('EMPERIAL CABS_gps_enabled');
     } catch (e) { }
     setSelectedGoogleAccount(null);
     setPhoneNumber('');
@@ -945,12 +958,41 @@ export default function MobileAppView() {
     case 'LOCATION_PERM':
       return (
         <LocationPermScreen
+          onAllow={(coords, address) => {
+            if (coords && typeof coords.lat === 'number' && typeof coords.lng === 'number') {
+              setUserCoords(coords);
+              if (address) setPickupLoc(address);
+              try {
+                localStorage.setItem('EMPERIAL CABS_user_location', JSON.stringify({
+                  lat: coords.lat,
+                  lng: coords.lng,
+                  address: address || 'Current Location'
+                }));
+                localStorage.setItem('EMPERIAL CABS_gps_enabled', 'true');
+              } catch (e) {}
+            }
+            try {
+              localStorage.setItem('EMPERIAL CABS_location_configured', 'true');
+            } catch (e) {}
+            setAppStage('APP_HOME');
+          }}
+          onSkip={() => {
+            try {
+              localStorage.setItem('EMPERIAL CABS_location_configured', 'true');
+              localStorage.setItem('EMPERIAL CABS_gps_enabled', 'false');
+            } catch (e) {}
+            setAppStage('APP_HOME');
+          }}
           onNext={() => {
-            localStorage.setItem('EMPERIAL CABS_permissions_asked', 'true');
+            try {
+              localStorage.setItem('EMPERIAL CABS_location_configured', 'true');
+            } catch (e) {}
             setAppStage('APP_HOME');
           }}
           onBack={() => {
-            localStorage.setItem('EMPERIAL CABS_permissions_asked', 'true');
+            try {
+              localStorage.setItem('EMPERIAL CABS_location_configured', 'true');
+            } catch (e) {}
             setAppStage('APP_HOME');
           }}
         />
@@ -969,7 +1011,12 @@ export default function MobileAppView() {
               window.dispatchEvent(new Event('storage'));
               window.dispatchEvent(new CustomEvent('EMPERIAL CABS_db_sync', { detail: { type: 'CUSTOMER_UPDATED', data: updatedProfile } }));
             }
-            setAppStage('APP_HOME');
+            const locConfigured = localStorage.getItem('EMPERIAL CABS_location_configured') === 'true';
+            if (!locConfigured) {
+              setAppStage('LOCATION_PERM');
+            } else {
+              setAppStage('APP_HOME');
+            }
           }}
         />
       );

@@ -28,7 +28,26 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
     return 'Good Evening';
   }, []);
 
-  const [customerAddress, setCustomerAddress] = useState('Locating address...');
+  const [isGpsActive, setIsGpsActive] = useState(() => {
+    try {
+      return localStorage.getItem('EMPERIAL CABS_gps_enabled') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const [customerAddress, setCustomerAddress] = useState(() => {
+    try {
+      const saved = localStorage.getItem('EMPERIAL CABS_user_location');
+      if (saved) {
+        const p = JSON.parse(saved);
+        if (p?.address) return p.address;
+      }
+      const gpsEnabled = localStorage.getItem('EMPERIAL CABS_gps_enabled');
+      if (gpsEnabled === 'false') return 'Location Off • Tap to select pickup';
+    } catch (e) {}
+    return 'Locating address...';
+  });
   const [userCoords, setUserCoords] = useState({ lat: 21.7645, lng: 72.1519 });
   const [isLocating, setIsLocating] = useState(true);
 
@@ -306,13 +325,46 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
     } catch (e) {}
   };
 
+  const handleRequestGps = async () => {
+    setIsLocating(true);
+    try {
+      const res = await getBestLiveLocation();
+      if (res && res.source !== 'Base Region') {
+        updateLocation({ lat: res.lat, lng: res.lng }, res.address);
+        setIsGpsActive(true);
+        try {
+          localStorage.setItem('EMPERIAL CABS_gps_enabled', 'true');
+        } catch (e) {}
+      } else {
+        alert('Could not acquire GPS location. Please ensure location services are enabled on your device.');
+      }
+    } catch (e) {
+      console.warn('GPS request failed:', e);
+    } finally {
+      setIsLocating(false);
+    }
+  };
+
   useEffect(() => {
     let watchId = null;
+    const gpsEnabled = localStorage.getItem('EMPERIAL CABS_gps_enabled');
+
+    if (gpsEnabled === 'false') {
+      setIsLocating(false);
+      setIsGpsActive(false);
+      return;
+    }
 
     // Fetch initial high-accuracy location via 3-Method 3-Check engine
     getBestLiveLocation().then(res => {
       if (res) {
         updateLocation({ lat: res.lat, lng: res.lng }, res.address);
+        if (res.source !== 'Base Region') {
+          setIsGpsActive(true);
+          try {
+            localStorage.setItem('EMPERIAL CABS_gps_enabled', 'true');
+          } catch (e) {}
+        }
         setIsLocating(false);
       }
     });
@@ -321,6 +373,7 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
     watchId = watchLiveLocation((updateRes) => {
       if (updateRes) {
         updateLocation({ lat: updateRes.lat, lng: updateRes.lng }, updateRes.address);
+        setIsGpsActive(true);
         setIsLocating(false);
       }
     });
@@ -378,7 +431,7 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
           <InteractiveMap
             center={activePickupPos || userCoords}
             zoom={activeRide ? 11 : 15}
-            userLabel={activeRide ? (activeRide.pickup || "Pickup Point") : "Your Live Spot"}
+            userLabel={activeRide ? (activeRide.pickup || "Pickup Point") : (isGpsActive ? "Your Live Spot" : "Pickup Spot (GPS Off)")}
             destination={activeDestPos}
             activeDriverPos={activePickupPos}
             routePolyline={activePolyline}
@@ -425,9 +478,21 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
             </div>
 
             {/* Center Control: Live GPS Indicator */}
-            <div style={{ background: '#FFFFFF', padding: '6px 14px', borderRadius: '20px', boxShadow: '0 4px 14px rgba(0,0,0,0.06)', border: '1.5px solid #E2E8F0', fontFamily: 'Space Grotesk', fontSize: '13px', fontWeight: '700', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ color: '#22C55E' }}>●</span> GPS Live
-            </div>
+            {isGpsActive ? (
+              <div style={{ background: '#FFFFFF', padding: '6px 14px', borderRadius: '20px', boxShadow: '0 4px 14px rgba(0,0,0,0.06)', border: '1.5px solid #E2E8F0', fontFamily: 'Space Grotesk', fontSize: '13px', fontWeight: '700', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ color: '#22C55E' }}>●</span> GPS Live
+              </div>
+            ) : (
+              <div 
+                onClick={handleRequestGps}
+                role="button"
+                tabIndex={0}
+                title="Location is off. Tap to enable GPS."
+                style={{ background: '#FFFBEB', padding: '6px 14px', borderRadius: '20px', boxShadow: '0 4px 14px rgba(0,0,0,0.06)', border: '1.5px solid #FDE68A', fontFamily: 'Space Grotesk', fontSize: '13px', fontWeight: '700', color: '#92400E', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+              >
+                <span style={{ color: '#D97706' }}>○</span> GPS Off (Tap to Enable)
+              </div>
+            )}
 
             {/* Right Control: Notification Bell Button */}
             <div 
@@ -537,17 +602,47 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
               }}
               onClick={() => setIsSearchOpen(true)}
             >
-              <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: '#F0FDF4', border: '1px solid #BBF7D0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
+              <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: isGpsActive ? '#F0FDF4' : '#FEF3C7', border: `1px solid ${isGpsActive ? '#BBF7D0' : '#FDE68A'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', color: isGpsActive ? '#16A34A' : '#D97706' }}>
                 ●
               </div>
               <div style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                <div style={{ fontSize: '11px', color: '#22C55E', fontWeight: '800', letterSpacing: '0.5px' }}>CURRENT PICKUP LOCATION</div>
+                <div style={{ fontSize: '11px', color: isGpsActive ? '#22C55E' : '#D97706', fontWeight: '800', letterSpacing: '0.5px' }}>
+                  {isGpsActive ? 'CURRENT PICKUP LOCATION' : 'PICKUP LOCATION (GPS OFF)'}
+                </div>
                 <div style={{ fontFamily: 'Space Grotesk', color: '#0F172A', fontSize: '15px', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {customerAddress}
                 </div>
               </div>
               <span style={{ fontSize: '16px', color: '#64748B', fontWeight: 'bold' }}>→</span>
             </div>
+
+            {/* GPS Off Inline Notification & Quick-Enable Banner */}
+            {!isGpsActive && (
+              <div 
+                onClick={handleRequestGps}
+                style={{
+                  background: '#FFFBEB',
+                  border: '1px solid #FDE68A',
+                  borderRadius: '12px',
+                  padding: '9px 14px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  cursor: 'pointer'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <MapPin size={15} color="#D97706" />
+                  <span style={{ fontSize: '12px', color: '#92400E', fontWeight: '700' }}>
+                    Location is off. Tap to enable GPS or select manually.
+                  </span>
+                </div>
+                <span style={{ fontSize: '11.5px', color: '#B45309', fontWeight: '800', textDecoration: 'underline' }}>
+                  Enable
+                </span>
+              </div>
+            )}
 
             {/* Primary Action Button */}
             <button 
