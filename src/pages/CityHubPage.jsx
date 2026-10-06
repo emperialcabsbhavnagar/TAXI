@@ -72,7 +72,7 @@ export default function CityHubPage({ onOpenBooking }) {
           "@type": "TaxiService",
           "name": `EMPERIAL CABS - Taxi Service in ${cityName}`,
           "url": `https://emperialcabs.com/taxi-service-in-${citySlug}`,
-          "telephone": "+91-9876543210",
+          "telephone": "+91-7226844108",
           "areaServed": {
             "@type": "City",
             "name": cityName
@@ -96,7 +96,7 @@ export default function CityHubPage({ onOpenBooking }) {
               "name": `How can I book a cab in ${cityName}?`,
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": `You can book instantly through our website at emperialcabs.com, download our mobile app, or call our 24/7 hotline at +91 98765 43210.`
+                "text": `You can book instantly through our website at emperialcabs.com, download our mobile app, or call our 24/7 hotline at +91 72268 44108.`
               }
             },
             {
@@ -215,9 +215,9 @@ export default function CityHubPage({ onOpenBooking }) {
                 <span>Book a Cab in {cityName}</span>
                 <ArrowRight size={18} />
               </button>
-              <a href="tel:+919876543210" className="btn-city-secondary">
+              <a href="tel:+917226844108" className="btn-city-secondary">
                 <Phone size={18} />
-                <span>Call Helpline (+91 98765 43210)</span>
+                <span>Call Helpline (+91 72268 44108)</span>
               </a>
             </div>
           </div>

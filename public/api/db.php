@@ -948,7 +948,8 @@ switch ($action) {
         $cleanPhone10 = strlen($cleanPhone) >= 10 ? substr($cleanPhone, -10) : $cleanPhone;
 
         $stmt = $pdo->prepare("SELECT * FROM customer_notifications 
-                               WHERE created_at >= NOW() - INTERVAL 48 HOUR
+                               WHERE (delivered = 0 OR delivered IS NULL)
+                                 AND created_at >= NOW() - INTERVAL 48 HOUR
                                ORDER BY created_at DESC LIMIT 50");
         $stmt->execute();
         $all = $stmt->fetchAll(PDO::FETCH_ASSOC);

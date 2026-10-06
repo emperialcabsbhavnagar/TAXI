@@ -3,6 +3,10 @@
   "appName": "EMPERIAL CABS",
   "webDir": "dist",
   "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_notification",
+      "iconColor": "#FFAE00"
+    },
     "SplashScreen": {
       "launchShowDuration": 500,
       "launchAutoHide": true,

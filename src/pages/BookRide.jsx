@@ -831,7 +831,7 @@ export default function BookRide() {
                       <input 
                         type="tel" 
                         className="light-input"
-                        placeholder="+91 98765 43210"
+                        placeholder="+91 72268 44108"
                         value={customerPhone}
                         onChange={e => setCustomerPhone(e.target.value)}
                         required

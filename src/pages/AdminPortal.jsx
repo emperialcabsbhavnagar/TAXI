@@ -176,7 +176,7 @@ const INITIAL_INQUIRIES = [
   {
     id: 'INQ-9803',
     customerName: 'Vikram Mehta',
-    customerPhone: '+91 98765 43210',
+    customerPhone: '+91 72268 44108',
     customerEmail: 'vikram.mehta@yahoo.com',
     pickup: 'Bhavnagar, Gujarat',
     dropoff: 'SG Highway IT Park',
@@ -208,7 +208,7 @@ const INITIAL_INQUIRIES = [
 const INITIAL_CUSTOMERS = [
   { id: 'CUST-301', name: 'Rajesh Kumar', phone: '+91 98250 12345', email: 'rajesh.kumar@gmail.com', totalRides: 4, totalSpent: 7850, joined: '2026-01-15' },
   { id: 'CUST-302', name: 'Ananya Sharma', phone: '+91 99099 87654', email: 'ananya.s@techcorp.in', totalRides: 2, totalSpent: 3300, joined: '2026-02-10' },
-  { id: 'CUST-303', name: 'Vikram Mehta', phone: '+91 98765 43210', email: 'vikram.mehta@yahoo.com', totalRides: 3, totalSpent: 5400, joined: '2026-03-01' },
+  { id: 'CUST-303', name: 'Vikram Mehta', phone: '+91 72268 44108', email: 'vikram.mehta@yahoo.com', totalRides: 3, totalSpent: 5400, joined: '2026-03-01' },
   { id: 'CUST-304', name: 'Priya Desai', phone: '+91 97234 56789', email: 'priya.desai@gmail.com', totalRides: 1, totalSpent: 1450, joined: '2026-04-20' },
   { id: 'CUST-305', name: 'empire rider', phone: '+91 98765 06393', email: 'batman063939@gmail.com', totalRides: 5, totalSpent: 9200, joined: '2026-05-01' }
 ];
@@ -1970,7 +1970,7 @@ export default function AdminPortal() {
     const createdInquiry = {
       id: db.getNextInquiryId(),
       customerName: newInquiryForm.customerName,
-      customerPhone: newInquiryForm.customerPhone || '+91 9876543210',
+      customerPhone: newInquiryForm.customerPhone || '+91 7226844108',
       pickup: newInquiryForm.pickup,
       dropoff: newInquiryForm.dropoff,
       vehicle: newInquiryForm.vehicle || 'EMPERIAL Regular',

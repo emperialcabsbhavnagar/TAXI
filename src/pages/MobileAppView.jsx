@@ -323,6 +323,19 @@ export default function MobileAppView() {
         // 2. Poll MySQL inquiries for driver assignment
         const remoteInqs = await loadAllInquiriesFromMySQL().catch(() => []);
         if (!isCancelled && Array.isArray(remoteInqs) && remoteInqs.length > 0) {
+          // If this is the initial sync after app launch or login, mark all existing inquiries as already notified
+          const syncKey = 'cabsy_inquiry_sync_initialized';
+          const isInitialRun = !sessionStorage.getItem(syncKey);
+          if (isInitialRun) {
+            sessionStorage.setItem(syncKey, 'true');
+            for (const inq of remoteInqs) {
+              if (inq?.id && inq.driver) {
+                const notifKey = `cabsy_driver_assigned_notified_${inq.id}_${inq.driver}_${inq.plate || ''}`;
+                localStorage.setItem(notifKey, 'true');
+              }
+            }
+          }
+
           for (const inq of remoteInqs) {
             if (!inq) continue;
             const iPhone = (inq.customerPhone || '').replace(/\D/g, '');
@@ -334,9 +347,13 @@ export default function MobileAppView() {
 
             if (!isUserMatch) continue;
 
-            // If driver is assigned and status is Confirmed, Assigned, or In Progress
+            // Only notify if trip is active (NOT Completed or Cancelled) and driver is assigned
+            const activeStatuses = ['Confirmed', 'Assigned', 'In Progress', 'On Ride'];
+            const inqStatus = String(inq.status || '');
+            const isActiveTrip = activeStatuses.some(s => s.toLowerCase() === inqStatus.toLowerCase());
             const hasDriver = inq.driver && inq.driver !== 'Unassigned' && inq.driver !== '-';
-            if (hasDriver) {
+
+            if (isActiveTrip && hasDriver && !isInitialRun) {
               const notifKey = `cabsy_driver_assigned_notified_${inq.id}_${inq.driver}_${inq.plate || ''}`;
               if (!localStorage.getItem(notifKey)) {
                 localStorage.setItem(notifKey, 'true');
@@ -369,17 +386,67 @@ export default function MobileAppView() {
         const searchPhone = checkPhones[0] || uPhone || '';
         const cloudNotifs = await fetchNotificationsFromMySQL(searchPhone, uEmail).catch(() => []);
         if (!isCancelled && Array.isArray(cloudNotifs) && cloudNotifs.length > 0) {
+          // Track already known local notifications and signatures so this device never echoes alerts
+          let knownNotifIds = new Set();
+          let knownSignatures = new Set();
+          try {
+            const raw = localStorage.getItem('cabsy_customer_notifications');
+            if (raw) {
+              const list = JSON.parse(raw);
+              list.forEach(n => {
+                if (n?.id) knownNotifIds.add(n.id);
+                if (n?.title && n?.body) {
+                  knownSignatures.add((n.title || '').trim().toLowerCase() + '|' + (n.body || '').trim().toLowerCase());
+                }
+              });
+            }
+            const savedSigs = JSON.parse(localStorage.getItem('cabsy_delivered_signatures') || '[]');
+            savedSigs.forEach(s => knownSignatures.add(String(s).trim().toLowerCase()));
+          } catch (e) {}
+
           for (const cn of cloudNotifs) {
+            // A) If already marked delivered on MySQL, skip immediately
+            if (cn.delivered == 1 || cn.delivered === '1' || cn.delivered === true) {
+              continue;
+            }
+
+            // B) Location ping ACK
             if (cn.type === 'LOCATION_PING') {
               markNotificationDeliveredInMySQL(cn.id).catch(() => {});
               continue;
             }
-            const cnKey = `cabsy_cloud_notif_delivered_${cn.id}`;
-            if (!localStorage.getItem(cnKey)) {
-              localStorage.setItem(cnKey, 'true');
-              sendSystemPushNotification(cn.title, cn.body, 'cloud-' + cn.id);
+
+            // C) Never echo booking inquiries back to the customer phone on app startup
+            const isBookingInquiry = cn.type === 'inquiry' || 
+              (cn.title && cn.title.toLowerCase().includes('booking request')) ||
+              (cn.title && cn.title.toLowerCase().includes('inquiry'));
+            if (isBookingInquiry) {
               markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+              continue;
             }
+
+            const cnSig = (cn.title || '').trim().toLowerCase() + '|' + (cn.body || '').trim().toLowerCase();
+            const cnKey = `cabsy_cloud_notif_delivered_${cn.id}`;
+
+            // D) Deduplication against local storage and signatures
+            if (localStorage.getItem(cnKey) === 'true' || knownNotifIds.has(cn.id) || knownSignatures.has(cnSig)) {
+              localStorage.setItem(cnKey, 'true');
+              markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+              continue;
+            }
+
+            localStorage.setItem(cnKey, 'true');
+            knownSignatures.add(cnSig);
+            try {
+              const sigs = JSON.parse(localStorage.getItem('cabsy_delivered_signatures') || '[]');
+              if (!sigs.includes(cnSig)) {
+                sigs.push(cnSig);
+                localStorage.setItem('cabsy_delivered_signatures', JSON.stringify(sigs.slice(-100)));
+              }
+            } catch (e) {}
+
+            markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+            sendSystemPushNotification(cn.title, cn.body, 'cloud-' + cn.id);
           }
         }
 
@@ -439,7 +506,7 @@ export default function MobileAppView() {
                     localStorage.setItem('EMPERIAL CABS_last_completed_trip', JSON.stringify(completed));
                     localStorage.removeItem('EMPERIAL CABS_active_trip');
                     updateInquiryStatusInMySQL(matchingInq.id, 'Completed', matchingInq.driver || 'Assigned Driver', finalFare).catch(() => {});
-                    sendSystemPushNotification('🏁 Destination Reached - Trip Completed!', `You have safely arrived at ${matchingInq.dropoff}. Total Fare: ₹${finalFare}.`);
+                    sendSystemPushNotification('Trip Completed', `You have safely arrived at ${matchingInq.dropoff}. Total Fare: ₹${finalFare}.`);
                     window.dispatchEvent(new Event('storage'));
                     window.dispatchEvent(new CustomEvent('EMPERIAL CABS_trip_completed', { detail: completed }));
                     setAppStage('RECEIPT');
@@ -466,7 +533,7 @@ export default function MobileAppView() {
     try {
       localStorage.setItem('EMPERIAL CABS_onboarded', 'true');
       localStorage.setItem('EMPERIAL CABS_profile_completed', 'true');
-      const activePhone = phoneNumber || localStorage.getItem('cabsy_user_phone') || '+91 98765 43210';
+      const activePhone = phoneNumber || localStorage.getItem('cabsy_user_phone') || '+91 72268 44108';
       const cleanPhone = activePhone.replace(/\D/g, '');
       localStorage.setItem('cabsy_user_phone', activePhone);
 
@@ -488,7 +555,12 @@ export default function MobileAppView() {
       saveCustomerToMySQL(finalProfile).catch(() => {});
     } catch (e) { }
 
-    setAppStage('APP_HOME');
+    const locConfigured = localStorage.getItem('EMPERIAL CABS_location_configured') === 'true';
+    if (!locConfigured) {
+      setAppStage('LOCATION_PERM');
+    } else {
+      setAppStage('APP_HOME');
+    }
   };
 
   // Dynamic Authentication Resolution: Check if user exists in Database or local storage
@@ -718,7 +790,7 @@ export default function MobileAppView() {
       }
     } catch (e) {}
 
-    let userProf = { name: 'Rider', phone: '+91 98765 43210', email: 'spiderman757506@gmail.com' };
+    let userProf = { name: 'Rider', phone: '+91 72268 44108', email: 'spiderman757506@gmail.com' };
     try {
       const savedProf = localStorage.getItem('cabsy_user_profile');
       if (savedProf) {
@@ -770,18 +842,18 @@ export default function MobileAppView() {
     // 1. Save into dbService (single source of truth for localStorage inquiries)
     db.saveInquiry(newInquiry);
 
-    // 2. Trigger System Push & Notifications
+    // 2. Trigger System Push & Notifications (Clean corporate copywriting without emojis)
     notifyAdmin({
       type: 'inquiry',
-      title: `🚖 New Ride Inquiry ${newInquiryId}`,
-      body: `Customer ${userProf.name} requested ${newInquiry.pickup} → ${newInquiry.dropoff} (₹${totalFareNum})`,
+      title: `New Ride Inquiry ${newInquiryId}`,
+      body: `Customer ${userProf.name} requested ${newInquiry.pickup} to ${newInquiry.dropoff} (₹${totalFareNum})`,
       extraData: { inquiryId: newInquiryId }
     });
 
     notifyCustomer({
       type: 'inquiry',
-      title: '🚖 Booking Request Received!',
-      body: `Your booking for ${newInquiry.pickup} → ${newInquiry.dropoff} is submitted. Driver assignment in progress!`,
+      title: 'Booking Request Received',
+      body: `Your booking for ${newInquiry.pickup} to ${newInquiry.dropoff} is submitted. Driver assignment in progress.`,
       customerPhone: userProf.phone,
       customerEmail: userProf.email
     });
@@ -817,6 +889,8 @@ export default function MobileAppView() {
           <HomeScreen
             activeTab={activeTab}
             setActiveTab={setActiveTab}
+            userCoords={userCoords}
+            setUserCoords={setUserCoords}
             onStartBooking={() => setAppStage('SELECT_LOCATION_LIST')}
             onOpenTracking={() => setAppStage('TRACKING')}
           />
@@ -951,7 +1025,7 @@ export default function MobileAppView() {
           selectedLang={selectedLang}
           setSelectedLang={setSelectedLang}
           onNext={() => setAppStage('LOCATION_PERM')}
-          onBack={() => setAppStage('NOTIFICATION_OPT')}
+          onBack={() => setAppStage('APP_HOME')}
         />
       );
 

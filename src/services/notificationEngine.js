@@ -6,7 +6,7 @@
 
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { saveNotificationToMySQL } from './mysqlService';
+import { saveNotificationToMySQL, markNotificationDeliveredInMySQL } from './mysqlService';
 
 // Request system tray push notification permission
 export const requestNotificationPermission = async () => {
@@ -82,7 +82,13 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
         });
       } catch (ce) {}
 
-      const notifId = Math.floor(Math.random() * 1000000) + 1;
+      // Clear old delivered notifications so the new one replaces it instead of lingering
+      try {
+        await LocalNotifications.removeAllDeliveredNotifications();
+      } catch (ce) {}
+
+      // Consistent ID replaces any existing notification in the phone status bar
+      const notifId = 1001;
       await LocalNotifications.schedule({
         notifications: [
           {
@@ -90,7 +96,8 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
             body: body,
             id: notifId,
             channelId: 'emperial_cabs_channel',
-            smallIcon: 'ic_launcher',
+            smallIcon: 'ic_notification',
+            iconColor: '#FFAE00',
             sound: undefined,
             attachments: undefined,
             actionTypeId: '',
@@ -110,7 +117,7 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
     body: body,
     icon: '/EMPERAL_CABS_Website_Logo_Sharp.svg',
     badge: '/EMPERAL_CABS_Website_Logo_Sharp.svg',
-    tag: tag,
+    tag: 'emperial_cabs_active_alert',
     renotify: true,
     vibrate: [200, 100, 200]
   };
@@ -164,7 +171,12 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
     localStorage.setItem('cabsy_admin_notifications', JSON.stringify(updated));
   } catch (e) {}
 
-  sendSystemPushNotification(title, body, 'admin-' + notifObj.id);
+  const isAdminContext = typeof window !== 'undefined' && 
+    (window.location?.pathname?.includes('admin') || window.location?.hash?.includes('admin'));
+
+  if (isAdminContext) {
+    sendSystemPushNotification(title, body, 'admin-' + notifObj.id);
+  }
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('EMPERIAL CABS_admin_notif', { detail: notifObj }));
@@ -194,6 +206,14 @@ export const notifyCustomer = ({ type = 'inquiry', title, body, customerPhone, c
     const existing = JSON.parse(localStorage.getItem('cabsy_customer_notifications') || '[]');
     const updated = [notifObj, ...existing].slice(0, 50);
     localStorage.setItem('cabsy_customer_notifications', JSON.stringify(updated));
+    // Mark as delivered locally so app re-open never re-fires it
+    localStorage.setItem('cabsy_cloud_notif_delivered_' + notifObj.id, 'true');
+    const sig = (title || '').trim().toLowerCase() + '|' + (body || '').trim().toLowerCase();
+    const sigs = JSON.parse(localStorage.getItem('cabsy_delivered_signatures') || '[]');
+    if (!sigs.includes(sig)) {
+      sigs.push(sig);
+      localStorage.setItem('cabsy_delivered_signatures', JSON.stringify(sigs.slice(-100)));
+    }
   } catch (e) {}
 
   sendSystemPushNotification(title, body, 'cust-' + notifObj.id);
@@ -212,18 +232,24 @@ export const notifyCustomer = ({ type = 'inquiry', title, body, customerPhone, c
     } catch (e) {}
   }
 
-  // Cross-device Cloud Sync: Persist to Hostinger MySQL so user's phone receives notification
-  try {
-    saveNotificationToMySQL({
-      id: notifObj.id,
-      target_phone: customerPhone || '',
-      target_email: customerEmail || '',
-      title: title,
-      body: body,
-      type: type,
-      extra_data: extraData
-    }).catch(() => {});
-  } catch (e) {}
+  // Cross-device Cloud Sync: Only persist remote notifications (e.g. driver assigned, promos, rewards)
+  // Never save client's own booking inquiry to customer_notifications, preventing duplicate echo on app restart
+  const isBookingInquiry = type === 'inquiry' || (title && title.toLowerCase().includes('booking request'));
+  if (!isBookingInquiry) {
+    try {
+      saveNotificationToMySQL({
+        id: notifObj.id,
+        target_phone: customerPhone || '',
+        target_email: customerEmail || '',
+        title: title,
+        body: body,
+        type: type,
+        extra_data: extraData
+      }).then(() => {
+        markNotificationDeliveredInMySQL(notifObj.id).catch(() => {});
+      }).catch(() => {});
+    } catch (e) {}
+  }
 
   return notifObj;
 };

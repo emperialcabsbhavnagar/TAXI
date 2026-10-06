@@ -252,7 +252,7 @@ export default function RouteLandingPage({ onOpenBooking }) {
           "provider": {
             "@type": "LocalBusiness",
             "name": "EMPERIAL CABS",
-            "telephone": "+91-9876543210",
+            "telephone": "+91-7226844108",
             "url": "https://emperialcabs.com"
           },
           "areaServed": [
@@ -331,7 +331,7 @@ export default function RouteLandingPage({ onOpenBooking }) {
               "name": `How do I book a taxi from ${from} to ${to}?`,
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": `You can book instantly online on our website emperialcabs.com, through our mobile app, via WhatsApp, or by calling our 24/7 dispatch helpline at +91 98765 43210.`
+                "text": `You can book instantly online on our website emperialcabs.com, through our mobile app, via WhatsApp, or by calling our 24/7 dispatch helpline at +91 72268 44108.`
               }
             }
           ]
@@ -403,7 +403,7 @@ export default function RouteLandingPage({ onOpenBooking }) {
               </div>
 
               <div style={{ marginTop: '28px', paddingTop: '18px', borderTop: '1px solid #F1F5F9', fontSize: '13px', color: '#64748B' }}>
-                Have questions or need assistance? Call 24/7 Helpline: <a href="tel:+919876543210" style={{ color: '#0F172A', fontWeight: '700' }}>+91 98765 43210</a>
+                Have questions or need assistance? Call 24/7 Helpline: <a href="tel:+917226844108" style={{ color: '#0F172A', fontWeight: '700' }}>+91 72268 44108</a>
               </div>
             </div>
           </div>
@@ -537,12 +537,12 @@ export default function RouteLandingPage({ onOpenBooking }) {
                   <span>Book {from} to {to} Cab</span>
                   <ArrowRight size={18} />
                 </button>
-                <a href="tel:+919876543210" className="btn-route-secondary">
+                <a href="tel:+917226844108" className="btn-route-secondary">
                   <Phone size={18} />
                   <span>Call 24/7 Helpline</span>
                 </a>
                 <a 
-                  href={`https://wa.me/919876543210?text=${encodeURIComponent(`Hi EMPERIAL CABS, I want to book a taxi from ${from} to ${to}. Please share available cabs and fares.`)}`}
+                  href={`https://wa.me/917226844108?text=${encodeURIComponent(`Hi EMPERIAL CABS, I want to book a taxi from ${from} to ${to}. Please share available cabs and fares.`)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn-route-whatsapp"
@@ -866,7 +866,7 @@ export default function RouteLandingPage({ onOpenBooking }) {
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <a
-            href={`https://wa.me/919876543210?text=${encodeURIComponent(`Hi EMPERIAL CABS, I want to book a cab from ${from} to ${to}.`)}`}
+            href={`https://wa.me/917226844108?text=${encodeURIComponent(`Hi EMPERIAL CABS, I want to book a cab from ${from} to ${to}.`)}`}
             target="_blank"
             rel="noopener noreferrer"
             style={{

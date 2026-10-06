@@ -135,7 +135,7 @@ export default function Footer() {
               <h4 className="footer-title contact-title">Contact</h4>
               <p className="contact-item">
                 <Phone size={16} className="contact-icon" />
-                <span>+91 98765 43210</span>
+                <a href="tel:+917226844108" style={{ color: 'inherit', textDecoration: 'none' }}>+91 72268 44108</a>
               </p>
               <p className="contact-item">
                 <Mail size={16} className="contact-icon" />

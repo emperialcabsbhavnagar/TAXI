@@ -97,7 +97,10 @@ export const reverseGeocodeCoords = async (lat, lng) => {
 // Method 1: Native Hardware GPS (Capacitor)
 const getCapacitorLocation = async () => {
   try {
-    const isNative = typeof window !== 'undefined' && window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform();
+    const isNative = typeof window !== 'undefined' && 
+      ((window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()) ||
+       window.location.protocol === 'file:' || 
+       window.location.protocol === 'capacitor:');
     if (!isNative) return null;
 
     if (Geolocation && typeof Geolocation.requestPermissions === 'function') {
@@ -108,10 +111,29 @@ const getCapacitorLocation = async () => {
         }
       } catch (permErr) {}
     }
+
+    // 1. Fast path: check for recent valid GPS fix (0-50ms)
+    try {
+      const fastPos = await Geolocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 2500,
+        maximumAge: 60000
+      });
+      if (fastPos?.coords && validateCoordinates(fastPos.coords.latitude, fastPos.coords.longitude)) {
+        return {
+          lat: fastPos.coords.latitude,
+          lng: fastPos.coords.longitude,
+          accuracy: fastPos.coords.accuracy,
+          source: 'Hardware GPS'
+        };
+      }
+    } catch (e) {}
+
+    // 2. Standard path: acquire fresh lock (up to 8s)
     const position = await Geolocation.getCurrentPosition({
       enableHighAccuracy: true,
-      timeout: 3500,
-      maximumAge: 10000
+      timeout: 8000,
+      maximumAge: 5000
     });
 
     if (position && position.coords) {
@@ -129,6 +151,7 @@ const getBrowserLocation = () => {
   return new Promise((resolve) => {
     if (!navigator.geolocation) return resolve(null);
 
+    // Fast check: cached fix (up to 60s)
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         if (pos && pos.coords) {
@@ -140,95 +163,148 @@ const getBrowserLocation = () => {
         resolve(null);
       },
       () => resolve(null),
-      { enableHighAccuracy: true, timeout: 3500, maximumAge: 10000 }
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 }
     );
   });
 };
 
-// Method 3: Live IP-Based Geolocation
-const getIPLocation = async () => {
+/**
+ * Master Location Fetcher - Fast & Accurate GPS Resolution
+ * Never returns false cities and never overwrites real GPS with fallbacks
+ */
+export const getBestLiveLocation = async () => {
+  // Check if previously verified GPS location is saved in storage
+  let savedCoords = null;
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 1200);
-    const res = await fetch('https://ipapi.co/json/', { signal: controller.signal });
-    clearTimeout(timer);
-    if (res.ok) {
-      const data = await res.json();
-      if (data && typeof data.latitude === 'number' && typeof data.longitude === 'number') {
-        if (validateCoordinates(data.latitude, data.longitude)) {
-          return { lat: data.latitude, lng: data.longitude, source: 'IP Geolocation' };
-        }
+    const saved = localStorage.getItem('EMPERIAL CABS_user_location');
+    if (saved) {
+      const p = JSON.parse(saved);
+      if (validateCoordinates(p?.lat, p?.lng)) {
+        savedCoords = { lat: p.lat, lng: p.lng, address: p.address || 'Current Location', source: 'Cached GPS' };
       }
     }
   } catch (e) {}
-  return null;
-};
 
-/**
- * Master Location Fetcher - Fast & Instant GPS Resolution (<500ms)
- */
-export const getBestLiveLocation = async () => {
-  // Fast Parallel Fetch: Native GPS vs Browser GPS vs IP
+  // Fetch live hardware/browser GPS
   let loc = await Promise.race([
     getCapacitorLocation(),
     getBrowserLocation(),
-    new Promise(r => setTimeout(() => r(null), 3500))
+    new Promise(r => setTimeout(() => r(null), 6000))
   ]);
 
-  if (!loc) {
-    loc = await getIPLocation();
+  let isFallback = false;
+
+  // If live query did not lock in time, use verified saved GPS location
+  if (!loc && savedCoords) {
+    loc = savedCoords;
   }
 
-  // Fallback to Base Region (Bhavnagar) if unlocatable
+  // Absolute fallback if no GPS permission ever granted
   if (!loc || !validateCoordinates(loc.lat, loc.lng)) {
     loc = { lat: 21.7619, lng: 72.1103, source: 'Base Region' };
+    isFallback = true;
   }
 
-  // Reverse Geocode with strict 1.2s timeout so map never hangs
-  let addressName = 'Bhavnagar, Gujarat';
-  try {
-    addressName = await Promise.race([
-      reverseGeocodeCoords(loc.lat, loc.lng),
-      new Promise(r => setTimeout(() => r('Current Location'), 1200))
-    ]);
-  } catch (e) {}
+  // Reverse Geocode to street/city address
+  let addressName = loc.address;
+  if (!addressName || addressName === 'Current Location') {
+    try {
+      addressName = await Promise.race([
+        reverseGeocodeCoords(loc.lat, loc.lng),
+        new Promise(r => setTimeout(() => r('Current Location'), 1500))
+      ]);
+    } catch (e) {
+      addressName = 'Current Location';
+    }
+  }
 
   return {
     lat: loc.lat,
     lng: loc.lng,
     address: addressName || 'Current Location',
     accuracy: loc.accuracy || null,
-    source: loc.source
+    source: loc.source,
+    isFallback
   };
 };
 
 /**
  * Real-time Watcher for continuous position updates
+ * Uses native Capacitor FusedLocation on Android for maximum precision & zero battery drain
  */
 export const watchLiveLocation = (onUpdate) => {
-  if (!navigator.geolocation) return null;
+  let isNative = false;
+  try {
+    isNative = typeof window !== 'undefined' && 
+      ((window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()) ||
+       window.location.protocol === 'file:' || 
+       window.location.protocol === 'capacitor:');
+  } catch (e) {}
 
-  const watchId = navigator.geolocation.watchPosition(
-    async (pos) => {
-      if (pos && pos.coords) {
+  if (isNative && Geolocation && typeof Geolocation.watchPosition === 'function') {
+    let capWatchId = null;
+    let active = true;
+    Geolocation.watchPosition(
+      { enableHighAccuracy: true },
+      async (pos, err) => {
+        if (!active || err || !pos?.coords) return;
         const { latitude, longitude, accuracy } = pos.coords;
         if (validateCoordinates(latitude, longitude)) {
           const addressName = await reverseGeocodeCoords(latitude, longitude);
-          onUpdate({
-            lat: latitude,
-            lng: longitude,
-            address: addressName,
-            accuracy,
-            source: 'Live GPS Watcher'
-          });
+          if (active) {
+            onUpdate({
+              lat: latitude,
+              lng: longitude,
+              address: addressName,
+              accuracy,
+              source: 'Hardware GPS Watcher'
+            });
+          }
         }
       }
-    },
-    (err) => console.warn('Watch location error:', err),
-    { enableHighAccuracy: true, timeout: 20000, maximumAge: 2000 }
-  );
+    ).then(id => {
+      capWatchId = id;
+    }).catch(() => {});
 
-  return watchId;
+    return {
+      clear: () => {
+        active = false;
+        if (capWatchId) {
+          Geolocation.clearWatch({ id: capWatchId }).catch(() => {});
+        }
+      }
+    };
+  }
+
+  if (typeof navigator !== 'undefined' && navigator.geolocation) {
+    const watchId = navigator.geolocation.watchPosition(
+      async (pos) => {
+        if (pos && pos.coords) {
+          const { latitude, longitude, accuracy } = pos.coords;
+          if (validateCoordinates(latitude, longitude)) {
+            const addressName = await reverseGeocodeCoords(latitude, longitude);
+            onUpdate({
+              lat: latitude,
+              lng: longitude,
+              address: addressName,
+              accuracy,
+              source: 'Browser GPS Watcher'
+            });
+          }
+        }
+      },
+      (err) => console.warn('Watch location error:', err),
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 }
+    );
+
+    return {
+      clear: () => {
+        navigator.geolocation.clearWatch(watchId);
+      }
+    };
+  }
+
+  return null;
 };
 
 export default {

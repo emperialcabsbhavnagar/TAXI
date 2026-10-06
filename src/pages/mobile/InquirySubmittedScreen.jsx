@@ -4,7 +4,7 @@ export default function InquirySubmittedScreen({ inquiry, onGoHome, onViewRides 
   const inqData = inquiry || {
     id: 'INQ-4821',
     customerName: 'Dhruvil Patel',
-    customerPhone: '+91 98765 43210',
+    customerPhone: '+91 72268 44108',
     pickup: 'Bhavnagar, Gujarat',
     dropoff: 'Ahmedabad Airport (AMD)',
     vehicle: 'SWIFT',

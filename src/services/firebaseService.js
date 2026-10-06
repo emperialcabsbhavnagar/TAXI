@@ -522,7 +522,7 @@ export const verifyPhoneOTP = async (otpCode, phoneNumber) => {
   } catch (err) {}
 
   if (String(otpCode).trim().length === 6) {
-    let phone = phoneNumber || localStorage.getItem('cabsy_user_phone') || '+91 98765 43210';
+    let phone = phoneNumber || localStorage.getItem('cabsy_user_phone') || '+91 72268 44108';
     if (!phone.startsWith('+')) phone = '+91 ' + phone;
     return {
       success: true,

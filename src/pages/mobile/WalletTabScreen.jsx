@@ -14,7 +14,7 @@ export default function WalletTabScreen({ activeTab, setActiveTab, onBack }) {
     } catch (e) { return null; }
   }, []);
 
-  const userPhone = userProfile?.phone || '+91 98765 43210';
+  const userPhone = userProfile?.phone || '+91 72268 44108';
 
   useEffect(() => {
     const fetchWallet = async () => {

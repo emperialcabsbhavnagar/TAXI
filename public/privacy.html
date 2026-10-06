@@ -11,41 +11,49 @@
       color: #0F172A;
       margin: 0;
       padding: 0;
+      line-height: 1.6;
     }
     .header {
       background-color: #0F172A;
       color: #FFFFFF;
-      padding: 20px 24px;
+      padding: 24px 20px;
       text-align: center;
     }
     .header h1 {
       margin: 0;
       font-size: 24px;
       font-weight: 800;
-      color: #10B981;
+      color: #FFAE00;
+      letter-spacing: 0.5px;
     }
     .container {
       max-width: 800px;
-      margin: 40px auto;
+      margin: 32px auto;
       background: #FFFFFF;
-      padding: 40px;
+      padding: 36px 32px;
       border-radius: 16px;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
       border: 1px solid #E2E8F0;
     }
     h2 {
-      font-size: 20px;
+      font-size: 18px;
       color: #1E293B;
       margin-top: 24px;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
+      border-bottom: 1px solid #F1F5F9;
+      padding-bottom: 6px;
     }
     p, li {
       color: #475569;
-      line-height: 1.7;
       font-size: 15px;
     }
     ul {
       padding-left: 20px;
+      margin-top: 6px;
+      margin-bottom: 14px;
+    }
+    li {
+      margin-bottom: 6px;
     }
     .footer {
       text-align: center;
@@ -55,7 +63,7 @@
     }
     .contact-box {
       background: #F8FAFC;
-      padding: 16px 20px;
+      padding: 18px 22px;
       border-radius: 12px;
       border: 1px solid #E2E8F0;
       margin-top: 16px;
@@ -65,40 +73,48 @@
 <body>
 
   <div class="header">
-    <h1>🚖 EMPERIAL CABS</h1>
+    <h1>EMPERIAL CABS</h1>
   </div>
 
   <div class="container">
-    <h1 style="margin-top: 0; font-size: 28px; color: #0F172A;">Privacy Policy</h1>
-    <p><em>Last Updated: September 2026</em></p>
-    <p>EMPERIAL CABS ("we", "our", or "us") is committed to protecting your privacy. This Privacy Policy outlines how we collect, use, and safeguard personal information collected through our customer mobile application and website.</p>
+    <h1 style="margin-top: 0; font-size: 26px; color: #0F172A;">Privacy Policy</h1>
+    <p><em>Last Updated: October 2026</em></p>
+    <p>EMPERIAL CABS ("we", "our", or "us") operates the EMPERIAL CABS mobile booking application and website. We are dedicated to respecting and protecting the privacy of our passengers and drivers. This Privacy Policy details how we collect, use, process, and safeguard your personal information in compliance with Google Play Developer Policies and data protection standards.</p>
 
     <h2>1. Information We Collect</h2>
-    <p>We collect essential information to provide seamless taxi booking and outstation cab services:</p>
+    <p>To provide reliable taxi dispatch and outstation ride services, we collect:</p>
     <ul>
-      <li><strong>Account Details:</strong> Your name, phone number, and email address for account creation and OTP authentication.</li>
-      <li><strong>Location Data:</strong> Device location coordinates to enable pickup point detection, route optimization, and live driver tracking on the map.</li>
-      <li><strong>Booking History:</strong> Pickup & drop locations, fare amounts, and payment status receipts.</li>
+      <li><strong>Account & Profile Details:</strong> Your name, phone number, email address, and profile photo provided during account creation or profile setup.</li>
+      <li><strong>Device Location Data:</strong> Precise foreground device location coordinates collected while the app is active to identify pickup spots, suggest pickup points, route cabs accurately, and estimate ride fares. We do not track location in the background when the app is closed.</li>
+      <li><strong>Trip & Booking Records:</strong> Pickup address, destination address, scheduled departure times, vehicle category, fare amount, and trip status history.</li>
+      <li><strong>Device & Network Information:</strong> Operating system version and network connection state to maintain connectivity and deliver push alerts.</li>
     </ul>
 
-    <h2>2. How We Use Information</h2>
-    <p>Your information is used strictly to:</p>
+    <h2>2. How We Use Your Information</h2>
+    <p>We process collected data exclusively to:</p>
     <ul>
-      <li>Connect you with nearby verified drivers.</li>
-      <li>Provide live GPS tracking of active cab trips.</li>
-      <li>Send SMS/WhatsApp booking confirmations and digital receipts.</li>
-      <li>Deliver 24/7 customer support and lost property assistance.</li>
+      <li>Assign verified local drivers to your pickup location.</li>
+      <li>Display real-time driver ETA and trip navigation.</li>
+      <li>Send essential transactional ride updates, driver arrival notifications, and booking confirmations.</li>
+      <li>Provide 24/7 customer assistance, lost-and-found support, and dispute resolution.</li>
     </ul>
 
-    <h2>3. Data Protection & Privacy</h2>
-    <p>We use SSL encryption and secure database controls to safeguard your data. <strong>We do NOT sell, rent, or trade your personal data to third parties.</strong></p>
+    <h2>3. Data Protection & Sharing</h2>
+    <p>All communication between the mobile application and our servers is secured using SSL/TLS encryption. <strong>We do not sell, rent, monetize, or trade your personal information with third-party advertising companies.</strong> Ride details are shared solely with assigned drivers to complete your requested journey.</p>
 
-    <h2>4. Contact Us</h2>
+    <h2 id="account-deletion">4. Account & Personal Data Deletion</h2>
+    <p>In accordance with Google Play's User Data and Account Deletion Policy, users have full control to delete their account and associated data at any time:</p>
+    <ul>
+      <li><strong>In-App Deletion:</strong> Open the EMPERIAL CABS app &gt; Navigate to <em>Account</em> tab &gt; Tap <em>"Delete Account & Personal Data"</em> &gt; Confirm deletion. This immediately deletes stored user profile tokens and session records.</li>
+      <li><strong>Web / Remote Request:</strong> You can submit an account and data erasure request by emailing us at <a href="mailto:info@emperialcabs.com">info@emperialcabs.com</a> or calling +91 72268 44108 with your registered mobile number. Requests are processed within 30 days.</li>
+    </ul>
+
+    <h2>5. Contact Us</h2>
     <div class="contact-box">
-      <p style="margin: 0 0 6px 0;"><strong>EMPERIAL CABS Customer Care</strong></p>
-      <p style="margin: 0 0 6px 0;">📍 Bhavnagar, Gujarat, India</p>
-      <p style="margin: 0 0 6px 0;">📞 Helpline: +91 99799 97063 / +91 98984 89270</p>
-      <p style="margin: 0;">✉️ Email: info@emperialcabs.com</p>
+      <p style="margin: 0 0 6px 0;"><strong>EMPERIAL CABS Customer Support</strong></p>
+      <p style="margin: 0 0 6px 0;">Office Address: Bhavnagar, Gujarat, India</p>
+      <p style="margin: 0 0 6px 0;">Helpline: +91 72268 44108</p>
+      <p style="margin: 0;">Email: info@emperialcabs.com</p>
     </div>
   </div>
 

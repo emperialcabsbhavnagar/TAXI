@@ -94,7 +94,7 @@ export default function PrivacyPolicy() {
             <div style={{ background: '#F8FAFC', padding: '16px 20px', borderRadius: '12px', color: '#334155', fontSize: '15px', marginTop: '12px' }}>
               <p style={{ margin: '0 0 6px 0' }}><strong>EMPERIAL CABS Customer Care</strong></p>
               <p style={{ margin: '0 0 6px 0' }}>📍 Bhavnagar, Gujarat, India</p>
-              <p style={{ margin: '0 0 6px 0' }}>📞 Customer Helpline: +91 99799 97063 / +91 98984 89270</p>
+              <p style={{ margin: '0 0 6px 0' }}>📞 Customer Helpline: +91 72268 44108</p>
               <p style={{ margin: 0 }}>✉️ Email: info@emperialcabs.com</p>
             </div>
           </section>

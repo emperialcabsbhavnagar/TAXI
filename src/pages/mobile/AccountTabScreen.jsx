@@ -14,7 +14,7 @@ export default function AccountTabScreen({ activeTab, setActiveTab, onNavigate, 
       return saved ? JSON.parse(saved) : {
         name: 'Rider',
         email: 'user@empirecab.in',
-        phone: '+91 98765 43210',
+        phone: '+91 72268 44108',
         age: 26,
         profession: 'Rider',
         area: 'Bhavnagar, Gujarat',
@@ -24,7 +24,7 @@ export default function AccountTabScreen({ activeTab, setActiveTab, onNavigate, 
       return {
         name: 'Rider',
         email: 'user@empirecab.in',
-        phone: '+91 98765 43210',
+        phone: '+91 72268 44108',
         age: 26,
         profession: 'Rider',
         area: 'Bhavnagar, Gujarat',
@@ -293,6 +293,24 @@ export default function AccountTabScreen({ activeTab, setActiveTab, onNavigate, 
             <p style={{ fontFamily: 'Space Grotesk', fontSize: '14px', color: '#475569', lineHeight: '1.5', margin: '0 0 20px 0' }}>
               {showInfoModal.desc}. This setting is fully active for your EMPERIAL CABS rider profile in Gujarat, India.
             </p>
+            {showInfoModal.id === 'privacy' && (
+              <a 
+                href="https://emperialcabs.com/privacy-policy" 
+                target="_blank" 
+                rel="noreferrer"
+                style={{ display: 'block', textAlign: 'center', marginBottom: '14px', color: '#10B981', fontWeight: '700', fontSize: '14px', textDecoration: 'underline', fontFamily: 'Space Grotesk' }}
+              >
+                Open Official Privacy Policy Webpage
+              </a>
+            )}
+            {showInfoModal.id === 'support' && (
+              <a 
+                href="tel:+917226844108" 
+                style={{ display: 'block', textAlign: 'center', marginBottom: '14px', background: '#10B981', color: '#FFFFFF', padding: '12px', borderRadius: '12px', fontWeight: '700', fontSize: '15px', textDecoration: 'none', fontFamily: 'Space Grotesk' }}
+              >
+                Call 24/7 Helpline (+91 72268 44108)
+              </a>
+            )}
             <button 
               onClick={() => setShowInfoModal(null)}
               style={{ width: '100%', background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', color: '#FFFFFF', border: 'none', padding: '14px', borderRadius: '16px', fontWeight: '800', fontSize: '15px', cursor: 'pointer', boxShadow: '0 6px 20px rgba(16, 185, 129, 0.35)' }}

@@ -197,7 +197,7 @@ export default function SeatScheduleScreen({
     } catch (e) { return null; }
   }, []);
 
-  const userPhone = userProfile?.phone || '+91 98765 43210';
+  const userPhone = userProfile?.phone || '+91 72268 44108';
 
   useEffect(() => {
     const w = db.getCustomerWallet(userPhone);

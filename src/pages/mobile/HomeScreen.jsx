@@ -8,7 +8,7 @@ import { getCustomerNotifications } from '../../services/notificationEngine';
 import { loadAllInquiriesFromMySQL } from '../../services/mysqlService';
 import { RotateCcw, User, Bell, CheckCircle2, XCircle, Clock3, Gift, MapPin, ArrowRight, X, Car, ShieldCheck, Star, Sparkles, Award, ChevronUp, ChevronDown } from 'lucide-react';
 
-export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, onOpenTracking }) {
+export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, onOpenTracking, userCoords: propCoords, setUserCoords: setPropCoords }) {
   // Load saved profile from localStorage
   const userProfile = React.useMemo(() => {
     try {
@@ -48,8 +48,26 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
     } catch (e) {}
     return 'Locating address...';
   });
-  const [userCoords, setUserCoords] = useState({ lat: 21.7645, lng: 72.1519 });
-  const [isLocating, setIsLocating] = useState(true);
+
+  const [userCoords, setUserCoords] = useState(() => {
+    try {
+      const saved = localStorage.getItem('EMPERIAL CABS_user_location');
+      if (saved) {
+        const p = JSON.parse(saved);
+        if (typeof p?.lat === 'number' && typeof p?.lng === 'number' && p.lat !== 0) {
+          return { lat: p.lat, lng: p.lng };
+        }
+      }
+    } catch (e) {}
+    return { lat: 21.7645, lng: 72.1519 };
+  });
+  const [isLocating, setIsLocating] = useState(false);
+
+  useEffect(() => {
+    if (propCoords && typeof propCoords.lat === 'number' && typeof propCoords.lng === 'number' && propCoords.lat !== 0) {
+      setUserCoords(propCoords);
+    }
+  }, [propCoords]);
 
   // Active Ride Live Sync & Completed Trip Detection
   const [activeRide, setActiveRide] = useState(null);
@@ -224,23 +242,21 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
       // 1. Direct Push Notifications from Admin / Engine
       const directNotifs = getCustomerNotifications(userProfile?.phone, userProfile?.email);
       if (directNotifs && directNotifs.length > 0) {
+        // Keep only the latest notification per inquiry so newer status replaces old
+        const seenKeys = new Set();
         directNotifs.forEach(dn => {
-          let icon = '🔔';
-          if (dn.type === 'reward') icon = '🎁';
-          else if (dn.type === 'trip_started') icon = '▶';
-          else if (dn.type === 'trip_completed') icon = '🏁';
-          else if (dn.type === 'confirmed') icon = '✅';
-          else if (dn.type === 'cancelled') icon = '❌';
-
-          notifs.push({
-            id: dn.id,
-            type: dn.type || 'inquiry',
-            icon,
-            title: dn.title,
-            desc: dn.desc || dn.body,
-            time: dn.time || 'Just now',
-            read: dn.read || false
-          });
+          const key = dn.extraData?.inquiryId || dn.type + '_' + (dn.title || '').slice(0, 15);
+          if (!seenKeys.has(key)) {
+            seenKeys.add(key);
+            notifs.push({
+              id: dn.id,
+              type: dn.type || 'inquiry',
+              title: dn.title,
+              desc: dn.desc || dn.body,
+              time: dn.time || 'Just now',
+              read: dn.read || false
+            });
+          }
         });
       }
 
@@ -258,9 +274,8 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
               notifs.push({
                 id: `inq-conf-${inq.id}`,
                 type: 'inquiry',
-                icon: '🎉',
                 title: `Booking Confirmed (${inq.id})`,
-                desc: `Your trip from ${inq.pickup} to ${inq.dropoff} is confirmed! Driver: ${inq.driver || 'Assigned'}`,
+                desc: `Your trip from ${inq.pickup} to ${inq.dropoff} is confirmed. Driver: ${inq.driver || 'Assigned'}`,
                 time: inq.date || 'Today',
                 read: false
               });
@@ -268,7 +283,6 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
               notifs.push({
                 id: `inq-pend-${inq.id}`,
                 type: 'inquiry',
-                icon: '⏳',
                 title: `Ride Inquiry Pending (${inq.id})`,
                 desc: `Inquiry for ${inq.vehicle} (₹${inq.fare}) is under review by EMPERIAL CABS dispatchers.`,
                 time: inq.date || 'Just now',
@@ -282,8 +296,7 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
       notifs.push({
         id: 'sys-gps',
         type: 'system',
-        icon: '📍',
-        title: 'GPS Live Location Active',
+        title: 'Location Service Active',
         desc: `Current pickup spot set near ${customerAddress}`,
         time: 'Active Now',
         read: true
@@ -318,10 +331,15 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
   }, []);
 
   const updateLocation = (coords, addr) => {
+    if (!coords || typeof coords.lat !== 'number' || typeof coords.lng !== 'number') return;
     setUserCoords(coords);
-    if (addr) setCustomerAddress(addr);
+    if (addr && addr !== 'Locating address...') setCustomerAddress(addr);
     try {
-      localStorage.setItem('EMPERIAL CABS_user_location', JSON.stringify({ lat: coords.lat, lng: coords.lng, address: addr }));
+      localStorage.setItem('EMPERIAL CABS_user_location', JSON.stringify({ 
+        lat: coords.lat, 
+        lng: coords.lng, 
+        address: addr || 'Current Location' 
+      }));
     } catch (e) {}
   };
 
@@ -329,7 +347,7 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
     setIsLocating(true);
     try {
       const res = await getBestLiveLocation();
-      if (res && res.source !== 'Base Region') {
+      if (res && !res.isFallback && res.source !== 'Base Region') {
         updateLocation({ lat: res.lat, lng: res.lng }, res.address);
         setIsGpsActive(true);
         try {
@@ -346,7 +364,7 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
   };
 
   useEffect(() => {
-    let watchId = null;
+    let watcher = null;
     const gpsEnabled = localStorage.getItem('EMPERIAL CABS_gps_enabled');
 
     if (gpsEnabled === 'false') {
@@ -356,22 +374,21 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
     }
 
     // Fetch initial high-accuracy location via 3-Method 3-Check engine
+    // Only update if valid non-fallback GPS is returned
     getBestLiveLocation().then(res => {
-      if (res) {
+      if (res && !res.isFallback && res.source !== 'Base Region') {
         updateLocation({ lat: res.lat, lng: res.lng }, res.address);
-        if (res.source !== 'Base Region') {
-          setIsGpsActive(true);
-          try {
-            localStorage.setItem('EMPERIAL CABS_gps_enabled', 'true');
-          } catch (e) {}
-        }
-        setIsLocating(false);
+        setIsGpsActive(true);
+        try {
+          localStorage.setItem('EMPERIAL CABS_gps_enabled', 'true');
+        } catch (e) {}
       }
+      setIsLocating(false);
     });
 
     // Start real-time watch update
-    watchId = watchLiveLocation((updateRes) => {
-      if (updateRes) {
+    watcher = watchLiveLocation((updateRes) => {
+      if (updateRes && updateRes.lat && updateRes.lng) {
         updateLocation({ lat: updateRes.lat, lng: updateRes.lng }, updateRes.address);
         setIsGpsActive(true);
         setIsLocating(false);
@@ -379,8 +396,10 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
     });
 
     return () => {
-      if (watchId !== null && navigator.geolocation) {
-        navigator.geolocation.clearWatch(watchId);
+      if (watcher?.clear) {
+        watcher.clear();
+      } else if (typeof watcher === 'number' && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watcher);
       }
     };
   }, []);
@@ -662,21 +681,38 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
           <div style={{ background: '#FFFFFF', borderTopLeftRadius: '28px', borderTopRightRadius: '28px', padding: '24px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '22px' }}>🔔</span>
-                <h2 style={{ fontFamily: 'League Spartan', fontSize: '22px', fontWeight: '800', color: '#0F172A', margin: 0 }}>
-                  Notifications & Live Updates
+                <Bell size={20} color="#0F172A" />
+                <h2 style={{ fontFamily: 'League Spartan', fontSize: '20px', fontWeight: '800', color: '#0F172A', margin: 0 }}>
+                  Notifications & Updates
                 </h2>
               </div>
-              <button onClick={() => setIsNotifOpen(false)} style={{ background: '#F1F5F9', border: 'none', width: '36px', height: '36px', borderRadius: '50%', fontSize: '16px', cursor: 'pointer', color: '#0F172A', fontWeight: 'bold' }}>✕</button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {userNotifs.length > 0 && (
+                  <button 
+                    onClick={() => {
+                      try {
+                        localStorage.removeItem('cabsy_customer_notifications');
+                      } catch (e) {}
+                      setUserNotifs([]);
+                    }}
+                    style={{ background: '#F1F5F9', border: 'none', padding: '6px 12px', borderRadius: '10px', fontSize: '12px', fontWeight: '700', color: '#64748B', cursor: 'pointer' }}
+                  >
+                    Clear All
+                  </button>
+                )}
+                <button onClick={() => setIsNotifOpen(false)} style={{ background: '#F1F5F9', border: 'none', width: '36px', height: '36px', borderRadius: '50%', fontSize: '16px', cursor: 'pointer', color: '#0F172A', fontWeight: 'bold' }}>✕</button>
+              </div>
             </div>
 
             {/* Notification List */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', overflowY: 'auto', maxHeight: '420px', paddingRight: '4px' }}>
               {userNotifs.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '32px 16px', color: '#64748B' }}>
-                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>🔔</div>
+                  <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'center' }}>
+                    <Bell size={28} color="#94A3B8" />
+                  </div>
                   <p style={{ fontWeight: '700', margin: 0 }}>No new notifications</p>
-                  <small>All ride updates and announcements will appear here.</small>
+                  <small>Ride updates and fleet confirmations will appear here.</small>
                 </div>
               ) : (
                 userNotifs.map((notif, idx) => (
@@ -692,7 +728,9 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
                       alignItems: 'flex-start'
                     }}
                   >
-                    <div style={{ fontSize: '20px', marginTop: '2px' }}>{notif.icon}</div>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: notif.type === 'inquiry' ? '#DCFCE7' : '#E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
+                      <Bell size={16} color={notif.type === 'inquiry' ? '#166534' : '#0F172A'} />
+                    </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
                         <strong style={{ fontFamily: 'Space Grotesk', fontSize: '15px', color: '#0F172A' }}>{notif.title}</strong>
