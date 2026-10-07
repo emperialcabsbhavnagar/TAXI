@@ -9,33 +9,41 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-// Listen for push events
+// Listen for push events (iOS WebKit & Android Chrome resilient)
 self.addEventListener('push', (event) => {
-  let data = { title: 'EMPERIAL CABS Alert', body: 'New booking dispatch update received.' };
+  let title = 'EMPERIAL CABS Alert';
+  let body = 'New booking dispatch update received.';
+  let url = '/admin?tab=inquiries';
+  let tag = 'disp-' + Date.now();
+
   try {
     if (event.data) {
-      data = event.data.json();
+      const parsed = event.data.json();
+      if (parsed) {
+        if (parsed.title) title = parsed.title;
+        if (parsed.body) body = parsed.body;
+        if (parsed.url) url = parsed.url;
+        if (parsed.tag) tag = parsed.tag;
+      }
     }
   } catch (e) {
-    data.body = event.data ? event.data.text() : data.body;
+    try {
+      if (event.data) body = event.data.text() || body;
+    } catch (e2) {}
   }
 
   const options = {
-    body: data.body || 'New booking dispatch update received.',
+    body: body,
     icon: '/official-app-icon.png',
     badge: '/favicon.png',
-    vibrate: [300, 150, 300, 150, 300],
-    tag: data.tag || ('disp-' + Date.now()),
-    renotify: true,
-    requireInteraction: true,
-    data: data.url || '/admin?tab=inquiries',
-    actions: [
-      { action: 'open', title: 'Open Admin' }
-    ]
+    tag: tag,
+    data: url
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'EMPERIAL CABS Alert', options)
+    self.registration.showNotification(title, options).catch((err) => {
+      return self.registration.showNotification(title, { body: body, data: url });
+    })
   );
 });
 
