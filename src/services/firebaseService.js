@@ -565,62 +565,35 @@ export const sendEmailOTP = async (email) => {
     }));
   } catch (e) {}
 
-  const p1 = 'xkeysib-a48bb93f876bcccf80a1c901ecadf5ee19a4e68c63438b1eda1cc137bad9def8';
-  const p2 = 'b6qTQlJSyfScflja';
-  const brevoKey = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_BREVO_API_KEY) ? import.meta.env.VITE_BREVO_API_KEY : `${p1}-${p2}`;
-  const activeKey = brevoKey || `${p1}-${p2}`;
-  const origin = (typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin : 'https://android-two-rouge.vercel.app/';
+  const payload = { email: cleanEmail, code };
 
-  const payload = {
-    _subject: `${code} is your EMPERIAL CABS verification code`,
-    _captcha: 'false',
-    _template: 'table',
-    _autorespond: `Your EMPERIAL CABS verification code is: ${code}. Valid for 5 minutes.`,
-    email: cleanEmail,
-    _replyto: cleanEmail,
-    Verification_Code: code,
-    User_Email: cleanEmail,
-    Message: `EMPERIAL CABS Security OTP for ${cleanEmail} is: ${code}. Valid for 5 minutes.`
-  };
+  // Multi-gateway burst targeting Hostinger backend PHP proxies
+  try {
+    const endpoints = [
+      '/api/send-email-otp.php',
+      'https://emperialcabs.com/api/send-email-otp.php',
+      '/api/db.php?action=sendEmailOTP',
+      'https://emperialcabs.com/api/db.php?action=sendEmailOTP'
+    ];
 
-  // Simultaneous 4-gateway network burst for sub-second delivery
-  Promise.allSettled([
-    // Gateway 1: Direct Brevo REST API (Fastest)
-    fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers: {
-        'api-key': activeKey,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({
-        sender: { name: 'EMPERIAL CABS', email: 'emperialcabsbhavnagar@gmail.com' },
-        to: [{ email: cleanEmail }],
-        subject: `${code} is your EMPERIAL CABS verification code`,
-        textContent: `Your EMPERIAL CABS verification code is: ${code}. Valid for 5 minutes.`,
-        htmlContent: `
-          <div style="font-family: Arial, sans-serif; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; max-width: 480px; background: #ffffff; margin: 0 auto;">
-            <h2 style="color: #0f172a; margin-top: 0; font-size: 22px;">EMPERIAL CABS</h2>
-            <p style="color: #475569; font-size: 15px;">Your 6-digit security verification code is:</p>
-            <div style="font-size: 36px; font-weight: 800; letter-spacing: 6px; color: #10b981; background: #f0fdf4; border: 1px solid #10b981; padding: 18px; border-radius: 12px; text-align: center; margin: 20px 0;">${code}</div>
-            <p style="color: #94a3b8; font-size: 13px;">This code will expire in 5 minutes. Do not share it with anyone.</p>
-          </div>
-        `
-      })
-    }),
-    // Gateway 2: FormSubmit Direct Relay
-    fetch('https://formsubmit.co/ajax/emperialcabsbhavnagar@gmail.com', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(payload)
-    }),
-    // Gateway 3: Serverless Backend Proxy (Brevo SMTP & Resend)
-    fetch(`${origin}api/send-email-otp`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: cleanEmail, code })
-    })
-  ]).catch(() => {});
+    // Fire to backend endpoints concurrently
+    Promise.allSettled(
+      endpoints.map(ep =>
+        fetch(ep, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).then(r => r.json()).catch(() => null)
+      )
+    ).then(results => {
+      const delivered = results.some(r => r.status === 'fulfilled' && r.value?.success);
+      if (delivered) {
+        console.log('[Email OTP] Successfully delivered to:', cleanEmail);
+      }
+    }).catch(() => {});
+  } catch (e) {
+    console.warn('[Email OTP Error]:', e);
+  }
 
   return { success: true, code };
 };
