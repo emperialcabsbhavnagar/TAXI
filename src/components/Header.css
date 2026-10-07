@@ -16,7 +16,6 @@
   box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
   background-color: #ffffff !important;
   background: #ffffff !important;
-  backdrop-filter: blur(12px);
 }
 
 .header-container {

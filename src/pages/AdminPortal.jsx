@@ -2839,6 +2839,27 @@ export default function AdminPortal() {
           <img src="/EMPERAL_CABS_Website_Logo_Sharp.svg" alt="EMPERIAL CABS" className="mobile-brand-logo" />
         </div>
         <div className="mobile-header-right flex align-center gap-2">
+          {notifPermissionState !== 'granted' && (
+            <button 
+              className="btn flex align-center gap-1"
+              onClick={handleEnableNotifications}
+              style={{
+                background: '#10B981',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '10px',
+                padding: '6px 10px',
+                fontSize: '12px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)'
+              }}
+              title="Enable iPhone Push Notifications"
+            >
+              <Bell size={13} />
+              <span>Enable Alerts</span>
+            </button>
+          )}
           <button 
             className="mobile-notif-pill-btn" 
             onClick={() => { setActiveTab('inquiries'); setIsMobileMenuOpen(false); }}
