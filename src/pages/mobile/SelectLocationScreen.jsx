@@ -1,8 +1,38 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { getBestLiveLocation } from '../../services/liveLocationService';
 import { getCoordsForPlace, calculateDistanceKm } from '../../utils/locationCoords';
-import { loadAllPlacesFromMySQL, loadAllRoutesFromMySQL, safeStorageGetItem } from '../../services/mysqlService';
-import { Navigation, MapPin, ArrowLeft, ArrowRight, ArrowUpDown, Compass, Sparkles, Calendar, Clock, Plus, Minus, CheckCircle, Car, Flame, TrendingUp } from 'lucide-react';
+import { 
+  loadAllPlacesFromMySQL, 
+  loadAllRoutesFromMySQL, 
+  safeStorageGetItem,
+  saveInquiryToMySQL,
+  saveContactMessageToMySQL,
+  expandBidirectionalRoutes
+} from '../../services/mysqlService';
+import { notifyAdmin } from '../../services/notificationEngine';
+import { 
+  Navigation, 
+  MapPin, 
+  ArrowLeft, 
+  ArrowRight, 
+  ArrowUpDown, 
+  Compass, 
+  Sparkles, 
+  Calendar, 
+  Clock, 
+  Plus, 
+  Minus, 
+  CheckCircle, 
+  CheckCircle2,
+  AlertCircle,
+  Send,
+  Car, 
+  Flame, 
+  TrendingUp,
+  Info,
+  Phone,
+  User
+} from 'lucide-react';
 
 const DEFAULT_PLACES = [
   "Bhavnagar, Gujarat",
@@ -127,7 +157,7 @@ export default function SelectLocationScreen({
       if (savedDestinations) {
         const parsedD = typeof savedDestinations === 'string' ? JSON.parse(savedDestinations) : savedDestinations;
         if (Array.isArray(parsedD)) {
-          setRoutes(parsedD.filter(isRoutePriced));
+          setRoutes(expandBidirectionalRoutes(parsedD.filter(isRoutePriced)));
         }
       }
     } catch (e) {
@@ -155,10 +185,11 @@ export default function SelectLocationScreen({
             car_prices: r.car_prices || {}
           }))
           .filter(isRoutePriced);
-        setRoutes(formattedRoutes);
+        const expanded = expandBidirectionalRoutes(formattedRoutes);
+        setRoutes(expanded);
         try {
-          localStorage.setItem('cabsy_destinations', JSON.stringify(formattedRoutes));
-          localStorage.setItem('cabsy_routes', JSON.stringify(formattedRoutes));
+          localStorage.setItem('cabsy_destinations', JSON.stringify(expanded));
+          localStorage.setItem('cabsy_routes', JSON.stringify(expanded));
         } catch (e) {}
       }
     }).catch(() => {});
@@ -169,7 +200,7 @@ export default function SelectLocationScreen({
 
     const handleSync = (e) => {
       if (e?.detail && Array.isArray(e.detail)) {
-        setRoutes(e.detail.filter(isRoutePriced));
+        setRoutes(expandBidirectionalRoutes(e.detail.filter(isRoutePriced)));
       } else {
         loadAdminConfig();
       }
@@ -178,11 +209,45 @@ export default function SelectLocationScreen({
     window.addEventListener('EMPERIAL CABS_destinations_updated', handleSync);
     window.addEventListener('storage', handleSync);
 
+    let bc = null;
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        bc = new BroadcastChannel('emperial_cabs_channel');
+        bc.onmessage = (event) => {
+          if (event.data?.type === 'DESTINATIONS_UPDATED' && Array.isArray(event.data.destinations)) {
+            setRoutes(expandBidirectionalRoutes(event.data.destinations.filter(isRoutePriced)));
+          }
+        };
+      } catch (e) {}
+    }
+
     return () => {
       window.removeEventListener('EMPERIAL CABS_destinations_updated', handleSync);
       window.removeEventListener('storage', handleSync);
+      if (bc) bc.close();
     };
   }, []);
+
+  // Available pickup cities uniquely extracted from all active direct routes
+  const availablePickups = useMemo(() => {
+    const list = routes.map(r => r.pickup?.trim()).filter(Boolean);
+    return Array.from(new Set(list));
+  }, [routes]);
+
+  // Dropoff suggestions tailored to the currently entered / selected pickup
+  const availableDropoffs = useMemo(() => {
+    if (!pickupLoc || pickupLoc.trim() === '') {
+      return Array.from(new Set(routes.map(r => r.dropoff?.trim()).filter(Boolean)));
+    }
+    const p = pickupLoc.toLowerCase().trim();
+    const matched = routes.filter(r => {
+      const rp = (r.pickup || '').toLowerCase().trim();
+      return rp === p || rp.includes(p) || p.includes(rp);
+    });
+    const list = matched.map(r => r.dropoff?.trim()).filter(Boolean);
+    if (list.length > 0) return Array.from(new Set(list));
+    return Array.from(new Set(routes.map(r => r.dropoff?.trim()).filter(Boolean)));
+  }, [routes, pickupLoc]);
 
   // Dynamic filter for cities & villages
   const getFilteredCities = (query) => {
@@ -192,34 +257,180 @@ export default function SelectLocationScreen({
     return filtered.length > 0 ? filtered : [];
   };
 
-  // Dynamic filter for standard places strictly based on active routes
-  const getFilteredPlaces = (query) => {
-    const activeRoutePlaces = Array.from(new Set(
-      routes.flatMap(r => [r.pickup, r.dropoff].filter(Boolean))
-    ));
-    if (!query || query.trim() === '') return activeRoutePlaces;
+  // Filtered available pickup suggestions
+  const getFilteredPickups = (query) => {
+    if (!query || query.trim() === '') return availablePickups;
     const q = query.toLowerCase().trim();
-    return activeRoutePlaces.filter(p => p.toLowerCase().includes(q));
+    return availablePickups.filter(p => p.toLowerCase().includes(q));
+  };
+
+  // Filtered available dropoff suggestions
+  const getFilteredDropoffs = (query) => {
+    if (!query || query.trim() === '') return availableDropoffs;
+    const q = query.toLowerCase().trim();
+    return availableDropoffs.filter(p => p.toLowerCase().includes(q));
+  };
+
+  // Direct route strict matcher
+  const matchedDirectRoute = useMemo(() => {
+    if (!pickupLoc || !dropoffLoc) return null;
+    const p = pickupLoc.trim().toLowerCase();
+    const d = dropoffLoc.trim().toLowerCase();
+    return routes.find(r => {
+      if (!r || !r.pickup || !r.dropoff) return false;
+      const rp = String(r.pickup).trim().toLowerCase();
+      const rd = String(r.dropoff).trim().toLowerCase();
+      return (p === rp || p.includes(rp) || rp.includes(p)) &&
+             (d === rd || d.includes(rd) || rd.includes(d));
+    }) || null;
+  }, [routes, pickupLoc, dropoffLoc]);
+
+  const isDirectRouteAvailable = Boolean(matchedDirectRoute);
+
+  // Custom Inquiry form state for when route is not available
+  const [customInquiryState, setCustomInquiryState] = useState(() => {
+    let name = '';
+    let phone = '';
+    try {
+      const savedProfile = localStorage.getItem('cabsy_user_profile');
+      if (savedProfile) {
+        const p = JSON.parse(savedProfile);
+        name = p.name || '';
+        phone = p.phone || '';
+      }
+    } catch (e) {}
+    return {
+      name,
+      phone,
+      date: new Date().toISOString().split('T')[0],
+      isSubmitting: false,
+      isSubmitted: false,
+      error: ''
+    };
+  });
+
+  const handleSendCustomInquiry = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!pickupLoc.trim() || !dropoffLoc.trim()) {
+      setCustomInquiryState(prev => ({ ...prev, error: 'Please enter both pickup and dropoff locations.' }));
+      return;
+    }
+    const cleanPhone = (customInquiryState.phone || '').trim();
+    if (!cleanPhone || cleanPhone.replace(/\D/g, '').length < 10) {
+      setCustomInquiryState(prev => ({ ...prev, error: 'Please enter a valid 10-digit phone number.' }));
+      return;
+    }
+    if (!customInquiryState.name.trim()) {
+      setCustomInquiryState(prev => ({ ...prev, error: 'Please enter your full name.' }));
+      return;
+    }
+
+    setCustomInquiryState(prev => ({ ...prev, isSubmitting: true, error: '' }));
+
+    const inqId = 'INQ-CUST-' + Math.floor(100000 + Math.random() * 900000);
+    const dateStr = customInquiryState.date || new Date().toISOString().split('T')[0];
+    const customerName = customInquiryState.name.trim();
+
+    const inquiryPayload = {
+      id: inqId,
+      customerName: customerName,
+      customerPhone: cleanPhone,
+      customerEmail: 'emperialcabsbhavnagar@gmail.com',
+      pickup: pickupLoc.trim(),
+      dropoff: dropoffLoc.trim(),
+      pickupCity: pickupLoc.trim(),
+      dropoffCity: dropoffLoc.trim(),
+      tripType: 'Custom Trip',
+      isCustom: true,
+      status: 'Pending',
+      date: dateStr,
+      scheduledDate: dateStr,
+      scheduledTime: '10:00 AM',
+      noOfDays: 1,
+      fare: 0,
+      vehicle: 'To Be Quoted',
+      notes: `Custom Route Request: ${pickupLoc.trim()} → ${dropoffLoc.trim()} (Route not listed directly)`,
+      timestamp: new Date().toISOString()
+    };
+
+    try {
+      await saveInquiryToMySQL(inquiryPayload);
+    } catch (err) {
+      console.warn('Save custom inquiry MySQL error:', err);
+    }
+
+    try {
+      await saveContactMessageToMySQL({
+        id: 'MSG-' + inqId,
+        name: customerName,
+        phone: cleanPhone,
+        email: 'emperialcabsbhavnagar@gmail.com',
+        subject: `Custom Route: ${pickupLoc.trim()} → ${dropoffLoc.trim()}`,
+        message: `Customer requested unlisted route from ${pickupLoc.trim()} to ${dropoffLoc.trim()} on ${dateStr}. Please provide quote.`,
+        category: 'Custom Route Inquiry',
+        date: dateStr,
+        status: 'Unread'
+      });
+    } catch (err) {
+      console.warn('Save contact message MySQL error:', err);
+    }
+
+    try {
+      const existingInqs = JSON.parse(localStorage.getItem('cabsy_inquiries') || '[]');
+      localStorage.setItem('cabsy_inquiries', JSON.stringify([inquiryPayload, ...existingInqs]));
+    } catch (e) {}
+
+    try {
+      const existingMsgs = JSON.parse(localStorage.getItem('cabsy_contact_messages') || localStorage.getItem('cabsy_messages') || '[]');
+      const newMsg = {
+        id: 'MSG-' + inqId,
+        name: customerName,
+        phone: cleanPhone,
+        email: 'emperialcabsbhavnagar@gmail.com',
+        subject: `Custom Route: ${pickupLoc.trim()} → ${dropoffLoc.trim()}`,
+        message: `Customer requested unlisted route from ${pickupLoc.trim()} to ${dropoffLoc.trim()} on ${dateStr}. Please provide quote.`,
+        category: 'Custom Route Inquiry',
+        date: dateStr,
+        status: 'Unread'
+      };
+      localStorage.setItem('cabsy_contact_messages', JSON.stringify([newMsg, ...existingMsgs]));
+      localStorage.setItem('cabsy_messages', JSON.stringify([newMsg, ...existingMsgs]));
+      localStorage.setItem('cabsy_user_profile', JSON.stringify({ name: customerName, phone: cleanPhone, email: 'emperialcabsbhavnagar@gmail.com' }));
+    } catch (e) {}
+
+    notifyAdmin({
+      type: 'custom_inquiry',
+      title: 'New Custom Route Inquiry!',
+      body: `Customer ${customerName} (${cleanPhone}) requested custom route: ${pickupLoc.trim()} → ${dropoffLoc.trim()}`,
+      extraData: { tab: 'messages' }
+    });
+
+    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new Event('EMPERIAL CABS_messages_updated'));
+
+    setCustomInquiryState(prev => ({
+      ...prev,
+      isSubmitting: false,
+      isSubmitted: true,
+      error: ''
+    }));
   };
 
   const handleSelectRoute = (route) => {
-    // Symmetrical bidirectional route selection: if user already entered dropoff matching route.pickup, swap
-    if (dropoffLoc && route.pickup && dropoffLoc.toLowerCase().trim() === route.pickup.toLowerCase().trim()) {
-      setPickupLoc(route.dropoff);
-      setDropoffLoc(route.pickup);
-    } else {
-      setPickupLoc(route.pickup);
-      setDropoffLoc(route.dropoff);
-    }
+    setPickupLoc(route.pickup);
+    setDropoffLoc(route.dropoff);
+    if (setPickupCity) setPickupCity(route.pickup);
+    if (setDropoffCity) setDropoffCity(route.dropoff);
     setIsCustom(false);
     setActiveDropdown(null);
   };
 
-  const isStandardReady = pickupLoc && pickupLoc.trim() !== '' && dropoffLoc && dropoffLoc.trim() !== '';
+  const isStandardReady = Boolean(pickupLoc && pickupLoc.trim() !== '' && dropoffLoc && dropoffLoc.trim() !== '' && isDirectRouteAvailable);
   // ALLOW ANY CUSTOM ENTRY typed by user for pickupCity and dropoffCity
   const isCustomReady = cPickupCity && cPickupCity.trim() !== '' && cDropoffCity && cDropoffCity.trim() !== '';
 
   const handleProceedStandard = () => {
+    if (!isDirectRouteAvailable) return;
     setIsCustom(false);
     onSelectLocation();
   };
@@ -401,7 +612,7 @@ export default function SelectLocationScreen({
                 />
 
                 {activeDropdown === 'pickup' && (
-                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: '#FFFFFF', border: '1.5px solid #E2E8F0', borderRadius: '16px', boxShadow: '0 12px 32px rgba(0,0,0,0.12)', maxHeight: '220px', overflowY: 'auto', marginTop: '6px' }}>
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: '#FFFFFF', border: '1.5px solid #E2E8F0', borderRadius: '16px', boxShadow: '0 12px 32px rgba(0,0,0,0.12)', maxHeight: '240px', overflowY: 'auto', marginTop: '6px' }}>
                     <div 
                       onClick={async () => {
                         setPickupLoc('Detecting live location...');
@@ -419,8 +630,31 @@ export default function SelectLocationScreen({
                       <span><strong>Use My Current Live GPS Spot</strong></span>
                     </div>
 
+                    {/* Available direct route pickups */}
+                    {availablePickups.length > 0 && (
+                      <>
+                        <div style={{ padding: '8px 14px', fontSize: '11px', fontWeight: '800', color: '#047857', background: '#F0FDF4', borderBottom: '1px solid #DCFCE7', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span>AVAILABLE DIRECT ROUTE PICKUPS</span>
+                          <span style={{ fontSize: '10px', background: '#DCFCE7', padding: '2px 6px', borderRadius: '6px', fontWeight: '800' }}>Direct Routes</span>
+                        </div>
+                        {getFilteredPickups(pickupLoc).map((spot, i) => (
+                          <div 
+                            key={`pk-dir-${i}`}
+                            style={{ padding: '12px 16px', fontSize: '14px', fontWeight: '700', color: '#0F172A', borderBottom: '1px solid #F1F5F9', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', background: '#FFFFFF' }}
+                            onClick={() => {
+                              setPickupLoc(spot);
+                              setActiveDropdown('dropoff');
+                            }}
+                          >
+                            <MapPin size={16} color="#10B981" />
+                            <span>{spot}</span>
+                          </div>
+                        ))}
+                      </>
+                    )}
+
                     {/* Custom typed location fallback */}
-                    {pickupLoc.trim() !== '' && !getFilteredPlaces(pickupLoc).some(p => p.toLowerCase() === pickupLoc.toLowerCase().trim()) && (
+                    {pickupLoc.trim() !== '' && !availablePickups.some(p => p.toLowerCase() === pickupLoc.toLowerCase().trim()) && !getFilteredPlaces(pickupLoc).some(p => p.toLowerCase() === pickupLoc.toLowerCase().trim()) && (
                       <div 
                         onClick={() => setActiveDropdown(null)}
                         style={{ padding: '10px 14px', fontSize: '13px', fontWeight: '700', color: '#059669', background: '#F0FDF4', borderBottom: '1px solid #E2E8F0', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
@@ -431,18 +665,18 @@ export default function SelectLocationScreen({
                     )}
 
                     <div style={{ padding: '10px 14px', fontSize: '11px', fontWeight: '800', color: '#64748B', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-                      POPULAR CITIES & VILLAGES
+                      OTHER CITIES & VILLAGES
                     </div>
-                    {getFilteredPlaces(pickupLoc).map((place, i) => (
+                    {getFilteredPlaces(pickupLoc).filter(p => !availablePickups.some(ap => ap.toLowerCase() === p.toLowerCase())).map((place, i) => (
                       <div 
-                        key={i}
+                        key={`pk-pl-${i}`}
                         style={{ padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#0F172A', borderBottom: '1px solid #F1F5F9', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}
                         onClick={() => {
                           setPickupLoc(place);
                           setActiveDropdown(null);
                         }}
                       >
-                        <MapPin size={16} color="#10B981" />
+                        <MapPin size={16} color="#94A3B8" />
                         <span>{place}</span>
                       </div>
                     ))}
@@ -527,9 +761,32 @@ export default function SelectLocationScreen({
                 />
 
                 {activeDropdown === 'dropoff' && (
-                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: '#FFFFFF', border: '1.5px solid #E2E8F0', borderRadius: '16px', boxShadow: '0 12px 32px rgba(0,0,0,0.12)', maxHeight: '200px', overflowY: 'auto', marginTop: '6px' }}>
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: '#FFFFFF', border: '1.5px solid #E2E8F0', borderRadius: '16px', boxShadow: '0 12px 32px rgba(0,0,0,0.12)', maxHeight: '240px', overflowY: 'auto', marginTop: '6px' }}>
+                    {/* Available direct destinations */}
+                    {availableDropoffs.length > 0 && (
+                      <>
+                        <div style={{ padding: '8px 14px', fontSize: '11px', fontWeight: '800', color: '#047857', background: '#F0FDF4', borderBottom: '1px solid #DCFCE7', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span>{pickupLoc.trim() ? `DIRECT ROUTES FROM ${pickupLoc.toUpperCase().trim()}` : 'AVAILABLE DIRECT DESTINATIONS'}</span>
+                          <span style={{ fontSize: '10px', background: '#DCFCE7', padding: '2px 6px', borderRadius: '6px', fontWeight: '800' }}>Direct Route</span>
+                        </div>
+                        {getFilteredDropoffs(dropoffLoc).map((dest, i) => (
+                          <div 
+                            key={`dp-dir-${i}`}
+                            style={{ padding: '12px 16px', fontSize: '14px', fontWeight: '700', color: '#0F172A', borderBottom: '1px solid #F1F5F9', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', background: '#FFFFFF' }}
+                            onClick={() => {
+                              setDropoffLoc(dest);
+                              setActiveDropdown(null);
+                            }}
+                          >
+                            <MapPin size={16} color="#EF4444" />
+                            <span>{dest}</span>
+                          </div>
+                        ))}
+                      </>
+                    )}
+
                     {/* Custom typed location fallback */}
-                    {dropoffLoc.trim() !== '' && !getFilteredPlaces(dropoffLoc).some(p => p.toLowerCase() === dropoffLoc.toLowerCase().trim()) && (
+                    {dropoffLoc.trim() !== '' && !availableDropoffs.some(p => p.toLowerCase() === dropoffLoc.toLowerCase().trim()) && !getFilteredPlaces(dropoffLoc).some(p => p.toLowerCase() === dropoffLoc.toLowerCase().trim()) && (
                       <div 
                         onClick={() => setActiveDropdown(null)}
                         style={{ padding: '10px 14px', fontSize: '13px', fontWeight: '700', color: '#059669', background: '#F0FDF4', borderBottom: '1px solid #E2E8F0', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
@@ -540,18 +797,18 @@ export default function SelectLocationScreen({
                     )}
 
                     <div style={{ padding: '10px 14px', fontSize: '11px', fontWeight: '800', color: '#64748B', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-                      POPULAR CITIES & VILLAGES
+                      OTHER CITIES & VILLAGES
                     </div>
-                    {getFilteredPlaces(dropoffLoc).map((place, i) => (
+                    {getFilteredPlaces(dropoffLoc).filter(p => !availableDropoffs.some(ad => ad.toLowerCase() === p.toLowerCase())).map((place, i) => (
                       <div 
-                        key={i}
+                        key={`dp-pl-${i}`}
                         style={{ padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#0F172A', borderBottom: '1px solid #F1F5F9', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}
                         onClick={() => {
                           setDropoffLoc(place);
                           setActiveDropdown(null);
                         }}
                       >
-                        <MapPin size={16} color="#EF4444" />
+                        <MapPin size={16} color="#94A3B8" />
                         <span>{place}</span>
                       </div>
                     ))}
@@ -559,6 +816,233 @@ export default function SelectLocationScreen({
                 )}
               </div>
             </div>
+
+            {/* ROUTE NOT AVAILABLE WARNING & CUSTOM INQUIRY FORM */}
+            {pickupLoc && pickupLoc.trim() !== '' && dropoffLoc && dropoffLoc.trim() !== '' && !isDirectRouteAvailable && (
+              <div style={{
+                background: '#FFFFFF',
+                borderRadius: '20px',
+                padding: '20px',
+                marginBottom: '20px',
+                border: '1.5px solid #F59E0B',
+                boxShadow: '0 8px 24px rgba(245, 158, 11, 0.1)',
+                animation: 'fadeIn 0.25s ease'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '14px' }}>
+                  <div style={{
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '12px',
+                    background: '#FEF3C7',
+                    border: '1px solid #FDE68A',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}>
+                    <AlertCircle size={22} color="#D97706" />
+                  </div>
+                  <div>
+                    <div style={{
+                      display: 'inline-block',
+                      background: '#FEF3C7',
+                      color: '#B45309',
+                      fontSize: '11px',
+                      fontWeight: '800',
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      letterSpacing: '0.5px',
+                      marginBottom: '4px'
+                    }}>
+                      DIRECT ROUTE NOT AVAILABLE
+                    </div>
+                    <h4 style={{
+                      margin: '2px 0 6px 0',
+                      fontFamily: 'League Spartan, sans-serif',
+                      fontSize: '18px',
+                      fontWeight: '800',
+                      color: '#0F172A'
+                    }}>
+                      Direct Route Not Listed
+                    </h4>
+                    <p style={{
+                      margin: 0,
+                      fontSize: '13px',
+                      color: '#64748B',
+                      lineHeight: 1.45
+                    }}>
+                      A fixed-fare automated route is not directly available between <strong>{pickupLoc}</strong> and <strong>{dropoffLoc}</strong>. Submit your custom trip inquiry below and our dispatch team will promptly arrange your cab!
+                    </p>
+                  </div>
+                </div>
+
+                {customInquiryState.isSubmitted ? (
+                  <div style={{
+                    background: '#F0FDF4',
+                    border: '1.5px solid #86EFAC',
+                    borderRadius: '16px',
+                    padding: '16px',
+                    textAlign: 'center'
+                  }}>
+                    <CheckCircle2 size={32} color="#16A34A" style={{ margin: '0 auto 8px auto', display: 'block' }} />
+                    <h5 style={{ margin: '0 0 6px 0', fontSize: '16px', fontWeight: '800', color: '#15803D', fontFamily: 'League Spartan, sans-serif' }}>
+                      Inquiry Sent to Admin!
+                    </h5>
+                    <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#166534', lineHeight: 1.4 }}>
+                      We received your custom route request from <strong>{pickupLoc}</strong> to <strong>{dropoffLoc}</strong>. Our admin team will contact you at <strong>{customInquiryState.phone}</strong> shortly with your custom price.
+                    </p>
+                    <a
+                      href="tel:+917226844108"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        background: '#15803D',
+                        color: '#FFFFFF',
+                        textDecoration: 'none',
+                        padding: '10px 18px',
+                        borderRadius: '12px',
+                        fontSize: '13px',
+                        fontWeight: '700'
+                      }}
+                    >
+                      <Phone size={15} color="#FFFFFF" />
+                      <span>Call Admin Directly (+91 7226844108)</span>
+                    </a>
+                  </div>
+                ) : (
+                  <form onSubmit={handleSendCustomInquiry} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{
+                      background: '#F8FAFC',
+                      border: '1px solid #E2E8F0',
+                      borderRadius: '14px',
+                      padding: '12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#334155' }}>
+                        <MapPin size={15} color="#22C55E" />
+                        <span style={{ fontWeight: '700' }}>Pickup:</span>
+                        <span style={{ color: '#0F172A', fontWeight: '600' }}>{pickupLoc}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#334155' }}>
+                        <MapPin size={15} color="#EF4444" />
+                        <span style={{ fontWeight: '700' }}>Drop-off:</span>
+                        <span style={{ color: '#0F172A', fontWeight: '600' }}>{dropoffLoc}</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <div>
+                        <label style={{ fontSize: '11px', fontWeight: '800', color: '#475569', display: 'block', marginBottom: '4px' }}>
+                          TRAVEL DATE
+                        </label>
+                        <input
+                          type="date"
+                          value={customInquiryState.date}
+                          onChange={(e) => setCustomInquiryState(prev => ({ ...prev, date: e.target.value }))}
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            borderRadius: '12px',
+                            border: '1.5px solid #CBD5E1',
+                            fontFamily: 'Space Grotesk, sans-serif',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            color: '#0F172A',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '11px', fontWeight: '800', color: '#475569', display: 'block', marginBottom: '4px' }}>
+                          YOUR NAME
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Your Name"
+                          value={customInquiryState.name}
+                          onChange={(e) => setCustomInquiryState(prev => ({ ...prev, name: e.target.value }))}
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            borderRadius: '12px',
+                            border: '1.5px solid #CBD5E1',
+                            fontFamily: 'Space Grotesk, sans-serif',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            color: '#0F172A',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: '11px', fontWeight: '800', color: '#475569', display: 'block', marginBottom: '4px' }}>
+                        PHONE NUMBER (FOR CUSTOM QUOTE)
+                      </label>
+                      <input
+                        type="tel"
+                        placeholder="10-digit mobile number"
+                        value={customInquiryState.phone}
+                        onChange={(e) => setCustomInquiryState(prev => ({ ...prev, phone: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          borderRadius: '12px',
+                          border: '1.5px solid #CBD5E1',
+                          fontFamily: 'Space Grotesk, sans-serif',
+                          fontSize: '13px',
+                          fontWeight: '600',
+                          color: '#0F172A',
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+
+                    {customInquiryState.error && (
+                      <div style={{ fontSize: '12px', color: '#DC2626', fontWeight: '700' }}>
+                        {customInquiryState.error}
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={customInquiryState.isSubmitting}
+                      style={{
+                        width: '100%',
+                        background: '#0F172A',
+                        color: '#FFFFFF',
+                        border: 'none',
+                        padding: '13px',
+                        borderRadius: '14px',
+                        fontFamily: 'League Spartan, sans-serif',
+                        fontSize: '15px',
+                        fontWeight: '800',
+                        cursor: customInquiryState.isSubmitting ? 'wait' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        boxShadow: '0 4px 14px rgba(15, 23, 42, 0.25)'
+                      }}
+                    >
+                      <Send size={15} color="#FFFFFF" />
+                      <span>{customInquiryState.isSubmitting ? 'Sending Inquiry...' : 'Send Custom Route Inquiry to Admin'}</span>
+                    </button>
+
+                    <div style={{ textAlign: 'center', fontSize: '12px', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                      <Phone size={13} color="#64748B" />
+                      <span>Need instant booking? Call Admin:</span>
+                      <a href="tel:+917226844108" style={{ color: '#0F172A', fontWeight: '700', textDecoration: 'none' }}>+91 7226844108</a>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
 
             {/* Direct Routes List */}
             <div>
@@ -581,8 +1065,8 @@ export default function SelectLocationScreen({
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {routes.map((route, idx) => {
-                  const isSelected = (pickupLoc === route.pickup && dropoffLoc === route.dropoff) ||
-                                     (pickupLoc === route.dropoff && dropoffLoc === route.pickup);
+                  const isSelected = pickupLoc.trim().toLowerCase() === (route.pickup || '').trim().toLowerCase() &&
+                                     dropoffLoc.trim().toLowerCase() === (route.dropoff || '').trim().toLowerCase();
                   const baseP = Number(route.price) || 0;
                   let carPriceVals = [];
                   if (route.car_prices && typeof route.car_prices === 'object') {
@@ -996,7 +1480,11 @@ export default function SelectLocationScreen({
             disabled={!isStandardReady}
             onClick={handleProceedStandard}
           >
-            {isStandardReady ? 'Confirm Route & Schedule Trip →' : 'Select Pickup & Destination'}
+            {(!pickupLoc || !pickupLoc.trim() || !dropoffLoc || !dropoffLoc.trim()) 
+              ? 'Select Pickup & Destination'
+              : !isDirectRouteAvailable
+                ? 'Route Not In Direct Roster — Send Inquiry Above'
+                : 'Confirm Route & Schedule Trip →'}
           </button>
         ) : (
           <button 

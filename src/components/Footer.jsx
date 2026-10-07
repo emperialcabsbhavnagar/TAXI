@@ -139,7 +139,7 @@ export default function Footer() {
               </p>
               <p className="contact-item">
                 <Mail size={16} className="contact-icon" />
-                <span>support@emperialcabs.com</span>
+                <a href="mailto:emperialcabsbhavnagar@gmail.com" style={{ color: 'inherit', textDecoration: 'none' }}>emperialcabsbhavnagar@gmail.com</a>
               </p>
             </div>
           </div>

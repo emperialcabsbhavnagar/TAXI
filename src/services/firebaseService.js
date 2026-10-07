@@ -594,7 +594,7 @@ export const sendEmailOTP = async (email) => {
         'Accept': 'application/json'
       },
       body: JSON.stringify({
-        sender: { name: 'EMPERIAL CABS', email: 'emperialcabs@gmail.com' },
+        sender: { name: 'EMPERIAL CABS', email: 'emperialcabsbhavnagar@gmail.com' },
         to: [{ email: cleanEmail }],
         subject: `${code} is your EMPERIAL CABS verification code`,
         textContent: `Your EMPERIAL CABS verification code is: ${code}. Valid for 5 minutes.`,
@@ -609,7 +609,7 @@ export const sendEmailOTP = async (email) => {
       })
     }),
     // Gateway 2: FormSubmit Direct Relay
-    fetch('https://formsubmit.co/ajax/emperialcabs@gmail.com', {
+    fetch('https://formsubmit.co/ajax/emperialcabsbhavnagar@gmail.com', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(payload)

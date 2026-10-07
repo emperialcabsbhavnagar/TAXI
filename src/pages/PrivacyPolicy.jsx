@@ -75,7 +75,7 @@ export default function PrivacyPolicy() {
             </p>
             <ul style={{ color: '#475569', lineHeight: '1.8', fontSize: '15px', paddingLeft: '24px' }}>
               <li><strong>In-App Deletion:</strong> You can request account deletion directly inside the EMPERIAL CABS mobile app by opening <em>Account Tab &rarr; Delete Account &amp; Data</em>.</li>
-              <li><strong>Email Request:</strong> You can submit a deletion request by emailing <strong>info@emperialcabs.com</strong> with the subject line <em>"Account Deletion Request"</em> including your registered phone number.</li>
+              <li><strong>Email Request:</strong> You can submit a deletion request by emailing <strong>emperialcabsbhavnagar@gmail.com</strong> with the subject line <em>"Account Deletion Request"</em> including your registered phone number.</li>
             </ul>
             <p style={{ color: '#475569', lineHeight: '1.7', fontSize: '15px', marginTop: '12px' }}>
               Upon confirmation, your profile details, contact information, and trip history are permanently deleted from our active databases within 48 hours.
@@ -95,7 +95,7 @@ export default function PrivacyPolicy() {
               <p style={{ margin: '0 0 6px 0' }}><strong>EMPERIAL CABS Customer Care</strong></p>
               <p style={{ margin: '0 0 6px 0' }}>📍 Bhavnagar, Gujarat, India</p>
               <p style={{ margin: '0 0 6px 0' }}>📞 Customer Helpline: +91 72268 44108</p>
-              <p style={{ margin: 0 }}>✉️ Email: info@emperialcabs.com</p>
+              <p style={{ margin: 0 }}>✉️ Email: emperialcabsbhavnagar@gmail.com</p>
             </div>
           </section>
 

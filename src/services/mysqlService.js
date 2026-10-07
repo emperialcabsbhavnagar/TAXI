@@ -444,6 +444,75 @@ export const broadcastVehicleUpdate = (vehiclesList) => {
   } catch (e) {}
 };
 
+/**
+ * Expand route list bidirectionally: If Bhavnagar -> Ahmedabad exists,
+ * Ahmedabad -> Bhavnagar is automatically generated with identical pricing.
+ */
+export const expandBidirectionalRoutes = (routeList) => {
+  if (!Array.isArray(routeList)) return [];
+  const result = [];
+  const seen = new Set();
+
+  routeList.forEach(r => {
+    if (!r || !r.pickup || !r.dropoff) return;
+    const p = String(r.pickup).trim();
+    const d = String(r.dropoff).trim();
+    const key = `${p.toLowerCase()}__${d.toLowerCase()}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(r);
+    }
+  });
+
+  routeList.forEach(r => {
+    if (!r || !r.pickup || !r.dropoff) return;
+    const p = String(r.pickup).trim();
+    const d = String(r.dropoff).trim();
+    const revKey = `${d.toLowerCase()}__${p.toLowerCase()}`;
+    if (!seen.has(revKey)) {
+      seen.add(revKey);
+      result.push({
+        id: `${r.id || 'route'}_rev`,
+        name: `${d} → ${p}`,
+        pickup: d,
+        dropoff: p,
+        price: Number(r.price) || 0,
+        duration: r.duration || '',
+        car_prices: r.car_prices || {},
+        isGeneratedReverse: true
+      });
+    }
+  });
+
+  return result;
+};
+
+/**
+ * Broadcast destination & route updates across storage, DOM events, and cross-tab BroadcastChannel
+ * so customer screens reflect newly added or updated routes instantaneously.
+ */
+export const broadcastDestinationUpdate = (destinationsList) => {
+  if (typeof window === 'undefined' || !Array.isArray(destinationsList)) return;
+  try {
+    safeStorageSetItem('cabsy_destinations', destinationsList);
+    localStorage.setItem('cabsy_destinations', JSON.stringify(destinationsList));
+    localStorage.setItem('cabsy_routes', JSON.stringify(destinationsList));
+  } catch (e) {}
+
+  try {
+    window.dispatchEvent(new CustomEvent('EMPERIAL CABS_destinations_updated', { detail: destinationsList }));
+    window.dispatchEvent(new Event('storage'));
+  } catch (e) {}
+
+  try {
+    if ('BroadcastChannel' in window) {
+      const bc = new BroadcastChannel('emperial_cabs_channel');
+      bc.postMessage({ type: 'DESTINATIONS_UPDATED', destinations: destinationsList });
+      bc.close();
+    }
+  } catch (e) {}
+};
+
 export const saveRouteToMySQL = async (route) => {
   if (!route) return false;
   const res = await sendRequest('saveRoute', route);

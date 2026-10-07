@@ -93,7 +93,7 @@ export default function Contact() {
                 <div className="card info-mini-card">
                   <div className="icon-box"><Phone size={22} /></div>
                   <h4>Contact Info</h4>
-                  <p className="small-text">+91 72268 44108<br />support@emperialcabs.com</p>
+                  <p className="small-text">+91 72268 44108<br />emperialcabsbhavnagar@gmail.com</p>
                 </div>
               </div>
 

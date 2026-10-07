@@ -790,7 +790,7 @@ export default function MobileAppView() {
       }
     } catch (e) {}
 
-    let userProf = { name: 'Rider', phone: '+91 72268 44108', email: 'spiderman757506@gmail.com' };
+    let userProf = { name: 'Rider', phone: '+91 72268 44108', email: 'emperialcabsbhavnagar@gmail.com' };
     try {
       const savedProf = localStorage.getItem('cabsy_user_profile');
       if (savedProf) {

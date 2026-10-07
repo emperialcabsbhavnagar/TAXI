@@ -37,7 +37,9 @@ import {
   requestLiveLocationInMySQL,
   getLiveLocationFromMySQL,
   safeStorageSetItem,
-  broadcastVehicleUpdate
+  broadcastVehicleUpdate,
+  broadcastDestinationUpdate,
+  expandBidirectionalRoutes
 } from '../services/mysqlService';
 import { getCoordsForPlace, calculateDistanceKm } from '../utils/locationCoords';
 import { 
@@ -386,7 +388,7 @@ export default function AdminPortal() {
                 rp: { name: 'EMPERIAL CABS Admin', id: window.location.hostname },
                 user: {
                   id: userId,
-                  name: 'admin@emperialcabs.com',
+                  name: 'emperialcabsbhavnagar@gmail.com',
                   displayName: 'Admin Dispatcher'
                 },
                 pubKeyCredParams: [
@@ -713,9 +715,9 @@ export default function AdminPortal() {
     const saved = localStorage.getItem('cabsy_website_settings');
     return saved ? JSON.parse(saved) : {
       heroHeading: 'The Easiest Way to Book Your Ride Download Our App for Instant Access',
-      contactPhone: '+62 831-9929-86700',
-      contactEmail: 'contact@domain.com',
-      officeAddress: 'Jl. Raya Sesetan No.210, Sesetan, Denpasar, Bali',
+      contactPhone: '+91 7226844108',
+      contactEmail: 'emperialcabsbhavnagar@gmail.com',
+      officeAddress: 'Bhavnagar, Gujarat, India',
       baseFareReguler: '2.20',
       baseFareXL: '3.50',
       baseFareLuxury: '4.80',
@@ -1163,7 +1165,7 @@ export default function AdminPortal() {
         }
 
         if (mysqlRoutes !== null && Array.isArray(mysqlRoutes)) {
-          const formattedRoutes = mysqlRoutes
+          const rawFormatted = mysqlRoutes
             .filter(r => Number(r.price) > 0 || (r.car_prices && (typeof r.car_prices === 'object' ? Object.values(r.car_prices).some(p => Number(p) > 0) : true)))
             .map(r => ({
               id: r.id,
@@ -1174,6 +1176,7 @@ export default function AdminPortal() {
               duration: r.duration || '',
               car_prices: r.car_prices || {}
             }));
+          const formattedRoutes = expandBidirectionalRoutes(rawFormatted);
           setDestinations(formattedRoutes);
           safeStorageSetItem('cabsy_destinations', formattedRoutes);
           try {
@@ -1360,19 +1363,44 @@ export default function AdminPortal() {
       car_prices: carPrices
     };
 
+    // Auto-create complimentary reverse route with identical pricing
+    const reverseCreated = {
+      id: `DEST-${Date.now() + 1}`,
+      name: `${dropoffVal} → ${pickupVal}`,
+      pickup: dropoffVal,
+      dropoff: pickupVal,
+      price: basePrice,
+      duration: durStr || newDestForm.duration || '',
+      car_prices: carPrices
+    };
+
     try {
       await saveRouteToMySQL(created);
     } catch (err) {
       console.warn("Save route MySQL error:", err);
     }
 
-    const updated = [...destinations.filter(d => d && d.pickup && d.dropoff), created];
+    try {
+      await saveRouteToMySQL(reverseCreated);
+    } catch (err) {
+      console.warn("Save reverse route MySQL error:", err);
+    }
+
+    const filteredExisting = destinations.filter(d => 
+      d && d.pickup && d.dropoff && 
+      !(
+        (d.pickup.trim().toLowerCase() === pickupVal.trim().toLowerCase() && d.dropoff.trim().toLowerCase() === dropoffVal.trim().toLowerCase()) ||
+        (d.pickup.trim().toLowerCase() === dropoffVal.trim().toLowerCase() && d.dropoff.trim().toLowerCase() === pickupVal.trim().toLowerCase())
+      )
+    );
+
+    const updated = [...filteredExisting, created, reverseCreated];
     setDestinations(updated);
     safeStorageSetItem('cabsy_destinations', updated);
     try {
       localStorage.setItem('cabsy_routes', JSON.stringify(updated));
     } catch(e) {}
-    window.dispatchEvent(new CustomEvent('EMPERIAL CABS_destinations_updated', { detail: updated }));
+    broadcastDestinationUpdate(updated);
     setNewDestForm({ name: '', pickup: places[0] || '', dropoff: places[1] || '', price: '', hours: '', mins: '', duration: '', car_prices: {} });
     setAddDestModal(false);
   };
@@ -1427,7 +1455,7 @@ export default function AdminPortal() {
     try {
       localStorage.setItem('cabsy_routes', JSON.stringify(updated));
     } catch(e) {}
-    window.dispatchEvent(new CustomEvent('EMPERIAL CABS_destinations_updated', { detail: updated }));
+    broadcastDestinationUpdate(updated);
     setEditDestModal({ open: false, destination: null });
   };
 
@@ -1444,7 +1472,7 @@ export default function AdminPortal() {
       try {
         localStorage.setItem('cabsy_routes', JSON.stringify(updated));
       } catch(e) {}
-      window.dispatchEvent(new CustomEvent('EMPERIAL CABS_destinations_updated', { detail: updated }));
+      broadcastDestinationUpdate(updated);
     }
   };
 
@@ -1460,7 +1488,7 @@ export default function AdminPortal() {
       try {
         localStorage.setItem('cabsy_routes', JSON.stringify([]));
       } catch(e) {}
-      window.dispatchEvent(new CustomEvent('EMPERIAL CABS_destinations_updated', { detail: [] }));
+      broadcastDestinationUpdate([]);
       alert("All routes have been deleted from the database. You now have a clean slate to add fresh routes.");
     }
   };
@@ -1699,7 +1727,7 @@ export default function AdminPortal() {
     try {
       localStorage.setItem('cabsy_routes', JSON.stringify(finalCleanList));
     } catch(e) {}
-    window.dispatchEvent(new CustomEvent('EMPERIAL CABS_destinations_updated', { detail: finalCleanList }));
+    broadcastDestinationUpdate(finalCleanList);
     setBatchMatrixModal({ open: false, originPlace: '', rates: {} });
   };
 

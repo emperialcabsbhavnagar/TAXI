@@ -41,11 +41,11 @@ export default function Faq({ onOpenBooking }) {
   const safetyFaqs = [
     {
       q: "Are your drivers licensed and experienced?",
-      a: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aenean commodo ligula eget dolor. Aenean massa. Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Donec quam felis, ultricies nec, pellentesque eu, pretium quis, sem."
+      a: "Yes, all EMPERIAL CABS drivers hold valid commercial driving licenses, verified background checks, and extensive professional route driving experience across Gujarat."
     },
     {
       q: "How can I report any safety concerns or incidents?",
-      a: "Our 24/7 support team can be reached directly through the app or by calling our hotline (+62 831-9929-86700)."
+      a: "Our 24/7 support team can be reached directly through the app or by calling our hotline (+91 7226844108) or emailing emperialcabsbhavnagar@gmail.com."
     },
     {
       q: "Are your drivers background checked?",

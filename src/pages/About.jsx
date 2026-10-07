@@ -218,7 +218,7 @@ export default function About({ onOpenBooking }) {
                     <Phone size={22} />
                   </div>
                   <h4>24/7 Helpline</h4>
-                  <p className="small-text">+91 72268 44108<br />support@emperialcabs.com</p>
+                  <p className="small-text">+91 72268 44108<br />emperialcabsbhavnagar@gmail.com</p>
                 </div>
               </div>
             </div>
