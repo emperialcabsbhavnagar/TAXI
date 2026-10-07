@@ -947,9 +947,33 @@ switch ($action) {
         echo json_encode(['success' => true, 'id' => $id]);
         break;
 
+    case 'getAdminLiveSync':
+        $inqStmt = $pdo->query("SELECT * FROM inquiries ORDER BY created_at DESC LIMIT 100");
+        $inquiries = $inqStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $msgStmt = $pdo->query("SELECT * FROM contact_messages ORDER BY created_at DESC LIMIT 100");
+        $messages = $msgStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $notifStmt = $pdo->prepare("SELECT * FROM customer_notifications 
+                                    WHERE UPPER(TRIM(target_phone)) = 'ADMIN' 
+                                      AND (delivered = 0 OR delivered IS NULL)
+                                      AND created_at >= NOW() - INTERVAL 48 HOUR 
+                                    ORDER BY created_at DESC LIMIT 50");
+        $notifStmt->execute();
+        $adminNotifs = $notifStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            'success' => true,
+            'inquiries' => $inquiries,
+            'messages' => $messages,
+            'notifications' => $adminNotifs
+        ]);
+        break;
+
     case 'getCustomerNotifications':
         $phone = trim($data['phone'] ?? ($_GET['phone'] ?? ''));
         $email = trim($data['email'] ?? ($_GET['email'] ?? ''));
+        $isAdmin = (strtoupper($phone) === 'ADMIN' || strtoupper($email) === 'ADMIN');
         $cleanPhone = preg_replace('/\D/', '', $phone);
         $cleanPhone10 = strlen($cleanPhone) >= 10 ? substr($cleanPhone, -10) : $cleanPhone;
 
@@ -962,18 +986,25 @@ switch ($action) {
 
         $filtered = [];
         foreach ($all as $row) {
+            $tPhone = strtoupper(trim($row['target_phone'] ?? ''));
             $rPhone = preg_replace('/\D/', '', $row['target_phone'] ?? '');
             $rPhone10 = strlen($rPhone) >= 10 ? substr($rPhone, -10) : $rPhone;
             $rEmail = strtolower(trim($row['target_email'] ?? ''));
 
             $match = false;
-            // Global broadcast notification (target empty)
-            if (empty($rPhone) && empty($rEmail)) {
-                $match = true;
-            } else if (!empty($cleanPhone10) && !empty($rPhone10) && $cleanPhone10 === $rPhone10) {
-                $match = true;
-            } else if (!empty($email) && !empty($rEmail) && strtolower($email) === $rEmail) {
-                $match = true;
+            if ($isAdmin) {
+                if ($tPhone === 'ADMIN') {
+                    $match = true;
+                }
+            } else {
+                // Global broadcast notification (target empty)
+                if (empty($rPhone) && empty($rEmail)) {
+                    $match = true;
+                } else if (!empty($cleanPhone10) && !empty($rPhone10) && $cleanPhone10 === $rPhone10) {
+                    $match = true;
+                } else if (!empty($email) && !empty($rEmail) && strtolower($email) === $rEmail) {
+                    $match = true;
+                }
             }
             if ($match) {
                 $filtered[] = $row;

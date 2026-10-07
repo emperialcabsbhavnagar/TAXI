@@ -807,6 +807,17 @@ export async function handleMySQLRequest(action, data = {}) {
         return { success: true };
       }
 
+      case 'getAdminLiveSync': {
+        const [inquiries] = await executeQuery('SELECT * FROM inquiries ORDER BY created_at DESC LIMIT 100');
+        const [messages] = await executeQuery('SELECT * FROM contact_messages ORDER BY created_at DESC LIMIT 100');
+        let adminNotifs = [];
+        try {
+          const [nRows] = await executeQuery(`SELECT * FROM customer_notifications WHERE UPPER(TRIM(target_phone)) = 'ADMIN' AND (delivered = 0 OR delivered IS NULL) AND created_at >= NOW() - INTERVAL 48 HOUR ORDER BY created_at DESC LIMIT 50`);
+          adminNotifs = nRows || [];
+        } catch(e) {}
+        return { success: true, inquiries: inquiries || [], messages: messages || [], notifications: adminNotifs };
+      }
+
       default:
         return { success: false, error: `Unknown action: ${action}` };
     }

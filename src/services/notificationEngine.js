@@ -37,34 +37,81 @@ export const requestNotificationPermission = async () => {
   return false;
 };
 
-// Play audio chime for notifications
-const playChimeSound = () => {
+// Global AudioContext cache with user gesture unlocking
+let globalAudioCtx = null;
+
+export const unlockAudio = () => {
   try {
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
-    osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.15); // A5
-    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.3);
+    if (typeof window === 'undefined') return;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    if (!globalAudioCtx) {
+      globalAudioCtx = new AudioContextClass();
+    }
+    if (globalAudioCtx.state === 'suspended') {
+      globalAudioCtx.resume().catch(() => {});
+    }
+  } catch (e) {}
+};
+
+// Auto-register touch/click listeners to unlock audio immediately upon any user gesture
+if (typeof window !== 'undefined') {
+  const tryUnlock = () => {
+    unlockAudio();
+  };
+  ['click', 'touchstart', 'touchend', 'keydown'].forEach(evt => {
+    window.addEventListener(evt, tryUnlock, { passive: true });
+  });
+}
+
+// Play audible chime for dispatch & booking notifications
+export const playChimeSound = () => {
+  try {
+    unlockAudio();
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    const audioCtx = globalAudioCtx || new AudioContextClass();
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
+
+    const t = audioCtx.currentTime;
+    // Tone 1: D5 (587.33 Hz)
+    const osc1 = audioCtx.createOscillator();
+    const gain1 = audioCtx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(587.33, t);
+    gain1.gain.setValueAtTime(0.6, t);
+    gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    osc1.connect(gain1);
+    gain1.connect(audioCtx.destination);
+    osc1.start(t);
+    osc1.stop(t + 0.22);
+
+    // Tone 2: A5 (880 Hz) - higher attention chime
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(880, t + 0.16);
+    gain2.gain.setValueAtTime(0.6, t + 0.16);
+    gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+    osc2.connect(gain2);
+    gain2.connect(audioCtx.destination);
+    osc2.start(t + 0.16);
+    osc2.stop(t + 0.45);
   } catch (e) {
-    // Audio Context not allowed before user interaction, ignore
+    // If Web Audio blocked, silent fallback
   }
 };
 
-// Trigger Phone / Desktop System Tray Push Notification (Mobile Chrome / APK Compatible)
+// Trigger Phone / Desktop System Tray Push Notification (Mobile Chrome / APK / PWA Compatible)
 export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CABS-notif', extraData = {}) => {
   playChimeSound();
 
   // Trigger device vibration if supported (pattern: 200ms vibrate, 100ms pause, 200ms vibrate)
   try {
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      navigator.vibrate([200, 100, 200]);
+      navigator.vibrate([200, 100, 200, 100, 200]);
     }
   } catch (e) {}
 
@@ -116,13 +163,14 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
   const targetTab = extraData?.tab || 'inquiries';
   const targetUrl = extraData?.url || `/admin?tab=${targetTab}`;
 
+  // Crucial: Use PNG icons for mobile Chrome/PWA push notifications (SVG fails on Android)
   const notifOptions = {
     body: body,
-    icon: '/EMPERAL_CABS_Website_Logo_Sharp.svg',
-    badge: '/EMPERAL_CABS_Website_Logo_Sharp.svg',
+    icon: '/official-app-icon.png',
+    badge: '/favicon.png',
     tag: tag || 'emperial_cabs_active_alert',
     renotify: true,
-    vibrate: [200, 100, 200],
+    vibrate: [200, 100, 200, 100, 200],
     data: {
       tab: targetTab,
       url: targetUrl,
@@ -189,12 +237,35 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
 
   const targetTab = extraData?.tab || (type === 'custom' || type === 'custom-trip' ? 'custom_inquiries' : 'inquiries');
 
-  const isAdminContext = typeof window !== 'undefined' && 
-    (window.location?.pathname?.includes('admin') || window.location?.hash?.includes('admin'));
+  // 1. Save to Remote MySQL so external admin devices/PWAs receive it via polling
+  try {
+    saveNotificationToMySQL({
+      id: notifObj.id,
+      target_phone: 'ADMIN',
+      target_email: 'emperialcabsbhavnagar@gmail.com',
+      title: title,
+      body: body,
+      type: type,
+      extra_data: JSON.stringify({ tab: targetTab, ...extraData })
+    }).catch(() => {});
+  } catch (e) {}
 
-  if (isAdminContext) {
-    sendSystemPushNotification(title, body, 'admin-' + notifObj.id, { tab: targetTab, ...extraData });
-  }
+  // 2. Broadcast across tabs/windows on the same device via BroadcastChannel
+  try {
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      const bc = new BroadcastChannel('emperial_cabs_channel');
+      bc.postMessage({
+        type: 'ADMIN_NOTIFICATION',
+        notification: notifObj,
+        title,
+        body,
+        extraData: { tab: targetTab, ...extraData }
+      });
+    }
+  } catch (e) {}
+
+  // 3. Trigger system push notification if permission is granted
+  sendSystemPushNotification(title, body, 'admin-' + notifObj.id, { tab: targetTab, ...extraData });
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('EMPERIAL CABS_admin_notif', { detail: notifObj }));

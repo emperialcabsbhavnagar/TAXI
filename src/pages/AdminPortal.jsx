@@ -39,7 +39,9 @@ import {
   safeStorageSetItem,
   broadcastVehicleUpdate,
   broadcastDestinationUpdate,
-  expandBidirectionalRoutes
+  expandBidirectionalRoutes,
+  fetchAdminLiveSync,
+  markNotificationDeliveredInMySQL
 } from '../services/mysqlService';
 import { getCoordsForPlace, calculateDistanceKm } from '../utils/locationCoords';
 import { 
@@ -47,7 +49,10 @@ import {
   notifyCustomer, 
   getAdminNotifications, 
   initEcosystemScheduler, 
-  requestNotificationPermission 
+  requestNotificationPermission,
+  sendSystemPushNotification,
+  playChimeSound,
+  unlockAudio
 } from '../services/notificationEngine';
 import db from '../services/dbService';
 import { 
@@ -855,56 +860,291 @@ export default function AdminPortal() {
     return [];
   });
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+  const [liveAlertToast, setLiveAlertToast] = useState(null);
+  const [notifPermissionState, setNotifPermissionState] = useState(() => (typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'));
 
-  // Notification & Live MySQL Data Sync Engine
+  // Memory trackers to prevent repeat sound/push on every sync poll
+  const knownInquiryStatusRef = React.useRef(new Map()); // id -> status
+  const knownMessageIdsRef = React.useRef(new Set());
+  const knownRemoteNotifIdsRef = React.useRef(new Set());
+  const isInitialLoadRef = React.useRef(true);
+
+  // Manual trigger for user to grant notification permission via gesture & unlock audio
+  const handleEnableNotifications = async () => {
+    try {
+      unlockAudio();
+      playChimeSound();
+      const granted = await requestNotificationPermission();
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        setNotifPermissionState(Notification.permission);
+      }
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        navigator.vibrate([200, 100, 200, 100, 200]);
+      }
+      sendSystemPushNotification(
+        '🔔 Live Dispatch Alerts Active',
+        'Push notifications & audible chimes are active on your device.',
+        'admin-perm-active',
+        { tab: 'inquiries' }
+      );
+      setLiveAlertToast({
+        id: 'perm-granted',
+        title: '🔔 Alerts Activated!',
+        desc: 'Real-time push alerts, phone vibration, and audio chimes are now operational.',
+        tab: 'inquiries'
+      });
+    } catch (e) {
+      console.warn('Notification permission error:', e);
+    }
+  };
+
+  const handleTestAlertSound = () => {
+    unlockAudio();
+    playChimeSound();
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      navigator.vibrate([200, 100, 200, 100, 200]);
+    }
+    sendSystemPushNotification(
+      '🔔 Test Dispatch Alert',
+      'Audio chime, phone vibration, and push notifications are working properly.',
+      'admin-test-' + Date.now(),
+      { tab: 'inquiries' }
+    );
+    setLiveAlertToast({
+      id: 'test-' + Date.now(),
+      title: 'Alert Audio & Push Working!',
+      desc: 'Tested chime sound, phone vibration, and notification successfully.',
+      tab: 'inquiries'
+    });
+  };
+
+  // Notification & Live MySQL Real-Time Polling Engine
   useEffect(() => {
-    requestNotificationPermission();
     initEcosystemScheduler();
 
     const fetchAllData = async (isInitial = false) => {
       try {
         if (isInitial) setFirestoreLoading(true);
 
-        // 1. Fetch Inquiries strictly from Hostinger MySQL
-        const mysqlInquiries = await loadAllInquiriesFromMySQL().catch(() => []);
+        // 1. Fetch live unified admin data in ONE single MySQL connection
+        let liveData = await fetchAdminLiveSync().catch(() => null);
+        let mysqlInquiries = [];
+        let mysqlMessages = [];
+        let adminRemoteNotifs = [];
+
+        if (liveData && liveData.inquiries) {
+          mysqlInquiries = liveData.inquiries;
+          mysqlMessages = liveData.messages || [];
+          adminRemoteNotifs = liveData.notifications || [];
+        } else {
+          // Fallback if unified sync is unavailable
+          mysqlInquiries = await loadAllInquiriesFromMySQL().catch(() => []);
+          mysqlMessages = await loadAllContactMessagesFromMySQL().catch(() => []);
+        }
+
         const localInquiries = db.getInquiries() || [];
         
         // Merge Local Storage + MySQL inquiries
         const inqMap = new Map();
         [...localInquiries, ...mysqlInquiries].forEach(item => {
           if (item && item.id) {
-            inqMap.set(item.id, { ...inqMap.get(item.id), ...item });
+            inqMap.set(String(item.id), { ...inqMap.get(String(item.id)), ...item });
           }
         });
         const mergedInquiries = Array.from(inqMap.values());
-        
-        // Only update state if inquiries data has actually changed (prevents flicker & jump)
-        setInquiries(prev => {
-          if (JSON.stringify(prev) === JSON.stringify(mergedInquiries)) {
-            return prev;
+
+        // Update contact messages state
+        const validMessages = Array.isArray(mysqlMessages) ? mysqlMessages : [];
+        if (validMessages.length > 0) {
+          setContactMessages(prev => {
+            if (JSON.stringify(prev) === JSON.stringify(validMessages)) return prev;
+            return validMessages;
+          });
+          try {
+            localStorage.setItem('cabsy_contact_messages', JSON.stringify(validMessages));
+            localStorage.setItem('cabsy_messages', JSON.stringify(validMessages));
+          } catch (e) {}
+        }
+
+        // 2. Real-Time Diff Detection: Check for incoming customer inquiries, cancellations, contact messages & remote alerts!
+        if (isInitialLoadRef.current) {
+          // On first launch, record all existing IDs and statuses
+          mergedInquiries.forEach(i => {
+            if (i?.id) knownInquiryStatusRef.current.set(String(i.id), String(i.status || 'Pending'));
+          });
+          validMessages.forEach(m => m?.id && knownMessageIdsRef.current.add(String(m.id)));
+          adminRemoteNotifs.forEach(n => n?.id && knownRemoteNotifIdsRef.current.add(String(n.id)));
+          isInitialLoadRef.current = false;
+        } else {
+          // Detect brand-new customer inquiries!
+          const newInquiries = mergedInquiries.filter(i => i && i.id && !knownInquiryStatusRef.current.has(String(i.id)));
+          if (newInquiries.length > 0) {
+            newInquiries.forEach(newInq => {
+              knownInquiryStatusRef.current.set(String(newInq.id), String(newInq.status || 'Pending'));
+              const isCust = Boolean(newInq.isCustom || newInq.tripType === 'Custom Trip' || newInq.tripType === 'custom-trip');
+              const notifTitle = isCust ? '🚨 New Custom Route Inquiry!' : '🚖 New Customer Ride Booking!';
+              const notifBody = `${newInq.customerName || 'Customer'} (${newInq.customerPhone || 'Direct'}): ${newInq.pickup} ➔ ${newInq.dropoff}`;
+              
+              playChimeSound();
+              if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                navigator.vibrate([200, 100, 200, 100, 200]);
+              }
+              sendSystemPushNotification(notifTitle, notifBody, 'inq-' + newInq.id, { tab: isCust ? 'custom_inquiries' : 'inquiries' });
+              
+              const newNotifItem = {
+                id: 'inq_notif_' + newInq.id,
+                type: isCust ? 'custom' : 'inquiry',
+                title: notifTitle,
+                desc: notifBody,
+                body: notifBody,
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                date: new Date().toISOString(),
+                read: false,
+                tab: isCust ? 'custom_inquiries' : 'inquiries'
+              };
+              setNotifications(prev => [newNotifItem, ...prev.filter(n => n.id !== newNotifItem.id)].slice(0, 50));
+              setLiveAlertToast({
+                id: newInq.id,
+                title: notifTitle,
+                desc: notifBody,
+                tab: isCust ? 'custom_inquiries' : 'inquiries'
+              });
+            });
           }
+
+          // Detect status changes on existing inquiries (e.g. customer cancelled the ride!)
+          mergedInquiries.forEach(inq => {
+            if (inq && inq.id && knownInquiryStatusRef.current.has(String(inq.id))) {
+              const prevStatus = knownInquiryStatusRef.current.get(String(inq.id));
+              const currentStatus = String(inq.status || 'Pending');
+              if (prevStatus !== currentStatus) {
+                knownInquiryStatusRef.current.set(String(inq.id), currentStatus);
+                const isCancelled = currentStatus.toLowerCase() === 'cancelled';
+                const notifTitle = isCancelled ? '⚠️ Ride Cancelled by Customer!' : `Trip Status Updated: ${currentStatus}`;
+                const notifBody = `Booking #${inq.id} (${inq.pickup} ➔ ${inq.dropoff}) is now ${currentStatus}`;
+
+                playChimeSound();
+                if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                  navigator.vibrate([200, 100, 200, 100, 200]);
+                }
+                sendSystemPushNotification(notifTitle, notifBody, 'status-' + inq.id, { tab: 'inquiries' });
+
+                const updateNotifItem = {
+                  id: 'status_notif_' + inq.id + '_' + Date.now(),
+                  type: 'inquiry',
+                  title: notifTitle,
+                  desc: notifBody,
+                  body: notifBody,
+                  time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  date: new Date().toISOString(),
+                  read: false,
+                  tab: 'inquiries'
+                };
+                setNotifications(prev => [updateNotifItem, ...prev].slice(0, 50));
+                setLiveAlertToast({
+                  id: inq.id,
+                  title: notifTitle,
+                  desc: notifBody,
+                  tab: 'inquiries'
+                });
+              }
+            }
+          });
+
+          // Detect brand-new contact messages!
+          const newMessages = validMessages.filter(m => m && m.id && !knownMessageIdsRef.current.has(String(m.id)));
+          if (newMessages.length > 0) {
+            newMessages.forEach(newMsg => {
+              knownMessageIdsRef.current.add(String(newMsg.id));
+              const notifTitle = '📩 New Customer Contact Message!';
+              const notifBody = `${newMsg.name || 'Customer'} (${newMsg.phone || ''}): ${newMsg.subject || newMsg.message || 'New Inquiry'}`;
+              
+              playChimeSound();
+              if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                navigator.vibrate([200, 100, 200, 100, 200]);
+              }
+              sendSystemPushNotification(notifTitle, notifBody, 'msg-' + newMsg.id, { tab: 'messages' });
+              
+              const newNotifItem = {
+                id: 'msg_notif_' + newMsg.id,
+                type: 'message',
+                title: notifTitle,
+                desc: notifBody,
+                body: notifBody,
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                date: new Date().toISOString(),
+                read: false,
+                tab: 'messages'
+              };
+              setNotifications(prev => [newNotifItem, ...prev.filter(n => n.id !== newNotifItem.id)].slice(0, 50));
+              setLiveAlertToast({
+                id: newMsg.id,
+                title: notifTitle,
+                desc: notifBody,
+                tab: 'messages'
+              });
+            });
+          }
+
+          // Detect incoming remote notifications targeted for ADMIN in MySQL
+          if (Array.isArray(adminRemoteNotifs) && adminRemoteNotifs.length > 0) {
+            adminRemoteNotifs.forEach(notifRow => {
+              if (notifRow && notifRow.id && !knownRemoteNotifIdsRef.current.has(String(notifRow.id))) {
+                knownRemoteNotifIdsRef.current.add(String(notifRow.id));
+                markNotificationDeliveredInMySQL(notifRow.id).catch(() => {});
+                
+                playChimeSound();
+                if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                  navigator.vibrate([200, 100, 200, 100, 200]);
+                }
+                const nTitle = notifRow.title || '🚨 Dispatch Update';
+                const nBody = notifRow.body || 'You have an update from a customer.';
+                sendSystemPushNotification(nTitle, nBody, 'rem-' + notifRow.id, { tab: 'inquiries' });
+                
+                const item = {
+                  id: notifRow.id,
+                  type: notifRow.type || 'inquiry',
+                  title: nTitle,
+                  desc: nBody,
+                  body: nBody,
+                  time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  date: new Date().toISOString(),
+                  read: false,
+                  tab: 'inquiries'
+                };
+                setNotifications(prev => [item, ...prev.filter(x => x.id !== notifRow.id)].slice(0, 50));
+                setLiveAlertToast({
+                  id: notifRow.id,
+                  title: nTitle,
+                  desc: nBody,
+                  tab: 'inquiries'
+                });
+              }
+            });
+          }
+        }
+
+        // Update inquiries state if data changed
+        setInquiries(prev => {
+          if (JSON.stringify(prev) === JSON.stringify(mergedInquiries)) return prev;
           return mergedInquiries;
         });
 
-        // 2. Fetch Customers from Hostinger MySQL
-        const mysqlCustomers = await loadAllCustomersFromMySQL();
-        const localCustomers = db.getCustomers() || [];
-
-        const custMap = new Map();
-        [...localCustomers, ...mysqlCustomers].forEach(c => {
-          const key = (c.email || c.phone || c.id || '').toLowerCase().trim();
-          if (key) {
-            custMap.set(key, { ...custMap.get(key), ...c });
-          }
-        });
-        const mergedCustomers = Array.from(custMap.values());
-
-        setCustomers(prev => {
-          if (JSON.stringify(prev) === JSON.stringify(mergedCustomers)) {
-            return prev;
-          }
-          return mergedCustomers;
-        });
+        // 3. Fetch Customers only periodically / on initial load
+        if (isInitial || Math.random() < 0.25) {
+          const mysqlCustomers = await loadAllCustomersFromMySQL();
+          const localCustomers = db.getCustomers() || [];
+          const custMap = new Map();
+          [...localCustomers, ...mysqlCustomers].forEach(c => {
+            const key = (c.email || c.phone || c.id || '').toLowerCase().trim();
+            if (key) custMap.set(key, { ...custMap.get(key), ...c });
+          });
+          const mergedCustomers = Array.from(custMap.values());
+          setCustomers(prev => {
+            if (JSON.stringify(prev) === JSON.stringify(mergedCustomers)) return prev;
+            return mergedCustomers;
+          });
+        }
       } catch (e) {
         console.warn('MySQL Fetch Exception in AdminPortal:', e);
       } finally {
@@ -914,7 +1154,7 @@ export default function AdminPortal() {
 
     fetchAllData(true);
 
-    // Sync admin notifications
+    // Sync admin notifications from localStorage / internal events
     const syncAdminNotifs = () => {
       const fresh = getAdminNotifications();
       if (fresh && fresh.length > 0) {
@@ -924,13 +1164,40 @@ export default function AdminPortal() {
 
     window.addEventListener('EMPERIAL CABS_admin_notif', syncAdminNotifs);
     window.addEventListener('EMPERIAL CABS_db_sync', syncAdminNotifs);
+
+    // BroadcastChannel for cross-tab and cross-window sync
+    let bc = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        bc = new BroadcastChannel('emperial_cabs_channel');
+        bc.onmessage = (event) => {
+          if (event.data?.type === 'ADMIN_NOTIFICATION' && event.data?.notification) {
+            const notif = event.data.notification;
+            playChimeSound();
+            if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+              navigator.vibrate([200, 100, 200, 100, 200]);
+            }
+            sendSystemPushNotification(notif.title, notif.body || notif.desc, 'bc-' + notif.id, notif.extraData);
+            setNotifications(prev => [notif, ...prev.filter(x => x.id !== notif.id)].slice(0, 50));
+            setLiveAlertToast({
+              id: notif.id,
+              title: notif.title || 'New Customer Update!',
+              desc: notif.desc || notif.body || '',
+              tab: notif.extraData?.tab || 'inquiries'
+            });
+            fetchAllData(false);
+          }
+        };
+      }
+    } catch(e) {}
     
-    // Poll Hostinger MySQL silently in background every 120s (prevents DB connection exhaustion)
-    const interval = setInterval(() => fetchAllData(false), 120000);
+    // Poll Hostinger MySQL safely (every 12 seconds) for real-time customer alerts!
+    const interval = setInterval(() => fetchAllData(false), 12000);
 
     return () => {
       window.removeEventListener('EMPERIAL CABS_admin_notif', syncAdminNotifs);
       window.removeEventListener('EMPERIAL CABS_db_sync', syncAdminNotifs);
+      if (bc) bc.close();
       clearInterval(interval);
     };
   }, []);
@@ -2726,6 +2993,158 @@ export default function AdminPortal() {
 
       {/* RIGHT MAIN DATA CONTENT */}
       <main className="admin-main-content">
+        {/* REAL-TIME INCOMING ALERT TOAST */}
+        {liveAlertToast && (
+          <div style={{
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            zIndex: 9999,
+            background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
+            border: '2px solid #10B981',
+            borderRadius: '16px',
+            padding: '16px 20px',
+            boxShadow: '0 12px 36px rgba(16, 185, 129, 0.35)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '14px',
+            maxWidth: '420px',
+            animation: 'fadeIn 0.25s ease'
+          }}>
+            <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Bell size={20} color="#FFFFFF" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '14px', fontWeight: '800', color: '#10B981', marginBottom: '2px' }}>
+                {liveAlertToast.title}
+              </div>
+              <div style={{ fontSize: '13px', color: '#E2E8F0', lineHeight: 1.3 }}>
+                {liveAlertToast.desc}
+              </div>
+            </div>
+            {liveAlertToast.tab && (
+              <button
+                onClick={() => {
+                  setActiveTab(liveAlertToast.tab);
+                  setLiveAlertToast(null);
+                }}
+                style={{
+                  background: '#10B981',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  padding: '8px 12px',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  flexShrink: 0
+                }}
+              >
+                View
+              </button>
+            )}
+            <button
+              onClick={() => setLiveAlertToast(null)}
+              style={{ background: 'transparent', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: '4px' }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
+        {/* NOTIFICATION STATUS & ACTIVATION CONTROL BAR */}
+        <div style={{
+          background: notifPermissionState === 'granted' ? '#0F172A' : 'linear-gradient(135deg, #047857 0%, #059669 100%)',
+          borderRadius: '16px',
+          padding: '12px 18px',
+          marginBottom: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '10px',
+          border: notifPermissionState === 'granted' ? '1px solid #334155' : '1px solid #10B981',
+          boxShadow: notifPermissionState === 'granted' ? 'none' : '0 6px 20px rgba(16, 185, 129, 0.25)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '10px',
+              background: notifPermissionState === 'granted' ? '#1E293B' : '#FFFFFF',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: notifPermissionState === 'granted' ? '#10B981' : '#047857'
+            }}>
+              <Bell size={18} />
+            </div>
+            <div>
+              <div style={{ fontSize: '13px', fontWeight: '800', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>{notifPermissionState === 'granted' ? 'Live Dispatch Alerts Active' : 'Enable Real-Time Sound & Push Alerts'}</span>
+                {notifPermissionState === 'granted' && (
+                  <span style={{ fontSize: '10px', background: '#10B981', color: '#0F172A', padding: '1px 6px', borderRadius: '6px', fontWeight: '800' }}>
+                    ONLINE & SYNCED
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: '11px', color: '#CBD5E1' }}>
+                {notifPermissionState === 'granted'
+                  ? 'Your device automatically receives push notifications, vibration & audio chimes for every new customer booking & inquiry.'
+                  : 'Tap the button to allow push alerts on your phone so you never miss a new ride booking.'}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {notifPermissionState !== 'granted' && (
+              <button
+                type="button"
+                onClick={handleEnableNotifications}
+                style={{
+                  background: '#FFFFFF',
+                  color: '#047857',
+                  border: 'none',
+                  padding: '8px 16px',
+                  borderRadius: '10px',
+                  fontSize: '13px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                }}
+              >
+                <Bell size={15} color="#047857" />
+                <span>Enable Alerts</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleTestAlertSound}
+              style={{
+                background: '#1E293B',
+                color: '#6EE7B7',
+                border: '1px solid #334155',
+                padding: '8px 14px',
+                borderRadius: '10px',
+                fontSize: '12px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              title="Test audio chime and phone vibration"
+            >
+              <Zap size={14} color="#6EE7B7" />
+              <span>Test Audio Alert</span>
+            </button>
+          </div>
+        </div>
+
         {/* TAB 1: DASHBOARD */}
         {activeTab === 'dashboard' && (
           <div className="tab-pane">

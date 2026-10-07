@@ -287,6 +287,46 @@ export default function SelectLocationScreen({
 
   const isDirectRouteAvailable = Boolean(matchedDirectRoute);
 
+  // Dynamically sort direct routes so the selected or matching route always comes FIRST (Top 1)
+  const sortedRoutes = useMemo(() => {
+    if (!Array.isArray(routes) || routes.length === 0) return [];
+    const p = (pickupLoc || '').trim().toLowerCase();
+    const d = (dropoffLoc || '').trim().toLowerCase();
+
+    return [...routes].sort((a, b) => {
+      const ap = (a.pickup || '').trim().toLowerCase();
+      const ad = (a.dropoff || '').trim().toLowerCase();
+      const bp = (b.pickup || '').trim().toLowerCase();
+      const bd = (b.dropoff || '').trim().toLowerCase();
+
+      // Priority 1: Exact match on both pickup and dropoff -> immediately position Top 1
+      const aExact = Boolean(p && d && ap === p && ad === d);
+      const bExact = Boolean(p && d && bp === p && bd === d);
+      if (aExact && !bExact) return -1;
+      if (!aExact && bExact) return 1;
+
+      // Priority 2: Fuzzy match on both pickup and dropoff
+      const aBothMatch = Boolean(p && d && (ap.includes(p) || p.includes(ap)) && (ad.includes(d) || d.includes(ad)));
+      const bBothMatch = Boolean(p && d && (bp.includes(p) || p.includes(bp)) && (bd.includes(d) || d.includes(bd)));
+      if (aBothMatch && !bBothMatch) return -1;
+      if (!aBothMatch && bBothMatch) return 1;
+
+      // Priority 3: Pickup match
+      const aPickupMatch = Boolean(p && (ap === p || ap.includes(p) || p.includes(ap)));
+      const bPickupMatch = Boolean(p && (bp === p || bp.includes(p) || p.includes(bp)));
+      if (aPickupMatch && !bPickupMatch) return -1;
+      if (!aPickupMatch && bPickupMatch) return 1;
+
+      // Priority 4: Dropoff match
+      const aDropMatch = Boolean(d && (ad === d || ad.includes(d) || d.includes(ad)));
+      const bDropMatch = Boolean(d && (bd === d || bd.includes(d) || d.includes(bd)));
+      if (aDropMatch && !bDropMatch) return -1;
+      if (!aDropMatch && bDropMatch) return 1;
+
+      return 0;
+    });
+  }, [routes, pickupLoc, dropoffLoc]);
+
   // Custom Inquiry form state for when route is not available
   const [customInquiryState, setCustomInquiryState] = useState(() => {
     let name = '';
@@ -1049,7 +1089,7 @@ export default function SelectLocationScreen({
               <h3 style={{ fontFamily: 'League Spartan', fontSize: '16px', fontWeight: '800', color: '#0F172A', margin: '0 0 12px 0' }}>
                 Available Direct Routes
               </h3>
-              {routes.length === 0 ? (
+              {sortedRoutes.length === 0 ? (
                 <div style={{
                   padding: '24px 16px',
                   textAlign: 'center',
@@ -1064,7 +1104,7 @@ export default function SelectLocationScreen({
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {routes.map((route, idx) => {
+                {sortedRoutes.map((route, idx) => {
                   const isSelected = pickupLoc.trim().toLowerCase() === (route.pickup || '').trim().toLowerCase() &&
                                      dropoffLoc.trim().toLowerCase() === (route.dropoff || '').trim().toLowerCase();
                   const baseP = Number(route.price) || 0;
@@ -1090,7 +1130,10 @@ export default function SelectLocationScreen({
                       onClick={() => handleSelectRoute(route)}
                     >
                       {isSelected && (
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                          <span style={{ fontSize: '11px', fontWeight: '800', color: '#047857', background: '#D1FAE5', border: '1px solid #A7F3D0', padding: '2px 8px', borderRadius: '6px', letterSpacing: '0.5px' }}>
+                            TOP 1 MATCHED ROUTE
+                          </span>
                           <span style={{ fontSize: '12px', fontWeight: '800', color: '#059669', display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <CheckCircle size={14} color="#10B981" />
                             Selected

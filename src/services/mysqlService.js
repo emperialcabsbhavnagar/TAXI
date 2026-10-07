@@ -665,5 +665,22 @@ export const getLiveLocationFromMySQL = async (inquiryId) => {
   return res && res.success && res.location ? res.location : null;
 };
 
+/**
+ * Unified Admin Live Sync (Single HTTP Request & Single PDO Connection)
+ * Retrieves inquiries, contact messages, and admin notifications in 1 call
+ */
+export const fetchAdminLiveSync = async () => {
+  const res = await sendRequest('getAdminLiveSync');
+  if (res && res.success) {
+    return {
+      inquiries: Array.isArray(res.inquiries) ? res.inquiries : [],
+      messages: Array.isArray(res.messages) ? res.messages : [],
+      notifications: Array.isArray(res.notifications) ? res.notifications : []
+    };
+  }
+  return null;
+};
+
+
 
 
