@@ -68,11 +68,13 @@ function MainLayout({ handleOpenBooking, isBookingOpen, handleCloseBooking, book
     try {
       const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
       const isAdminPWA = localStorage.getItem('emperial_pwa_is_admin') === 'true';
-      if (isStandalone && isAdminPWA && (location.pathname === '/' || location.pathname === '')) {
+      const searchParams = new URLSearchParams(location.search);
+      const isExplicitAdminLaunch = searchParams.get('source') === 'pwa' || searchParams.get('pwa') === 'admin' || searchParams.get('app') === 'admin';
+      if (isStandalone && (isAdminPWA || isExplicitAdminLaunch) && (location.pathname === '/' || location.pathname === '')) {
         window.location.replace('/admin');
       }
     } catch (e) {}
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
 
   const isAdmin = location.pathname === '/admin' || location.pathname.startsWith('/admin');
   const isWebSite = location.pathname === '/web' || location.pathname.startsWith('/web');

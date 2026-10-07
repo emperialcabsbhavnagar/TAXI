@@ -18,6 +18,10 @@ DirectoryIndex index.html index.php
   # Dynamic Edge SEO & Meta injection for route landing pages (Googlebot & Users)
   RewriteRule ^taxi/([a-zA-Z0-9\-_]+)/?$ /route-seo.php?slug=$1 [L,QSA]
 
+  # Admin Portal direct handler for PWA Add to Home Screen (ensures canonical & manifest point to /admin)
+  RewriteRule ^admin/?$ /admin.php [L,QSA]
+  RewriteRule ^admin\.php$ - [L]
+
   # Allow direct access to real existing files and directories
   RewriteRule ^index\.html$ - [L]
   RewriteCond %{REQUEST_FILENAME} -f [OR]
