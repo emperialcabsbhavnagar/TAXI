@@ -36,7 +36,8 @@ import {
   saveNotificationToMySQL,
   requestLiveLocationInMySQL,
   getLiveLocationFromMySQL,
-  safeStorageSetItem
+  safeStorageSetItem,
+  broadcastVehicleUpdate
 } from '../services/mysqlService';
 import { getCoordsForPlace, calculateDistanceKm } from '../utils/locationCoords';
 import { 
@@ -332,14 +333,14 @@ export default function AdminPortal() {
     };
   }, []);
 
-  // Face ID / Biometrics WebAuthn Authentication Handler
-  const handleFaceIdUnlock = async () => {
+  // Face ID / Biometrics WebAuthn Authentication Handler with Zero-Click Auto-Prompt
+  const handleFaceIdUnlock = async (isAuto = false) => {
     setBiometricLoading(true);
     setBiometricMsg('');
     try {
       // 1. Check WebAuthn platform authenticator (iOS Face ID / Touch ID / Android Biometrics)
       if (typeof window !== 'undefined' && window.PublicKeyCredential && typeof window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function') {
-        const isAvailable = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+        const isAvailable = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().catch(() => false);
         if (isAvailable) {
           const storedCredId = localStorage.getItem('cabsy_admin_faceid_cred_id');
           if (storedCredId) {
@@ -365,44 +366,50 @@ export default function AdminPortal() {
               }
             } catch (authErr) {
               console.warn("Face ID verification retry", authErr);
+              if (isAuto) {
+                setBiometricLoading(false);
+                return;
+              }
             }
           }
 
           // Register credential with Face ID
-          const challenge = new Uint8Array(32);
-          window.crypto.getRandomValues(challenge);
-          const userId = new Uint8Array(16);
-          window.crypto.getRandomValues(userId);
+          if (!isAuto) {
+            const challenge = new Uint8Array(32);
+            window.crypto.getRandomValues(challenge);
+            const userId = new Uint8Array(16);
+            window.crypto.getRandomValues(userId);
 
-          const newCredential = await navigator.credentials.create({
-            publicKey: {
-              challenge,
-              rp: { name: 'EMPERIAL CABS Admin', id: window.location.hostname },
-              user: {
-                id: userId,
-                name: 'admin@emperialcabs.com',
-                displayName: 'Admin Dispatcher'
-              },
-              pubKeyCredParams: [
-                { alg: -7, type: 'public-key' },
-                { alg: -257, type: 'public-key' }
-              ],
-              authenticatorSelection: {
-                authenticatorAttachment: 'platform',
-                userVerification: 'required'
-              },
-              timeout: 60000
+            const newCredential = await navigator.credentials.create({
+              publicKey: {
+                challenge,
+                rp: { name: 'EMPERIAL CABS Admin', id: window.location.hostname },
+                user: {
+                  id: userId,
+                  name: 'admin@emperialcabs.com',
+                  displayName: 'Admin Dispatcher'
+                },
+                pubKeyCredParams: [
+                  { alg: -7, type: 'public-key' },
+                  { alg: -257, type: 'public-key' }
+                ],
+                authenticatorSelection: {
+                  authenticatorAttachment: 'platform',
+                  userVerification: 'required'
+                },
+                timeout: 60000
+              }
+            });
+
+            if (newCredential) {
+              const rawIdBase64 = btoa(String.fromCharCode(...new Uint8Array(newCredential.rawId)));
+              localStorage.setItem('cabsy_admin_faceid_cred_id', rawIdBase64);
+              localStorage.setItem('cabsy_admin_faceid_enabled', 'true');
+              setIsAuthenticated(true);
+              sessionStorage.setItem('cabsy_admin_authed', 'true');
+              setPinError(false);
+              return;
             }
-          });
-
-          if (newCredential) {
-            const rawIdBase64 = btoa(String.fromCharCode(...new Uint8Array(newCredential.rawId)));
-            localStorage.setItem('cabsy_admin_faceid_cred_id', rawIdBase64);
-            localStorage.setItem('cabsy_admin_faceid_enabled', 'true');
-            setIsAuthenticated(true);
-            sessionStorage.setItem('cabsy_admin_authed', 'true');
-            setPinError(false);
-            return;
           }
         }
       }
@@ -412,7 +419,7 @@ export default function AdminPortal() {
         setIsAuthenticated(true);
         sessionStorage.setItem('cabsy_admin_authed', 'true');
         setPinError(false);
-      } else {
+      } else if (!isAuto) {
         const confirmQuickPass = window.confirm("Enable 1-Tap Face ID quick access on this trusted device?");
         if (confirmQuickPass) {
           localStorage.setItem('cabsy_admin_faceid_enabled', 'true');
@@ -423,8 +430,8 @@ export default function AdminPortal() {
       }
     } catch (err) {
       if (err.name === 'NotAllowedError') {
-        setBiometricMsg('Face ID was cancelled. You can try again or enter your 4-digit PIN below.');
-      } else {
+        setBiometricMsg('Face ID cancelled. Enter your 4-digit PIN below.');
+      } else if (!isAuto) {
         const confirmQuickPass = window.confirm("Enable instant Face ID quick access on this device?");
         if (confirmQuickPass) {
           localStorage.setItem('cabsy_admin_faceid_enabled', 'true');
@@ -437,6 +444,16 @@ export default function AdminPortal() {
       setBiometricLoading(false);
     }
   };
+
+  // Zero-Click Direct Face ID Unlock on App Open (Seamless Dashboard Entry)
+  useEffect(() => {
+    if (!isAuthenticated) {
+      const timer = setTimeout(() => {
+        handleFaceIdUnlock(true);
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   // Full-Page Rich Push Notification Composer Modal State
   const [sendNotifModal, setSendNotifModal] = useState({
@@ -481,7 +498,87 @@ export default function AdminPortal() {
     }
   };
 
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      if (tabParam) return tabParam;
+      const cachedTab = localStorage.getItem('cabsy_admin_navigate_tab');
+      if (cachedTab) {
+        localStorage.removeItem('cabsy_admin_navigate_tab');
+        return cachedTab;
+      }
+    } catch (e) {}
+    return 'dashboard';
+  });
+
+  // Keep URL query synchronized when activeTab updates
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get('tab') !== activeTab) {
+        url.searchParams.set('tab', activeTab);
+        window.history.replaceState(null, '', url.toString());
+      }
+    } catch (e) {}
+  }, [activeTab]);
+
+  // Real-time tab navigation handler for PWA push notifications on iPhone / Desktop
+  useEffect(() => {
+    const handleTabNav = (event) => {
+      if (event && event.data && event.data.type === 'NAVIGATE_ADMIN_TAB' && event.data.tab) {
+        setActiveTab(event.data.tab);
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    const handleLocalClick = (event) => {
+      if (event && event.detail && event.detail.tab) {
+        setActiveTab(event.detail.tab);
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    const handleWindowFocus = () => {
+      try {
+        const pendingNav = localStorage.getItem('cabsy_admin_navigate_tab');
+        if (pendingNav) {
+          localStorage.removeItem('cabsy_admin_navigate_tab');
+          setActiveTab(pendingNav);
+          setIsMobileMenuOpen(false);
+          return;
+        }
+        const params = new URLSearchParams(window.location.search);
+        const tabParam = params.get('tab');
+        if (tabParam && tabParam !== activeTab) {
+          setActiveTab(tabParam);
+          setIsMobileMenuOpen(false);
+        }
+      } catch (e) {}
+    };
+
+    window.addEventListener('message', handleTabNav);
+    window.addEventListener('notificationclick_local', handleLocalClick);
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', handleTabNav);
+    }
+    window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('popstate', handleWindowFocus);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') handleWindowFocus();
+    });
+
+    return () => {
+      window.removeEventListener('message', handleTabNav);
+      window.removeEventListener('notificationclick_local', handleLocalClick);
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', handleTabNav);
+      }
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('popstate', handleWindowFocus);
+    };
+  }, [activeTab]);
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // State — initialize with localStorage or empty array (no hardcoded fallback)
@@ -1617,7 +1714,9 @@ export default function AdminPortal() {
       image: newVehicleForm.image || 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=600&q=80',
       description: newVehicleForm.description || 'Executive fleet vehicle.'
     };
-    setVehicles([...vehicles, created]);
+    const updatedList = [...vehicles, created];
+    setVehicles(updatedList);
+    broadcastVehicleUpdate(updatedList);
     saveVehicleToMySQL(created).catch(err => console.warn('Failed to save vehicle to MySQL:', err));
     setNewVehicleForm({ name: '', passengers: '1 - 4 Passenger', rate: '2.50', status: 'Active', image: '', description: '' });
     setAddVehicleModal(false);
@@ -1629,10 +1728,7 @@ export default function AdminPortal() {
     const updated = editVehicleModal.vehicle;
     const updatedList = vehicles.map(v => v.id === updated.id ? updated : v);
     setVehicles(updatedList);
-    safeStorageSetItem('cabsy_vehicles', updatedList);
-    try {
-      localStorage.setItem('cabsy_vehicles', JSON.stringify(updatedList));
-    } catch(e) {}
+    broadcastVehicleUpdate(updatedList);
     try {
       await saveVehicleToMySQL(updated);
     } catch (err) {
@@ -1643,7 +1739,9 @@ export default function AdminPortal() {
 
   const handleDeleteVehicle = (id) => {
     if (window.confirm("Are you sure you want to remove this car from the fleet roster?")) {
-      setVehicles(vehicles.filter(v => v.id !== id));
+      const updatedList = vehicles.filter(v => v.id !== id);
+      setVehicles(updatedList);
+      broadcastVehicleUpdate(updatedList);
       deleteVehicleFromMySQL(id).catch(err => console.warn('Failed to delete vehicle from MySQL:', err));
     }
   };
@@ -1810,15 +1908,15 @@ export default function AdminPortal() {
       return d;
     }));
 
-    autoSyncCustomer(inq.customerName, inq.customerPhone, inq.fare);
+    autoSyncCustomer(resolveCustomerName(inq), inq.customerPhone || inq.phone, inq.fare);
     
     // Direct notification to customer with car, driver, driver number, and car numberplate
     notifyCustomer({
       type: 'confirmed',
       title: 'Booking Confirmed - Driver Assigned!',
       body: `Car: ${chosenVehicle} | Plate: ${chosenPlate} | Driver: ${driverObj.name} (${driverPhone})`,
-      customerPhone: inq.customerPhone,
-      customerEmail: inq.customerEmail,
+      customerPhone: inq.customerPhone || inq.phone,
+      customerEmail: inq.customerEmail || inq.email,
       extraData: {
         driver: driverObj.name,
         driverPhone: driverPhone,
@@ -3696,29 +3794,17 @@ export default function AdminPortal() {
                           </td>
                           <td className="text-right" style={{ whiteSpace: 'nowrap' }}>
                             <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', alignItems: 'center' }}>
-                              {/* PENDING ACTIONS: CONFIRM & REJECT */}
+                              {/* PENDING ACTIONS: ASSIGN & REJECT */}
                               {isPending && (
                                 <>
                                   <button
-                                    className="btn-action-confirm"
-                                    disabled={!!actionLoadingId}
-                                    onClick={() => {
-                                      setActionLoadingId('confirm_' + inq.id);
-                                      updateInquiryStatusInMySQL(inq.id, 'Confirmed').catch(() => {});
-                                      setInquiries(prev => prev.map(item => item.id === inq.id ? { ...item, status: 'Confirmed' } : item));
-                                      notifyCustomer({
-                                        type: 'confirmed',
-                                        title: '✅ Custom Trip Confirmed!',
-                                        body: `Your custom trip inquiry for ${inq.pickupCity || inq.pickup} → ${inq.dropoffCity || inq.dropoff} has been confirmed by EMPERIAL CABS!`,
-                                        customerPhone: inq.customerPhone,
-                                        customerEmail: inq.customerEmail
-                                      });
-                                      window.dispatchEvent(new Event('storage'));
-                                      setTimeout(() => setActionLoadingId(null), 300);
-                                    }}
-                                    style={{ padding: '6px 12px', borderRadius: '12px', background: '#10B981', color: '#FFF', fontWeight: '800', fontSize: '0.8rem', border: 'none', cursor: 'pointer' }}
+                                    className="btn-action-assign"
+                                    onClick={() => setAssignModal({ open: true, inquiry: inq })}
+                                    style={{ padding: '6px 14px', borderRadius: '12px', background: '#3B82F6', color: '#FFF', fontWeight: '800', fontSize: '0.8rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+                                    title="Assign Driver and Vehicle"
                                   >
-                                    Confirm
+                                    <UserCheck size={14} />
+                                    Assign
                                   </button>
                                   <button
                                     className="btn-action-cancel"
@@ -3812,31 +3898,27 @@ export default function AdminPortal() {
                       </div>
                       <div className="hostinger-card-footer">
                         <span className="hostinger-vehicle-badge">{inq.vehicle || 'Selected Car'}</span>
-                        <span className="hostinger-fare-tag">₹{Number(inq.fare || 0).toFixed(2)}</span>
+                        <span className="hostinger-fare-tag">
+                          {inq.fare ? `₹${Number(inq.fare).toFixed(2)}` : (inq.ratePerKm ? `₹${inq.ratePerKm}/km` : 'Custom Quote')}
+                        </span>
                       </div>
+                      {inq.driver && (
+                        <div style={{ padding: '6px 10px', background: '#EFF6FF', borderRadius: '8px', marginTop: '6px', fontSize: '0.8rem', color: '#1E40AF', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>👤 <strong>{inq.driver}</strong> {inq.driverPhone ? `(${inq.driverPhone})` : ''}</span>
+                          <span>🚘 <strong>{inq.plate || inq.vehiclePlate || 'Assigned'}</strong></span>
+                        </div>
+                      )}
                       <div className="hostinger-card-actions">
                         {isPending && (
                           <>
                             <button
-                              className="btn-action-confirm"
-                              disabled={!!actionLoadingId}
-                              onClick={() => {
-                                setActionLoadingId('confirm_' + inq.id);
-                                updateInquiryStatusInMySQL(inq.id, 'Confirmed').catch(() => {});
-                                setInquiries(prev => prev.map(item => item.id === inq.id ? { ...item, status: 'Confirmed' } : item));
-                                notifyCustomer({
-                                  type: 'confirmed',
-                                  title: '✅ Custom Trip Confirmed!',
-                                  body: `Your custom trip inquiry for ${inq.pickupCity || inq.pickup} → ${inq.dropoffCity || inq.dropoff} has been confirmed by EMPERIAL CABS!`,
-                                  customerPhone: inq.customerPhone,
-                                  customerEmail: inq.customerEmail
-                                });
-                                window.dispatchEvent(new Event('storage'));
-                                setTimeout(() => setActionLoadingId(null), 300);
-                              }}
-                              style={{ padding: '6px 12px', borderRadius: '8px', background: '#10B981', color: '#FFF', fontWeight: '800', fontSize: '0.8rem', border: 'none', cursor: 'pointer' }}
+                              className="btn-action-assign"
+                              onClick={() => setAssignModal({ open: true, inquiry: inq })}
+                              style={{ padding: '6px 14px', borderRadius: '8px', background: '#3B82F6', color: '#FFF', fontWeight: '800', fontSize: '0.8rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+                              title="Assign Driver and Vehicle"
                             >
-                              Confirm
+                              <UserCheck size={14} />
+                              Assign
                             </button>
                             <button
                               className="btn-action-cancel"
@@ -5105,15 +5187,21 @@ export default function AdminPortal() {
         <div className="admin-modal-overlay" onClick={() => setAssignModal({ open: false, inquiry: null })}>
           <div className="admin-modal-box card" onClick={e => e.stopPropagation()}>
             <h3>Confirm Booking & Assign Driver</h3>
-            <p>Select an available driver for <strong>{assignModal.inquiry.customerName}</strong>'s trip.</p>
+            <p>Select an available driver for <strong>{resolveCustomerName(assignModal.inquiry)}</strong>'s trip.</p>
 
             <div className="modal-info-summary">
-              <div><strong>Route:</strong> {assignModal.inquiry.pickup} → {assignModal.inquiry.dropoff}</div>
-              <div><strong>Vehicle:</strong> {assignModal.inquiry.vehicle}</div>
-              <div><strong>Fare:</strong> <span className="text-green font-bold">₹{Number(assignModal.inquiry.fare).toFixed(2)}</span></div>
+              <div><strong>Route:</strong> {assignModal.inquiry.pickupCity || assignModal.inquiry.pickup || 'Pickup'} → {assignModal.inquiry.dropoffCity || assignModal.inquiry.dropoff || 'Dropoff'}</div>
+              <div><strong>Vehicle:</strong> {assignModal.inquiry.vehicle || 'Assigned Fleet'}</div>
+              <div>
+                <strong>Fare:</strong>{' '}
+                <span className="text-green font-bold">
+                  {assignModal.inquiry.fare ? `₹${Number(assignModal.inquiry.fare).toFixed(2)}` : (assignModal.inquiry.ratePerKm ? `₹${assignModal.inquiry.ratePerKm}/km` : 'Custom Quote')}
+                </span>
+                {assignModal.inquiry.tripType === 'round' || assignModal.inquiry.isRoundTrip ? ' (Round Trip)' : (assignModal.inquiry.noOfDays ? ` (${assignModal.inquiry.noOfDays} Days Rental)` : '')}
+              </div>
               {assignModal.inquiry.walletDiscountUsed > 0 && (
                 <div style={{ marginTop: '6px', background: '#F0FDF4', border: '1px solid #BBF7D0', padding: '6px 12px', borderRadius: '8px', color: '#047857', fontSize: '13px', fontWeight: '700' }}>
-                  🎁 Customer used Wallet Reward Discount: -₹{Number(assignModal.inquiry.walletDiscountUsed).toFixed(2)} (Base Fare: ₹{Number(assignModal.inquiry.originalFare || (assignModal.inquiry.fare + assignModal.inquiry.walletDiscountUsed)).toFixed(2)})
+                  🎁 Customer used Wallet Reward Discount: -₹{Number(assignModal.inquiry.walletDiscountUsed).toFixed(2)} (Base Fare: ₹{Number(assignModal.inquiry.originalFare || (Number(assignModal.inquiry.fare) + Number(assignModal.inquiry.walletDiscountUsed))).toFixed(2)})
                 </div>
               )}
             </div>

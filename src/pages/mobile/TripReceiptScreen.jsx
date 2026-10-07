@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, ArrowRight, Home, Receipt, ShieldCheck, Car, Gift, Star, MapPin } from 'lucide-react';
+import { CheckCircle2, ArrowRight, Home, Receipt, ShieldCheck, Car, Gift, Star, MapPin, Info } from 'lucide-react';
 
 export default function TripReceiptScreen({ tripData, onDone }) {
   const [receipt, setReceipt] = useState(() => {
@@ -40,6 +40,10 @@ export default function TripReceiptScreen({ tripData, onDone }) {
   const fareNum = Number(receipt.fare || receipt.price || 270);
   const rewardVal = Number(receipt.rewardAmount || receipt.rewardGiven || 0);
   const hasReward = rewardVal > 0;
+  const isRoundTrip = Boolean(
+    receipt.isCustom || 
+    (receipt.tripType && (receipt.tripType.toLowerCase().includes('round') || receipt.tripType.toLowerCase().includes('custom')))
+  );
 
   const handleFinish = () => {
     try {
@@ -126,10 +130,19 @@ export default function TripReceiptScreen({ tripData, onDone }) {
                 </div>
               </div>
               {(receipt.plate || receipt.vehiclePlate || receipt.carPlate) && (
-                <div style={{ background: '#FFFFFF', color: '#0F172A', padding: '4px 10px', borderRadius: '8px', fontWeight: '900', fontSize: '12px', fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '0.8px', border: '1.5px solid #CBD5E1', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                  🚗 {receipt.plate || receipt.vehiclePlate || receipt.carPlate}
+                <div style={{ background: '#FFFFFF', color: '#0F172A', padding: '4px 10px', borderRadius: '8px', fontWeight: '900', fontSize: '12px', fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '0.8px', border: '1.5px solid #CBD5E1', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <Car size={14} color="#0F172A" />
+                  <span>{receipt.plate || receipt.vehiclePlate || receipt.carPlate}</span>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Round Trip Special Terms Banner */}
+          {isRoundTrip && (
+            <div style={{ background: '#EFF6FF', border: '1.5px solid #93C5FD', borderRadius: '12px', padding: '10px 14px', marginBottom: '14px', color: '#1E40AF', fontSize: '12.5px', fontWeight: '800', fontFamily: 'Space Grotesk', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Info size={16} color="#1E40AF" style={{ flexShrink: 0 }} />
+              <span>Round Trip Rate • Toll, Parking Extra • Per Day 300 KM Fixed Minimum</span>
             </div>
           )}
 
@@ -137,9 +150,11 @@ export default function TripReceiptScreen({ tripData, onDone }) {
           <div style={{ borderTop: '1px dashed #CBD5E1', borderBottom: '1px dashed #CBD5E1', padding: '14px 0', margin: '14px 0', display: 'flex', flexDirection: 'column', gap: '10px', fontFamily: 'Space Grotesk, sans-serif' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#64748B' }}>
               <span>Vehicle Class ({receipt.vehicle || 'Regular'})</span>
-              <span style={{ fontWeight: '700', color: '#0F172A' }}>₹{fareNum.toFixed(2)}</span>
+              <span style={{ fontWeight: '700', color: '#0F172A' }}>
+                {isRoundTrip ? `₹${receipt.ratePerKm || 12}/km` : `₹${fareNum.toFixed(2)}`}
+              </span>
             </div>
-            {Number(receipt.walletDiscountUsed) > 0 && (
+            {Number(receipt.walletDiscountUsed) > 0 && !isRoundTrip && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#059669' }}>
                 <span>Wallet Reward Discount</span>
                 <span style={{ fontWeight: '800' }}>-₹{Number(receipt.walletDiscountUsed).toFixed(2)}</span>
@@ -147,14 +162,20 @@ export default function TripReceiptScreen({ tripData, onDone }) {
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#64748B' }}>
               <span>Toll, Fuel & Chauffeur Charges</span>
-              <span style={{ fontWeight: '700', color: '#10B981' }}>Included</span>
+              <span style={{ fontWeight: '700', color: isRoundTrip ? '#D97706' : '#10B981' }}>
+                {isRoundTrip ? 'Toll & Parking Extra' : 'Included'}
+              </span>
             </div>
           </div>
 
           {/* Total Net Fare */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '4px' }}>
-            <span style={{ fontFamily: 'League Spartan, sans-serif', fontSize: '18px', fontWeight: '800', color: '#0F172A' }}>Total Fare Paid</span>
-            <span style={{ fontFamily: 'League Spartan, sans-serif', fontSize: '26px', fontWeight: '800', color: '#10B981' }}>₹{fareNum.toFixed(2)}</span>
+            <span style={{ fontFamily: 'League Spartan, sans-serif', fontSize: '18px', fontWeight: '800', color: '#0F172A' }}>
+              {isRoundTrip ? 'Trip Booking Rate' : 'Total Fare Paid'}
+            </span>
+            <span style={{ fontFamily: 'League Spartan, sans-serif', fontSize: '26px', fontWeight: '800', color: '#10B981' }}>
+              {isRoundTrip ? `₹${receipt.ratePerKm || 12}/km` : `₹${fareNum.toFixed(2)}`}
+            </span>
           </div>
         </div>
 

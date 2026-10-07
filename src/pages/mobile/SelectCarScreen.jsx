@@ -1,4 +1,5 @@
 import React from 'react';
+import { Info } from 'lucide-react';
 import InteractiveMap from '../../components/InteractiveMap';
 import { getCoordsForPlace, generateRoutePolyline } from '../../utils/locationCoords';
 import { INITIAL_VEHICLES } from '../AdminPortal';
@@ -143,10 +144,24 @@ export default function SelectCarScreen({
 
     window.addEventListener('storage', handleUpdate);
     window.addEventListener('EMPERIAL CABS_vehicles_updated', handleUpdate);
+
+    let bc = null;
+    try {
+      if ('BroadcastChannel' in window) {
+        bc = new BroadcastChannel('emperial_cabs_channel');
+        bc.onmessage = (event) => {
+          if (event.data?.type === 'VEHICLES_UPDATED' && Array.isArray(event.data.vehicles)) {
+            setCloudVehicles(event.data.vehicles);
+          }
+        };
+      }
+    } catch (e) {}
+
     return () => {
       isMounted = false;
       window.removeEventListener('storage', handleUpdate);
       window.removeEventListener('EMPERIAL CABS_vehicles_updated', handleUpdate);
+      if (bc) bc.close();
     };
   }, []);
 
@@ -191,6 +206,11 @@ export default function SelectCarScreen({
         isVehicleFixed = false;
       }
 
+      // Enforce: One-way trip must ALWAYS show total fixed price, NEVER per-km rate
+      const formattedPrice = (tripType !== 'round-trip' || isVehicleFixed) 
+        ? `₹${totalFare.toLocaleString('en-IN')}` 
+        : `₹${ratePerKm}/km`;
+
       return {
         id: v.id || idx + 1,
         name: v.name,
@@ -200,8 +220,8 @@ export default function SelectCarScreen({
         time: matchedRoute?.duration || `${Math.round(effectiveDistanceKm * 1.4)} min`,
         ratePerKm,
         totalFareNum: totalFare,
-        price: isVehicleFixed ? `₹${totalFare.toLocaleString('en-IN')}` : `₹${ratePerKm}/km`,
-        isFixedPrice: isVehicleFixed
+        price: formattedPrice,
+        isFixedPrice: isVehicleFixed || tripType !== 'round-trip'
       };
     });
   };
@@ -255,7 +275,7 @@ export default function SelectCarScreen({
 
             {!hasFixedPrice && (
               <div style={{ background: '#FFFBEB', border: '1.5px solid #FDE68A', borderRadius: '12px', padding: '10px 14px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px', color: '#92400E', fontSize: '12px', fontWeight: '700' }}>
-                <span style={{ fontSize: '14px' }}>ℹ️</span>
+                <Info size={16} color="#92400E" style={{ flexShrink: 0 }} />
                 <span><strong>Important Note:</strong> 1 Day 300 KM fixed minimum. Toll, State Tax & Parking extra!</span>
               </div>
             )}
@@ -296,7 +316,7 @@ export default function SelectCarScreen({
                       {car.name}
                     </span>
                     <span style={{ fontSize: '11px', color: '#64748B', fontWeight: '700', marginTop: '2px' }}>
-                      {hasFixedPrice ? 'Fixed Rate' : `₹${car.ratePerKm}/km`}
+                      {tripType === 'round-trip' ? `₹${car.ratePerKm}/km` : (car.passengers || '4 Seats')}
                     </span>
                     <span style={{ fontSize: '13px', fontWeight: '800', color: '#22C55E', marginTop: '2px' }}>
                       {car.price}
@@ -313,9 +333,9 @@ export default function SelectCarScreen({
                   {currentCarObj.name} ({currentCarObj.passengers})
                 </h4>
                 <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748B', fontFamily: 'Space Grotesk' }}>
-                  {hasFixedPrice 
-                    ? `Admin Fixed Fare (${tripType === 'round-trip' ? 'Round Trip 2×' : 'One-Way'})`
-                    : `Rate: ₹${currentCarObj.ratePerKm}/km × ${effectiveDistanceKm} KM (${tripType === 'round-trip' ? 'Round Trip' : 'One-Way'})`}
+                  {tripType === 'round-trip' 
+                    ? `Round Trip Rate: ₹${currentCarObj.ratePerKm}/km`
+                    : `One-Way Fixed Total Fare`}
                 </p>
               </div>
               <div style={{ textAlign: 'right' }}>
@@ -337,7 +357,7 @@ export default function SelectCarScreen({
                 Trip: {tripType === 'round-trip' ? 'Round Trip' : 'One-Way'}
               </div>
               <div style={{ background: '#F8FAFC', border: '1.5px solid #E2E8F0', borderRadius: '14px', padding: '10px 8px', textAlign: 'center', fontFamily: 'Space Grotesk', fontWeight: '700', fontSize: '13px', color: '#22C55E' }}>
-                {hasFixedPrice ? 'Fixed Pricing' : `Rate: ₹${currentCarObj.ratePerKm}/km`}
+                {tripType === 'round-trip' ? `Rate: ₹${currentCarObj.ratePerKm}/km` : 'Fixed Fare'}
               </div>
             </div>
 

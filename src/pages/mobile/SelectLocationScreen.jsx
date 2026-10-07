@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getBestLiveLocation } from '../../services/liveLocationService';
 import { getCoordsForPlace, calculateDistanceKm } from '../../utils/locationCoords';
 import { loadAllPlacesFromMySQL, loadAllRoutesFromMySQL, safeStorageGetItem } from '../../services/mysqlService';
-import { Navigation, MapPin, ArrowLeft, ArrowRight, Compass, Sparkles, Calendar, Clock, Plus, Minus, CheckCircle, Car, Flame, TrendingUp } from 'lucide-react';
+import { Navigation, MapPin, ArrowLeft, ArrowRight, ArrowUpDown, Compass, Sparkles, Calendar, Clock, Plus, Minus, CheckCircle, Car, Flame, TrendingUp } from 'lucide-react';
 
 const DEFAULT_PLACES = [
   "Bhavnagar, Gujarat",
@@ -203,8 +203,14 @@ export default function SelectLocationScreen({
   };
 
   const handleSelectRoute = (route) => {
-    setPickupLoc(route.pickup);
-    setDropoffLoc(route.dropoff);
+    // Symmetrical bidirectional route selection: if user already entered dropoff matching route.pickup, swap
+    if (dropoffLoc && route.pickup && dropoffLoc.toLowerCase().trim() === route.pickup.toLowerCase().trim()) {
+      setPickupLoc(route.dropoff);
+      setDropoffLoc(route.pickup);
+    } else {
+      setPickupLoc(route.pickup);
+      setDropoffLoc(route.dropoff);
+    }
     setIsCustom(false);
     setActiveDropdown(null);
   };
@@ -444,6 +450,56 @@ export default function SelectLocationScreen({
                 )}
               </div>
 
+              {/* INTERACTIVE LOCATION SWAP BUTTON */}
+              <div style={{ position: 'relative', height: '0', display: 'flex', justifyContent: 'flex-end', zIndex: 20 }}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const prevPickup = pickupLoc;
+                    const prevDropoff = dropoffLoc;
+                    setPickupLoc(prevDropoff);
+                    setDropoffLoc(prevPickup);
+                    if (setPickupCity && setDropoffCity) {
+                      const prevPC = pickupCity;
+                      const prevDC = dropoffCity;
+                      setPickupCity(prevDC);
+                      setDropoffCity(prevPC);
+                    }
+                  }}
+                  title="Swap Pickup and Drop-off locations"
+                  style={{
+                    position: 'absolute',
+                    top: '-18px',
+                    right: '16px',
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '50%',
+                    background: '#FFFFFF',
+                    border: '1.5px solid #CBD5E1',
+                    boxShadow: '0 4px 14px rgba(0,0,0,0.1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    color: '#0F172A',
+                    transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = '#10B981';
+                    e.currentTarget.style.transform = 'scale(1.1) rotate(180deg)';
+                    e.currentTarget.style.boxShadow = '0 6px 18px rgba(16,185,129,0.25)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = '#CBD5E1';
+                    e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
+                    e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,0.1)';
+                  }}
+                >
+                  <ArrowUpDown size={17} color="#10B981" />
+                </button>
+              </div>
+
               {/* Dropoff Input */}
               <div style={{ position: 'relative', borderTop: '1px dashed #E2E8F0', paddingTop: '14px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
@@ -525,7 +581,8 @@ export default function SelectLocationScreen({
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {routes.map((route, idx) => {
-                  const isSelected = (pickupLoc === route.pickup && dropoffLoc === route.dropoff);
+                  const isSelected = (pickupLoc === route.pickup && dropoffLoc === route.dropoff) ||
+                                     (pickupLoc === route.dropoff && dropoffLoc === route.pickup);
                   const baseP = Number(route.price) || 0;
                   let carPriceVals = [];
                   if (route.car_prices && typeof route.car_prices === 'object') {

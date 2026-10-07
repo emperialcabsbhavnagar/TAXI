@@ -3,8 +3,8 @@ import InteractiveMap from '../../components/InteractiveMap';
 import { getCoordsForPlace, generateRoutePolyline, calculateDistanceKm } from '../../utils/locationCoords';
 import { INITIAL_VEHICLES } from '../AdminPortal';
 import { db } from '../../services/dbService';
-import { getRoutePriceFromMySQL, loadAllRoutesFromMySQL } from '../../services/mysqlService';
-import { Gift, ArrowLeft, Sparkles, CheckCircle2 } from 'lucide-react';
+import { getRoutePriceFromMySQL, loadAllRoutesFromMySQL, loadAllVehiclesFromMySQL } from '../../services/mysqlService';
+import { Gift, ArrowLeft, Sparkles, CheckCircle2, Info } from 'lucide-react';
 
 export default function SeatScheduleScreen({ 
   userCoords,
@@ -33,17 +33,23 @@ export default function SeatScheduleScreen({
   const destPos = getCoordsForPlace(dropoffLoc || "Ahmedabad Airport (AMD)", userCoords);
   const routePolyline = generateRoutePolyline(pickupPos, destPos);
 
-  // Compute distance & Avg KM/day dynamically
+  // Compute distance & Avg KM/day dynamically with bidirectional lookup
   const getRouteDistanceKm = () => {
     try {
       const savedDest = localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
       if (savedDest) {
         const parsedD = JSON.parse(savedDest);
         if (Array.isArray(parsedD) && parsedD.length > 0) {
-          const matched = parsedD.find(r => 
-            (pickupLoc && r.pickup && (r.pickup.toLowerCase().includes(pickupLoc.toLowerCase()) || pickupLoc.toLowerCase().includes(r.pickup.toLowerCase()))) &&
-            (dropoffLoc && r.dropoff && (r.dropoff.toLowerCase().includes(dropoffLoc.toLowerCase()) || dropoffLoc.toLowerCase().includes(r.dropoff.toLowerCase())))
-          );
+          const pL = (pickupLoc || '').toLowerCase().trim();
+          const dL = (dropoffLoc || '').toLowerCase().trim();
+          const matched = parsedD.find(r => {
+            if (!r || !r.pickup || !r.dropoff) return false;
+            const rp = String(r.pickup).toLowerCase().trim();
+            const rd = String(r.dropoff).toLowerCase().trim();
+            const fwd = (pL.includes(rp) || rp.includes(pL)) && (dL.includes(rd) || rd.includes(dL));
+            const rev = (pL.includes(rd) || rd.includes(pL)) && (dL.includes(rp) || rp.includes(dL));
+            return fwd || rev;
+          });
           if (matched && matched.distanceKm) return Number(matched.distanceKm);
         }
       }
@@ -100,22 +106,67 @@ export default function SeatScheduleScreen({
     return () => { isMounted = false; };
   }, [pickupLoc, dropoffLoc]);
 
-  // Load configured vehicles from Admin Portal
-  const getFleetVehicles = () => {
-    let rawList = [];
+  // Real-time Vehicle Fleet State with instant sync
+  const [cloudVehicles, setCloudVehicles] = useState(() => {
     try {
       const savedV = localStorage.getItem('cabsy_vehicles');
       if (savedV) {
         const parsed = JSON.parse(savedV);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          rawList = parsed;
-        }
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return INITIAL_VEHICLES;
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    loadAllVehiclesFromMySQL().then(fetched => {
+      if (isMounted && Array.isArray(fetched) && fetched.length > 0) {
+        setCloudVehicles(fetched);
+        try { localStorage.setItem('cabsy_vehicles', JSON.stringify(fetched)); } catch (e) {}
+      }
+    }).catch(() => {});
+
+    const handleVehiclesUpdate = (e) => {
+      if (e?.detail && Array.isArray(e.detail)) {
+        setCloudVehicles(e.detail);
+      } else {
+        try {
+          const saved = localStorage.getItem('cabsy_vehicles');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) setCloudVehicles(parsed);
+          }
+        } catch (err) {}
+      }
+    };
+
+    window.addEventListener('storage', handleVehiclesUpdate);
+    window.addEventListener('EMPERIAL CABS_vehicles_updated', handleVehiclesUpdate);
+
+    let bc = null;
+    try {
+      if ('BroadcastChannel' in window) {
+        bc = new BroadcastChannel('emperial_cabs_channel');
+        bc.onmessage = (event) => {
+          if (event.data?.type === 'VEHICLES_UPDATED' && Array.isArray(event.data.vehicles)) {
+            setCloudVehicles(event.data.vehicles);
+          }
+        };
       }
     } catch (e) {}
 
-    if (rawList.length === 0) {
-      rawList = INITIAL_VEHICLES;
-    }
+    return () => {
+      isMounted = false;
+      window.removeEventListener('storage', handleVehiclesUpdate);
+      window.removeEventListener('EMPERIAL CABS_vehicles_updated', handleVehiclesUpdate);
+      if (bc) bc.close();
+    };
+  }, []);
+
+  // Load configured vehicles with instant sync from Admin Portal
+  const getFleetVehicles = () => {
+    const rawList = (Array.isArray(cloudVehicles) && cloudVehicles.length > 0) ? cloudVehicles : INITIAL_VEHICLES;
 
     return rawList
       .filter(v => (v.status || 'Active').toLowerCase() === 'active')
@@ -210,6 +261,7 @@ export default function SeatScheduleScreen({
   const netFare = Math.max(0, baseFare - discountAmount);
 
   const handleConfirmBooking = () => {
+    const isRound = isCustomMode || tripType === 'round-trip';
     const payload = {
       ...activeCarObj,
       tripType: isCustomMode ? 'Custom Trip' : (tripType === 'round-trip' ? 'Round Trip (Return)' : 'One-Way'),
@@ -223,10 +275,13 @@ export default function SeatScheduleScreen({
       noOfDays: isCustomMode ? noOfDays : 1,
       totalDistanceKm: estTotalKm,
       avgKmPerDay: avgKmPerDay,
-      totalFareNum: netFare,
-      originalFare: baseFare,
-      walletDiscountUsed: discountAmount,
-      couponUsed: discountAmount > 0 ? `Wallet Reward (-₹${discountAmount})` : null
+      ratePerKm: activeCarObj?.ratePerKm || 12,
+      billingTerms: isRound ? 'Toll & Parking Extra • Per Day 300 KM Fixed' : 'All Inclusive',
+      totalFareNum: isRound ? 0 : netFare,
+      displayPrice: isRound ? `₹${activeCarObj?.ratePerKm || 12}/km` : `₹${netFare}`,
+      originalFare: isRound ? 0 : baseFare,
+      walletDiscountUsed: isRound ? 0 : discountAmount,
+      couponUsed: !isRound && discountAmount > 0 ? `Wallet Reward (-₹${discountAmount})` : null
     };
     onNext && onNext(payload);
   };
@@ -371,34 +426,9 @@ export default function SeatScheduleScreen({
               </button>
               
               <div style={{ background: '#F0FDF4', border: '1.5px solid #BBF7D0', padding: '6px 14px', borderRadius: '16px', fontSize: '13px', fontWeight: '800', color: '#059669', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 8px rgba(16,185,129,0.1)' }}>
-                <span>●</span> {isCustomMode ? `Custom Outstation (${noOfDays || 1} Day${(noOfDays || 1) > 1 ? 's' : ''})` : (tripType === 'round-trip' ? `${effectiveDistance} KM (${baseDistance} KM × 2)` : `${baseDistance} KM`)}
+                <span>●</span> {isCustomMode ? `Round Trip (${noOfDays || 1} Day${(noOfDays || 1) > 1 ? 's' : ''})` : (tripType === 'round-trip' ? `${effectiveDistance} KM (${baseDistance} KM × 2)` : `${baseDistance} KM`)}
               </div>
             </div>
-
-            {/* CUSTOM TRIP SUMMARY HEADER (SHOWN ONLY WHEN IS_CUSTOM IS TRUE) */}
-            {isCustomMode && (
-              <div style={{
-                background: '#ECFDF5',
-                border: '1.5px solid #A7F3D0',
-                borderRadius: '18px',
-                padding: '14px 16px',
-                marginBottom: '16px',
-                boxShadow: '0 2px 10px rgba(16,185,129,0.08)'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                  <Sparkles size={18} color="#10B981" />
-                  <span style={{ fontFamily: 'League Spartan', fontSize: '16px', fontWeight: '800', color: '#047857' }}>
-                    Custom Rental: {pickupCity || 'Bhavnagar'} ➔ {dropoffCity || 'Ahmedabad'} ({noOfDays || 1} Day{(noOfDays || 1) > 1 ? 's' : ''})
-                  </span>
-                </div>
-                <div style={{ fontSize: '13px', color: '#065F46', fontWeight: '600', fontFamily: 'Space Grotesk', marginBottom: '2px' }}>
-                  <strong>Pickup:</strong> {pickupLoc}
-                </div>
-                <div style={{ fontSize: '13px', color: '#065F46', fontWeight: '600', fontFamily: 'Space Grotesk' }}>
-                  <strong>Dropoff:</strong> {dropoffLoc}
-                </div>
-              </div>
-            )}
 
             {/* STANDARD MODE OPTIONS: 1. SCHEDULE PICKUP DATE & TIME (HIDDEN IF IS_CUSTOM IS TRUE) */}
             {!isCustomMode && (
@@ -532,12 +562,33 @@ export default function SeatScheduleScreen({
 
             {/* SELECT FLEET CAR ON THIS SCREEN */}
             <p style={{ fontFamily: 'League Spartan', fontSize: '14px', fontWeight: '800', color: '#0F172A', letterSpacing: '0.3px', margin: '0 0 8px 0', textTransform: 'uppercase' }}>
-              {isCustomMode ? 'SELECT FLEET CAR (PRICE PER KM)' : '3. SELECT FLEET CAR (PRICE PER KM)'}
+              {(isCustomMode || tripType === 'round-trip') ? 'SELECT FLEET VEHICLE (PER KM RATE)' : 'SELECT FLEET VEHICLE'}
             </p>
+
+            {/* ROUND TRIP NOTICE: TOLL, PARKING EXTRA & PER DAY 300 KM FIX */}
+            {(isCustomMode || tripType === 'round-trip') && (
+              <div style={{
+                background: '#EFF6FF',
+                border: '1.5px solid #93C5FD',
+                borderRadius: '14px',
+                padding: '10px 14px',
+                marginBottom: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                boxShadow: '0 2px 8px rgba(37,99,235,0.06)'
+              }}>
+                <Info size={18} color="#2563EB" style={{ flexShrink: 0 }} />
+                <span style={{ fontSize: '12.5px', color: '#1E40AF', fontWeight: '800', fontFamily: 'Space Grotesk, sans-serif' }}>
+                  Toll, Parking Extra • Per Day 300 KM Fixed Minimum
+                </span>
+              </div>
+            )}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginBottom: '16px' }}>
               {fleet.map((car) => {
                 const isSelected = currentCarId === car.id;
+                const isRound = isCustomMode || tripType === 'round-trip';
                 return (
                   <div
                     key={car.id}
@@ -560,14 +611,18 @@ export default function SeatScheduleScreen({
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
                       <span style={{ fontFamily: 'League Spartan', fontSize: '15px', fontWeight: '800', color: '#0F172A' }}>{car.name}</span>
-                      <span style={{ fontSize: '12px', fontWeight: '800', background: isSelected ? '#DCFCE7' : '#F1F5F9', color: isSelected ? '#15803D' : '#059669', padding: '4px 10px', borderRadius: '10px' }}>
-                        ₹{car.ratePerKm}/km
-                      </span>
+                      {/* IN ROUND TRIP: SHOW PER KM PRICE ONLY */}
+                      {isRound && (
+                        <span style={{ fontSize: '12px', fontWeight: '800', background: isSelected ? '#DCFCE7' : '#F1F5F9', color: isSelected ? '#15803D' : '#059669', padding: '4px 10px', borderRadius: '10px' }}>
+                          ₹{car.ratePerKm}/km
+                        </span>
+                      )}
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '6px', borderTop: '1px solid #F1F5F9' }}>
                       <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748B' }}>{car.type}</span>
-                      {!isCustomMode && (
+                      {/* IN ONE WAY TRIP: SHOW TOTAL FIXED FARE ONLY, NEVER PER KM */}
+                      {!isRound && (
                         <span style={{ fontFamily: 'League Spartan', fontSize: '18px', fontWeight: '800', color: '#22C55E' }}>{car.price}</span>
                       )}
                     </div>
@@ -697,9 +752,9 @@ export default function SeatScheduleScreen({
               >
                 {isConfirmed 
                   ? '✓ BOOKING CONFIRMED!' 
-                  : (isCustomMode 
-                      ? 'SWIPE RIGHT TO CONFIRM →' 
-                      : `SWIPE RIGHT TO CONFIRM (${discountAmount > 0 ? `₹${netFare}` : activeCarObj.price}) →`
+                  : ((isCustomMode || tripType === 'round-trip')
+                      ? `SWIPE RIGHT TO CONFIRM (₹${activeCarObj?.ratePerKm || 12}/KM) →` 
+                      : `SWIPE RIGHT TO CONFIRM (${discountAmount > 0 ? `₹${netFare}` : activeCarObj?.price || '₹1,500'}) →`
                     )
                 }
               </div>

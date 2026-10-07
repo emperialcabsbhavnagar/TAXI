@@ -387,7 +387,61 @@ export const getRoutePriceFromMySQL = async (pickup, dropoff) => {
     routeMemoryCache.set(reverseKey, parsed);
     return parsed;
   }
+
+  // Bidirectional Local Cache Fallback: If Bhavnagar -> Ahmedabad exists, Ahmedabad -> Bhavnagar works instantly
+  try {
+    const saved = localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        const found = parsed.find(r => {
+          if (!r || !r.pickup || !r.dropoff) return false;
+          const rp = String(r.pickup).toLowerCase().trim();
+          const rd = String(r.dropoff).toLowerCase().trim();
+          const fwd = (p.includes(rp) || rp.includes(p)) && (d.includes(rd) || rd.includes(d));
+          const rev = (p.includes(rd) || rd.includes(p)) && (d.includes(rp) || rp.includes(d));
+          return (fwd || rev) && (Number(r.price) > 0 || (r.car_prices && Object.keys(r.car_prices).length > 0));
+        });
+        if (found) {
+          const parsedFound = {
+            ...found,
+            price: Number(found.price) || 0,
+            car_prices: typeof found.car_prices === 'object' ? (found.car_prices || {}) : {}
+          };
+          routeMemoryCache.set(cacheKey, parsedFound);
+          routeMemoryCache.set(reverseKey, parsedFound);
+          return parsedFound;
+        }
+      }
+    }
+  } catch (e) {}
+
   return null;
+};
+
+/**
+ * Broadcast vehicle roster updates across storage, DOM events, and cross-tab BroadcastChannel
+ * so the customer app and all open views update instantaneously.
+ */
+export const broadcastVehicleUpdate = (vehiclesList) => {
+  if (typeof window === 'undefined' || !Array.isArray(vehiclesList)) return;
+  try {
+    safeStorageSetItem('cabsy_vehicles', vehiclesList);
+    localStorage.setItem('cabsy_vehicles', JSON.stringify(vehiclesList));
+  } catch (e) {}
+
+  try {
+    window.dispatchEvent(new CustomEvent('EMPERIAL CABS_vehicles_updated', { detail: vehiclesList }));
+    window.dispatchEvent(new Event('storage'));
+  } catch (e) {}
+
+  try {
+    if ('BroadcastChannel' in window) {
+      const bc = new BroadcastChannel('emperial_cabs_channel');
+      bc.postMessage({ type: 'VEHICLES_UPDATED', vehicles: vehiclesList });
+      bc.close();
+    }
+  } catch (e) {}
 };
 
 export const saveRouteToMySQL = async (route) => {

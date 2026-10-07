@@ -58,7 +58,7 @@ const playChimeSound = () => {
 };
 
 // Trigger Phone / Desktop System Tray Push Notification (Mobile Chrome / APK Compatible)
-export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CABS-notif') => {
+export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CABS-notif', extraData = {}) => {
   playChimeSound();
 
   // Trigger device vibration if supported (pattern: 200ms vibrate, 100ms pause, 200ms vibrate)
@@ -101,7 +101,7 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
             sound: undefined,
             attachments: undefined,
             actionTypeId: '',
-            extra: null
+            extra: extraData || null
           }
         ]
       });
@@ -113,29 +113,45 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
 
   if (typeof window === 'undefined' || !('Notification' in window)) return;
 
+  const targetTab = extraData?.tab || 'inquiries';
+  const targetUrl = extraData?.url || `/admin?tab=${targetTab}`;
+
   const notifOptions = {
     body: body,
     icon: '/EMPERAL_CABS_Website_Logo_Sharp.svg',
     badge: '/EMPERAL_CABS_Website_Logo_Sharp.svg',
-    tag: 'emperial_cabs_active_alert',
+    tag: tag || 'emperial_cabs_active_alert',
     renotify: true,
-    vibrate: [200, 100, 200]
+    vibrate: [200, 100, 200],
+    data: {
+      tab: targetTab,
+      url: targetUrl,
+      ...extraData
+    }
   };
 
   const triggerShow = () => {
-    // 2. Mobile Phone & PWA Native System Tray via ServiceWorker (Android/Chrome/APK)
+    // 2. Mobile Phone & PWA Native System Tray via ServiceWorker (Android/iOS PWA/Chrome)
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.ready.then(registration => {
         registration.showNotification(title, notifOptions);
       }).catch(() => {
         try {
-          new Notification(title, notifOptions);
+          const n = new Notification(title, notifOptions);
+          n.onclick = () => {
+            window.focus();
+            window.dispatchEvent(new CustomEvent('notificationclick_local', { detail: { tab: targetTab, url: targetUrl } }));
+          };
         } catch (e) {}
       });
     } else {
       // 3. Desktop Fallback
       try {
-        new Notification(title, notifOptions);
+        const n = new Notification(title, notifOptions);
+        n.onclick = () => {
+          window.focus();
+          window.dispatchEvent(new CustomEvent('notificationclick_local', { detail: { tab: targetTab, url: targetUrl } }));
+        };
       } catch (e) {}
     }
   };
@@ -171,11 +187,13 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
     localStorage.setItem('cabsy_admin_notifications', JSON.stringify(updated));
   } catch (e) {}
 
+  const targetTab = extraData?.tab || (type === 'custom' || type === 'custom-trip' ? 'custom_inquiries' : 'inquiries');
+
   const isAdminContext = typeof window !== 'undefined' && 
     (window.location?.pathname?.includes('admin') || window.location?.hash?.includes('admin'));
 
   if (isAdminContext) {
-    sendSystemPushNotification(title, body, 'admin-' + notifObj.id);
+    sendSystemPushNotification(title, body, 'admin-' + notifObj.id, { tab: targetTab, ...extraData });
   }
 
   if (typeof window !== 'undefined') {
