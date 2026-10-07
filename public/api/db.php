@@ -1389,6 +1389,12 @@ switch ($action) {
         echo json_encode($pRes);
         break;
 
+    case 'getPushSubscriptions':
+        $stmt = $pdo->query("SELECT id, user_type, endpoint, p256dh, auth, created_at, updated_at FROM push_subscriptions ORDER BY id DESC");
+        $all = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        echo json_encode(['success' => true, 'subscriptions' => $all]);
+        break;
+
     default:
         echo json_encode(['success' => false, 'error' => 'Unknown action: ' . $action]);
         break;
