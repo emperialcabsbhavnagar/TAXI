@@ -862,7 +862,6 @@ export default function AdminPortal() {
     return [];
   });
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
-  const [liveAlertToast, setLiveAlertToast] = useState(null);
   const [notifPermissionState, setNotifPermissionState] = useState(() => (typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'));
 
   // Device-persistent memory trackers to prevent repeat sound/push on every sync poll
@@ -934,15 +933,6 @@ export default function AdminPortal() {
         userType: 'admin',
         tag: 'admin-welcome-' + Date.now()
       }).catch(() => {});
-
-      setLiveAlertToast({
-        id: 'perm-granted',
-        title: 'Alerts Activated',
-        desc: (pushRes && pushRes.success)
-          ? 'Device linked to server push. You will receive alerts even when phone is locked or app is closed.'
-          : 'Local notifications active. Background alerts enabled.',
-        tab: 'inquiries'
-      });
     } catch (e) {
       console.warn('Notification permission error:', e);
     }
@@ -967,12 +957,6 @@ export default function AdminPortal() {
       userType: 'admin',
       tag: 'admin-test-' + Date.now()
     }).catch(() => {});
-    setLiveAlertToast({
-      id: 'test-' + Date.now(),
-      title: 'Alert Audio & Push Working',
-      desc: 'Tested chime sound, phone vibration, and background push notification.',
-      tab: 'inquiries'
-    });
   };
 
   // Notification & Live MySQL Real-Time Polling Engine
@@ -1072,12 +1056,6 @@ export default function AdminPortal() {
                   tab: isCust ? 'custom_inquiries' : 'inquiries'
                 };
                 setNotifications(prev => [newNotifItem, ...prev.filter(n => n.id !== newNotifItem.id)].slice(0, 50));
-                setLiveAlertToast({
-                  id: i.id,
-                  title: notifTitle,
-                  desc: notifBody,
-                  tab: isCust ? 'custom_inquiries' : 'inquiries'
-                });
               } else {
                 seenInquiryAlertIdsRef.current.add(inqIdStr);
               }
@@ -1120,12 +1098,6 @@ export default function AdminPortal() {
                 tab: isCust ? 'custom_inquiries' : 'inquiries'
               };
               setNotifications(prev => [newNotifItem, ...prev.filter(n => n.id !== newNotifItem.id)].slice(0, 50));
-              setLiveAlertToast({
-                id: newInq.id,
-                title: notifTitle,
-                desc: notifBody,
-                tab: isCust ? 'custom_inquiries' : 'inquiries'
-              });
             });
           }
 
@@ -1158,12 +1130,6 @@ export default function AdminPortal() {
                   tab: 'inquiries'
                 };
                 setNotifications(prev => [updateNotifItem, ...prev].slice(0, 50));
-                setLiveAlertToast({
-                  id: inq.id,
-                  title: notifTitle,
-                  desc: notifBody,
-                  tab: 'inquiries'
-                });
               }
             }
           });
@@ -1194,12 +1160,6 @@ export default function AdminPortal() {
                 tab: 'messages'
               };
               setNotifications(prev => [newNotifItem, ...prev.filter(n => n.id !== newNotifItem.id)].slice(0, 50));
-              setLiveAlertToast({
-                id: newMsg.id,
-                title: notifTitle,
-                desc: notifBody,
-                tab: 'messages'
-              });
             });
           }
 
@@ -1234,12 +1194,6 @@ export default function AdminPortal() {
                   tab: 'inquiries'
                 };
                 setNotifications(prev => [item, ...prev.filter(x => x.id !== notifRow.id)].slice(0, 50));
-                setLiveAlertToast({
-                  id: notifRow.id,
-                  title: nTitle,
-                  desc: nBody,
-                  tab: 'inquiries'
-                });
               }
             });
           }
@@ -1300,12 +1254,6 @@ export default function AdminPortal() {
             }
             sendSystemPushNotification(notif.title, notif.body || notif.desc, 'bc-' + notif.id, notif.extraData);
             setNotifications(prev => [notif, ...prev.filter(x => x.id !== notif.id)].slice(0, 50));
-            setLiveAlertToast({
-              id: notif.id,
-              title: notif.title || 'New Customer Update!',
-              desc: notif.desc || notif.body || '',
-              tab: notif.extraData?.tab || 'inquiries'
-            });
             fetchAllData(false);
           }
         };
@@ -3064,15 +3012,130 @@ export default function AdminPortal() {
               <span>Alerts Active</span>
             </button>
           )}
-          <button 
-            className="mobile-notif-pill-btn" 
-            onClick={() => { setActiveTab('inquiries'); setIsMobileMenuOpen(false); }}
-          >
-            <Bell size={18} />
-            {inquiries.filter(i => i.status === 'Pending').length > 0 && (
-              <span className="mobile-notif-badge">{inquiries.filter(i => i.status === 'Pending').length}</span>
+          <div style={{ position: 'relative' }}>
+            <button 
+              className="mobile-notif-pill-btn" 
+              onClick={() => setShowNotifDropdown(prev => !prev)}
+              title="Notifications"
+              aria-label="Notifications"
+            >
+              <Bell size={18} />
+              {(inquiries.filter(i => i.status === 'Pending').length > 0 || notifications.filter(n => !n.read).length > 0) && (
+                <span className="mobile-notif-badge">
+                  {inquiries.filter(i => i.status === 'Pending').length || notifications.filter(n => !n.read).length}
+                </span>
+              )}
+            </button>
+
+            {showNotifDropdown && (
+              <>
+                <div 
+                  onClick={() => setShowNotifDropdown(false)}
+                  style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    zIndex: 9998,
+                    background: 'transparent'
+                  }}
+                />
+                <div 
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 8px)',
+                    right: 0,
+                    width: '320px',
+                    maxWidth: '88vw',
+                    background: '#0F172A',
+                    border: '1px solid #334155',
+                    borderRadius: '14px',
+                    boxShadow: '0 16px 36px rgba(0, 0, 0, 0.5)',
+                    zIndex: 9999,
+                    overflow: 'hidden'
+                  }}
+                >
+                  <div style={{
+                    padding: '12px 14px',
+                    borderBottom: '1px solid #1E293B',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    background: '#1E293B'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Bell size={15} color="#10B981" />
+                      <span style={{ fontSize: '13px', fontWeight: '700', color: '#F1F5F9' }}>
+                        Notifications ({inquiries.filter(i => i.status === 'Pending').length})
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setActiveTab('inquiries');
+                        setShowNotifDropdown(false);
+                      }}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#10B981',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        padding: '2px 4px'
+                      }}
+                    >
+                      View All
+                    </button>
+                  </div>
+
+                  <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
+                    {inquiries.filter(i => i.status === 'Pending').length === 0 ? (
+                      <div style={{ padding: '24px 16px', textAlign: 'center', color: '#64748B', fontSize: '13px' }}>
+                        No pending inquiries or alerts
+                      </div>
+                    ) : (
+                      inquiries.filter(i => i.status === 'Pending').slice(0, 8).map(inq => (
+                        <div
+                          key={inq.id}
+                          onClick={() => {
+                            setActiveTab(inq.isCustom ? 'custom_inquiries' : 'inquiries');
+                            setShowNotifDropdown(false);
+                          }}
+                          style={{
+                            padding: '10px 14px',
+                            borderBottom: '1px solid rgba(51, 65, 85, 0.4)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '4px',
+                            transition: 'background 0.15s ease'
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#1E293B'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '12px', fontWeight: '700', color: '#F8FAFC' }}>
+                              {inq.customerName || 'Customer'}
+                            </span>
+                            <span style={{ fontSize: '11px', fontWeight: '700', color: '#10B981' }}>
+                              ₹{inq.fare || inq.price || 0}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#94A3B8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {inq.pickup} ➔ {inq.dropoff}
+                          </div>
+                          <div style={{ fontSize: '10px', color: '#64748B' }}>
+                            {inq.scheduledDate || inq.date || 'Pending'} {inq.scheduledTime ? `• ${inq.scheduledTime}` : ''}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </>
             )}
-          </button>
+          </div>
         </div>
       </header>
 
@@ -3218,64 +3281,6 @@ export default function AdminPortal() {
 
       {/* RIGHT MAIN DATA CONTENT */}
       <main className="admin-main-content">
-        {/* REAL-TIME INCOMING ALERT TOAST */}
-        {liveAlertToast && (
-          <div style={{
-            position: 'fixed',
-            top: '20px',
-            right: '20px',
-            zIndex: 9999,
-            background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
-            border: '2px solid #10B981',
-            borderRadius: '16px',
-            padding: '16px 20px',
-            boxShadow: '0 12px 36px rgba(16, 185, 129, 0.35)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '14px',
-            maxWidth: '420px',
-            animation: 'fadeIn 0.25s ease'
-          }}>
-            <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Bell size={20} color="#FFFFFF" />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '14px', fontWeight: '800', color: '#10B981', marginBottom: '2px' }}>
-                {liveAlertToast.title}
-              </div>
-              <div style={{ fontSize: '13px', color: '#E2E8F0', lineHeight: 1.3 }}>
-                {liveAlertToast.desc}
-              </div>
-            </div>
-            {liveAlertToast.tab && (
-              <button
-                onClick={() => {
-                  setActiveTab(liveAlertToast.tab);
-                  setLiveAlertToast(null);
-                }}
-                style={{
-                  background: '#10B981',
-                  color: '#FFFFFF',
-                  border: 'none',
-                  padding: '8px 12px',
-                  borderRadius: '10px',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  flexShrink: 0
-                }}
-              >
-                View
-              </button>
-            )}
-            <button
-              onClick={() => setLiveAlertToast(null)}
-              style={{ background: 'transparent', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: '4px' }}
-            >
-              <X size={16} />
-            </button>
-          </div>
-        )}
 
         {/* TAB 1: DASHBOARD */}
         {activeTab === 'dashboard' && (

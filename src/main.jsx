@@ -7,7 +7,10 @@ import './index.css'
 if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
-      .then(reg => console.log('[ServiceWorker] Active & Registered:', reg.scope))
+      .then(reg => {
+        reg.update().catch(() => {});
+        console.log('[ServiceWorker] Active & Registered:', reg.scope);
+      })
       .catch(err => console.warn('[ServiceWorker] Registration failed:', err));
   });
 }

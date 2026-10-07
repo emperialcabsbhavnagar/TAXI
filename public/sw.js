@@ -1,5 +1,5 @@
 // Empire Cab Universal Service Worker for PWA & Background Push Notifications
-const CACHE_NAME = 'empire-cab-v1';
+const CACHE_NAME = 'empire-cab-v2';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

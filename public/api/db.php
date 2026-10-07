@@ -185,8 +185,7 @@ function dispatchNativeWebPush($pdo, $title, $body, $url = '/admin?tab=inquiries
                 'Content-Encoding: aes128gcm',
                 'Authorization: vapid t=' . $jwtToken . ', k=' . $vapidPublicB64u,
                 'TTL: 86400',
-                'Urgency: high',
-                'Topic: ' . substr($tag, 0, 32)
+                'Urgency: high'
             ]);
 
             $resp = curl_exec($ch);

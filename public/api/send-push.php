@@ -216,8 +216,7 @@ foreach ($subs as $sub) {
             'Content-Encoding: aes128gcm',
             'Authorization: vapid t=' . $jwtToken . ', k=' . $vapidPublicB64u,
             'TTL: 86400',
-            'Urgency: high',
-            'Topic: ' . substr($tag, 0, 32)
+            'Urgency: high'
         ]);
 
         $resp = curl_exec($ch);
