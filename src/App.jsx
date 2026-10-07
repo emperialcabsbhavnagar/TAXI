@@ -63,6 +63,17 @@ function MainLayout({ handleOpenBooking, isBookingOpen, handleCloseBooking, book
   const location = useLocation();
   const hostname = typeof window !== 'undefined' ? window.location.hostname.toLowerCase() : '';
 
+  // Standalone PWA Routing: if launched as installed Admin PWA from Home Screen, ensure direct routing to /admin
+  React.useEffect(() => {
+    try {
+      const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+      const isAdminPWA = localStorage.getItem('emperial_pwa_is_admin') === 'true';
+      if (isStandalone && isAdminPWA && (location.pathname === '/' || location.pathname === '')) {
+        window.location.replace('/admin');
+      }
+    } catch (e) {}
+  }, [location.pathname]);
+
   const isAdmin = location.pathname === '/admin' || location.pathname.startsWith('/admin');
   const isWebSite = location.pathname === '/web' || location.pathname.startsWith('/web');
   const isMobilePath = location.pathname === '/app' || location.pathname === '/mobile' || location.pathname.startsWith('/app') || location.pathname.startsWith('/mobile');
