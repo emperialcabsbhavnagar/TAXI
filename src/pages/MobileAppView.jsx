@@ -333,6 +333,10 @@ export default function MobileAppView() {
                 const notifKey = `cabsy_driver_assigned_notified_${inq.id}_${inq.driver}_${inq.plate || ''}`;
                 localStorage.setItem(notifKey, 'true');
               }
+              if (inq?.id && String(inq.status || '').toLowerCase() === 'completed') {
+                const compKey = `cabsy_trip_completed_handled_${inq.id}`;
+                localStorage.setItem(compKey, 'true');
+              }
             }
           }
 
@@ -376,6 +380,28 @@ export default function MobileAppView() {
                     plate: plateNo
                   }
                 });
+              }
+            }
+
+            // Handle trip completed & receipt delivery when status is Completed in MySQL
+            if (inqStatus.toLowerCase() === 'completed') {
+              const compKey = `cabsy_trip_completed_handled_${inq.id}`;
+              if (!localStorage.getItem(compKey) && !isInitialRun) {
+                localStorage.setItem(compKey, 'true');
+                localStorage.setItem('EMPERIAL CABS_last_completed_trip', JSON.stringify(inq));
+                localStorage.removeItem('EMPERIAL CABS_active_trip');
+
+                notifyCustomer({
+                  type: 'receipt',
+                  title: `🧾 Official Trip E-Receipt #${inq.id}`,
+                  body: `Trip to ${inq.dropoffCity || inq.dropoff} is completed. Total Fare: ₹${Number(inq.fare || 0).toFixed(2)}. E-Receipt is ready.`,
+                  customerPhone: inq.customerPhone,
+                  customerEmail: inq.customerEmail,
+                  extraData: { inquiryId: inq.id, fare: inq.fare, isCustom: inq.isCustom }
+                });
+
+                window.dispatchEvent(new CustomEvent('EMPERIAL CABS_trip_completed', { detail: inq }));
+                setAppStage('RECEIPT');
               }
             }
           }

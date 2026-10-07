@@ -2206,17 +2206,25 @@ export default function AdminPortal() {
     autoSyncCustomer(resolveCustomerName(inq), inq.customerPhone || inq.phone, inq.fare);
     
     // Direct notification to customer with car, driver, driver number, and car numberplate
+    const isCustomTrip = Boolean(inq.isCustom || inq.tripType === 'Custom Trip' || inq.tripType === 'custom-trip');
+    const notifTitle = isCustomTrip 
+      ? '✨ Custom Trip Confirmed - Chauffeur Assigned!' 
+      : 'Booking Confirmed - Driver Assigned!';
+    const notifBody = `Car: ${chosenVehicle} | Plate: ${chosenPlate} | Chauffeur: ${driverObj.name} (${driverPhone}) | Route: ${inq.pickupCity || inq.pickup} → ${inq.dropoffCity || inq.dropoff}`;
+
     notifyCustomer({
       type: 'confirmed',
-      title: 'Booking Confirmed - Driver Assigned!',
-      body: `Car: ${chosenVehicle} | Plate: ${chosenPlate} | Driver: ${driverObj.name} (${driverPhone})`,
+      title: notifTitle,
+      body: notifBody,
       customerPhone: inq.customerPhone || inq.phone,
       customerEmail: inq.customerEmail || inq.email,
       extraData: {
+        inquiryId: inq.id,
         driver: driverObj.name,
         driverPhone: driverPhone,
         vehicle: chosenVehicle,
-        plate: chosenPlate
+        plate: chosenPlate,
+        isCustom: isCustomTrip
       }
     });
 
@@ -2341,14 +2349,47 @@ export default function AdminPortal() {
 
     autoSyncCustomer(inq.customerName, inq.customerPhone, finalFare);
 
+    const isCustomTripComp = Boolean(inq.isCustom || inq.tripType === 'Custom Trip' || inq.tripType === 'custom-trip');
+    const custPhone = inq.customerPhone || inq.phone || '';
+    const custEmail = inq.customerEmail || inq.email || '';
+
+    // 1. Send trip completion notification to customer
     notifyCustomer({
       type: 'trip_completed',
       title: '🏁 Trip Completed Successfully!',
       body: hasReward 
         ? `Your trip (${inq.pickupCity || inq.pickup} → ${inq.dropoffCity || inq.dropoff}) is completed! Total Fare: ₹${finalFare}. You earned ₹${rewardVal} wallet reward credit!`
         : `Your trip (${inq.pickupCity || inq.pickup} → ${inq.dropoffCity || inq.dropoff}) is completed! Total Fare: ₹${finalFare}. Thank you for riding with EMPERIAL CABS!`,
-      customerPhone: inq.customerPhone,
-      customerEmail: inq.customerEmail
+      customerPhone: custPhone,
+      customerEmail: custEmail,
+      extraData: {
+        inquiryId: inq.id,
+        fare: finalFare,
+        pickup: inq.pickup,
+        dropoff: inq.dropoff,
+        driver: inq.driver,
+        plate: inq.plate,
+        isCustom: isCustomTripComp
+      }
+    });
+
+    // 2. Send official trip e-receipt notification to customer
+    notifyCustomer({
+      type: 'receipt',
+      title: `🧾 Official E-Receipt #${inq.id}`,
+      body: `Your official trip invoice is ready: ${inq.pickupCity || inq.pickup} → ${inq.dropoffCity || inq.dropoff}. Total Fare: ₹${finalFare}. Chauffeur: ${inq.driver || 'Assigned Driver'}.`,
+      customerPhone: custPhone,
+      customerEmail: custEmail,
+      extraData: {
+        inquiryId: inq.id,
+        fare: finalFare,
+        pickup: inq.pickup,
+        dropoff: inq.dropoff,
+        driver: inq.driver,
+        plate: inq.plate,
+        isCustom: isCustomTripComp,
+        receipt: fullCompleted
+      }
     });
 
     try {
@@ -2364,6 +2405,7 @@ export default function AdminPortal() {
     window.dispatchEvent(new CustomEvent('EMPERIAL CABS_db_sync', { detail: fullCompleted }));
 
     setCompleteModal({ open: false, inquiry: null, finalPrice: '', rewardAmount: '0' });
+    setReceiptModal({ open: true, inquiry: fullCompleted });
     setTimeout(() => {
       setActionLoadingId(null);
     }, 300);
@@ -7103,7 +7145,47 @@ export default function AdminPortal() {
               </div>
             </div>
 
-            <div className="modal-actions-flex">
+            <div className="modal-actions-flex" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center' }}>
+              <button 
+                type="button" 
+                className="btn btn-sm"
+                style={{ 
+                  background: '#25D366', 
+                  color: '#FFFFFF', 
+                  border: 'none', 
+                  borderRadius: '12px', 
+                  padding: '8px 14px', 
+                  fontWeight: '800', 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  gap: '6px',
+                  cursor: 'pointer' 
+                }}
+                onClick={() => {
+                  const inq = receiptModal.inquiry;
+                  if (!inq) return;
+                  const rawPhone = (inq.customerPhone || inq.phone || '').replace(/\D/g, '');
+                  const cleanPhone = rawPhone.length === 10 ? '91' + rawPhone : rawPhone;
+                  const text = encodeURIComponent(
+                    `*EMPERIAL CABS - OFFICIAL TRIP E-RECEIPT*\n` +
+                    `--------------------------------\n` +
+                    `*Booking Ref:* ${inq.id}\n` +
+                    `*Customer:* ${inq.customerName || 'Valued Customer'}\n` +
+                    `*Route:* ${inq.pickupCity || inq.pickup} ➔ ${inq.dropoffCity || inq.dropoff}\n` +
+                    `*Vehicle:* ${inq.vehicle || 'Standard'} [${inq.plate || inq.vehiclePlate || inq.carPlate || 'Assigned'}]\n` +
+                    `*Chauffeur:* ${inq.driver || 'Assigned Driver'} (${inq.driverPhone || inq.driverNumber || ''})\n` +
+                    `*Total Fare Paid:* ₹${Number(inq.fare || 0).toFixed(2)}\n` +
+                    (inq.rewardIssued && Number(inq.rewardAmount) > 0 ? `*Wallet Reward Earned:* ₹${inq.rewardAmount}\n` : '') +
+                    `*Trip Status:* COMPLETED\n` +
+                    `--------------------------------\n` +
+                    `Thank you for traveling with EMPERIAL CABS!\n` +
+                    `24/7 Helpline: +91 98765 43210`
+                  );
+                  window.open(`https://wa.me/${cleanPhone}?text=${text}`, '_blank');
+                }}
+              >
+                <Share2 size={15} /> WhatsApp Receipt
+              </button>
               <button 
                 type="button" 
                 className="btn btn-outline" 

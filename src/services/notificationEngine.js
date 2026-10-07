@@ -321,7 +321,7 @@ export const notifyCustomer = ({ type = 'inquiry', title, body, customerPhone, c
     } catch (e) {}
   }
 
-  // Cross-device Cloud Sync: Only persist remote notifications (e.g. driver assigned, promos, rewards)
+  // Cross-device Cloud Sync: Only persist remote notifications (e.g. driver assigned, promos, rewards, receipts)
   // Never save client's own booking inquiry to customer_notifications, preventing duplicate echo on app restart
   const isBookingInquiry = type === 'inquiry' || (title && title.toLowerCase().includes('booking request'));
   if (!isBookingInquiry) {
@@ -334,8 +334,6 @@ export const notifyCustomer = ({ type = 'inquiry', title, body, customerPhone, c
         body: body,
         type: type,
         extra_data: extraData
-      }).then(() => {
-        markNotificationDeliveredInMySQL(notifObj.id).catch(() => {});
       }).catch(() => {});
     } catch (e) {}
   }
