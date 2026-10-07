@@ -398,15 +398,6 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
   // 3. Trigger local system push notification if permission is granted
   sendSystemPushNotification(title, body, 'admin-' + notifObj.id, { tab: targetTab, ...extraData });
 
-  // 4. Dispatch server-side Web Push (Apple APNs / Google FCM) so iPhone / Android lock screens get alerted in background
-  triggerRemoteServerPush({
-    title,
-    body,
-    url: targetUrl,
-    userType: 'admin',
-    tag: 'admin-' + notifObj.id
-  }).catch(() => {});
-
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('EMPERIAL CABS_admin_notif', { detail: notifObj }));
     window.dispatchEvent(new Event('storage'));

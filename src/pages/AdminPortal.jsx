@@ -1035,14 +1035,8 @@ export default function AdminPortal() {
                 } catch (e) {}
 
                 const isCust = Boolean(i.isCustom || i.tripType === 'Custom Trip' || i.tripType === 'custom-trip');
-                const notifTitle = isCust ? '🚨 New Custom Route Inquiry!' : '🚖 New Customer Ride Booking!';
+                const notifTitle = isCust ? 'New Custom Route Inquiry' : 'New Customer Ride Booking';
                 const notifBody = `${i.customerName || 'Customer'} (${i.customerPhone || 'Direct'}): ${i.pickup} ➔ ${i.dropoff}`;
-
-                playChimeSound();
-                if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-                  navigator.vibrate([200, 100, 200, 100, 200]);
-                }
-                sendSystemPushNotification(notifTitle, notifBody, 'inq-' + i.id, { tab: isCust ? 'custom_inquiries' : 'inquiries' });
 
                 const newNotifItem = {
                   id: 'inq_notif_' + i.id,

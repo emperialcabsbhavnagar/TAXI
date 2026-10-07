@@ -59,8 +59,33 @@ function dispatchNativeWebPush($pdo, $title, $body, $url = '/admin?tab=inquiries
     if (!$pdo) return ['success' => false, 'error' => 'No database connection'];
     $tag = $tag ?: ('disp-' . round(microtime(true) * 1000));
 
+    // 1. Deduplication Gate: Prevent multiple push dispatches for same tag/inquiry within 45 seconds
+    $dedupKey = substr(($tag ?: md5($title . '|' . $body)), 0, 100);
     try {
-        $stmt = $pdo->prepare("SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_type = :ut ORDER BY id DESC LIMIT 50");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS push_dispatch_log (
+            dispatch_key VARCHAR(100) PRIMARY KEY,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )");
+        $pdo->exec("DELETE FROM push_dispatch_log WHERE created_at < NOW() - INTERVAL 1 HOUR");
+
+        $checkStmt = $pdo->prepare("SELECT dispatch_key FROM push_dispatch_log WHERE dispatch_key = ? AND created_at >= NOW() - INTERVAL 45 SECOND");
+        $checkStmt->execute([$dedupKey]);
+        if ($checkStmt->fetch()) {
+            return ['success' => true, 'sentCount' => 0, 'deduplicated' => true, 'message' => 'Duplicate push suppressed'];
+        }
+        $logStmt = $pdo->prepare("INSERT INTO push_dispatch_log (dispatch_key) VALUES (?) ON DUPLICATE KEY UPDATE created_at = NOW()");
+        $logStmt->execute([$dedupKey]);
+    } catch (Exception $e) {}
+
+    // 2. Clean duplicate subscriptions for same physical device
+    try {
+        $pdo->exec("DELETE s1 FROM push_subscriptions s1
+                    INNER JOIN push_subscriptions s2 
+                    WHERE s1.id < s2.id AND (s1.endpoint = s2.endpoint OR s1.p256dh = s2.p256dh)");
+    } catch (Exception $e) {}
+
+    try {
+        $stmt = $pdo->prepare("SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_type = :ut GROUP BY p256dh ORDER BY id DESC LIMIT 50");
         $stmt->execute([':ut' => $userType]);
         $subs = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {
@@ -1140,7 +1165,7 @@ switch ($action) {
             ':extra_data' => $extra_data
         ]);
 
-        if (strtoupper($target_phone) === 'ADMIN') {
+        if (strtoupper($target_phone) === 'ADMIN' && $type !== 'inquiry' && $type !== 'custom_inquiry') {
             triggerServerPushNotification(
                 $title,
                 $body,

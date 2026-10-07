@@ -1,5 +1,5 @@
 // Empire Cab Universal Service Worker for PWA & Background Push Notifications
-const CACHE_NAME = 'empire-cab-v2';
+const CACHE_NAME = 'empire-cab-v3';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -14,7 +14,7 @@ self.addEventListener('push', (event) => {
   let title = 'EMPERIAL CABS Alert';
   let body = 'New booking dispatch update received.';
   let url = '/admin?tab=inquiries';
-  let tag = 'disp-' + Date.now();
+  let tag = 'disp-general';
 
   try {
     if (event.data) {
@@ -30,6 +30,10 @@ self.addEventListener('push', (event) => {
     try {
       if (event.data) body = event.data.text() || body;
     } catch (e2) {}
+  }
+
+  if (tag === 'disp-general') {
+    tag = 'disp-' + (title + body).replace(/[^a-zA-Z0-9]/g, '').slice(0, 32);
   }
 
   const options = {
