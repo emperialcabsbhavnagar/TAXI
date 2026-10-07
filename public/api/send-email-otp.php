@@ -27,7 +27,7 @@ if (empty($code)) {
 }
 
 $brevoApiKey = getenv('BREVO_API_KEY') ?: str_rot13('kxrlfvo-n48oo93s876oppps80n1p901rpnqs5rr19n4r68p63438o1rqn1pp137onq9qrs8-o6dGDyWFlsFpsywn');
-$senderEmail = 'emperialcabsbhavnagar@gmail.com';
+$senderEmail = 'emperialcabs@gmail.com';
 $senderName = 'EMPERIAL CABS';
 
 $subject = "{$code} is your EMPERIAL CABS verification code";

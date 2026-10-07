@@ -573,24 +573,22 @@ export const sendEmailOTP = async (email) => {
     'https://emperialcabs.com/api/db.php?action=sendEmailOTP'
   ];
 
-  (async () => {
-    for (const ep of endpoints) {
-      try {
-        const res = await fetch(ep, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...payload, action: 'sendEmailOTP' })
-        });
-        const data = await res.json().catch(() => null);
-        if (data && data.success) {
-          console.log('[Email OTP] Delivered via', data.via || ep);
-          return;
-        }
-      } catch (e) {
-        console.warn('[Email OTP] Endpoint failed:', ep, e);
+  for (const ep of endpoints) {
+    try {
+      const res = await fetch(ep, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, action: 'sendEmailOTP' })
+      });
+      const data = await res.json().catch(() => null);
+      if (data && data.success) {
+        console.log('[Email OTP] Delivered via', data.via || ep);
+        break;
       }
+    } catch (e) {
+      console.warn('[Email OTP] Endpoint failed:', ep, e);
     }
-  })();
+  }
 
   return { success: true, code };
 };

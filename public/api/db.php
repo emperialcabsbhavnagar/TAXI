@@ -1431,7 +1431,7 @@ switch ($action) {
                 'Accept: application/json'
             ],
             CURLOPT_POSTFIELDS => json_encode([
-                'sender' => ['name' => 'EMPERIAL CABS', 'email' => 'emperialcabsbhavnagar@gmail.com'],
+                'sender' => ['name' => 'EMPERIAL CABS', 'email' => 'emperialcabs@gmail.com'],
                 'to' => [['email' => $otpEmail]],
                 'subject' => "{$otpCode} is your EMPERIAL CABS verification code",
                 'textContent' => "Your EMPERIAL CABS verification code is: {$otpCode}. Valid for 5 minutes.",
