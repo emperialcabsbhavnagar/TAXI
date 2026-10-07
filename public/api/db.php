@@ -193,13 +193,26 @@ function dispatchNativeWebPush($pdo, $title, $body, $url = '/admin?tab=inquiries
             $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
 
+            $results[] = [
+                'id' => $sub['id'],
+                'host' => parse_url($endpoint, PHP_URL_HOST),
+                'status' => $status,
+                'resp' => substr(strip_tags((string)$resp), 0, 100)
+            ];
+
             if ($status === 200 || $status === 201) {
                 $sentCount++;
             } elseif ($status === 404 || $status === 410) {
                 $expiredIds[] = $sub['id'];
             }
-        } catch (Exception $e) {}
+        } catch (Exception $e) {
+            $results[] = ['id' => $sub['id'], 'error' => $e->getMessage()];
+        }
     }
+
+    try {
+        $pdo->exec("DELETE FROM push_subscriptions WHERE endpoint LIKE '%test%'");
+    } catch (Exception $e) {}
 
     if (!empty($expiredIds)) {
         try {
@@ -208,7 +221,7 @@ function dispatchNativeWebPush($pdo, $title, $body, $url = '/admin?tab=inquiries
         } catch (Exception $e) {}
     }
 
-    return ['success' => true, 'sentCount' => $sentCount, 'totalSubs' => count($subs), 'expiredCount' => count($expiredIds)];
+    return ['success' => true, 'sentCount' => $sentCount, 'totalSubs' => count($subs), 'expiredCount' => count($expiredIds), 'devices' => $results ?? []];
 }
 
 function triggerServerPushNotification($title, $body, $url = '/admin?tab=inquiries', $tag = null) {
