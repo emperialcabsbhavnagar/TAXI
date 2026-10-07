@@ -569,7 +569,16 @@ export default function AdminPortal() {
     return saved ? JSON.parse(saved) : INITIAL_VEHICLES;
   });
 
-  const [destinations, setDestinations] = useState([]);
+  const [destinations, setDestinations] = useState(() => {
+    try {
+      const saved = localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  });
 
   const [places, setPlaces] = useState(() => {
     const saved = localStorage.getItem('cabsy_places');
@@ -1220,15 +1229,14 @@ export default function AdminPortal() {
     const durStr = formatDurationHrMin(newDestForm.hours, newDestForm.mins);
     const rawCarPrices = newDestForm.car_prices || {};
     const carPrices = {};
-    Object.entries(rawCarPrices).forEach(([key, val]) => {
+    activeVehicles.forEach(veh => {
+      const val = (rawCarPrices[veh.id] !== undefined && rawCarPrices[veh.id] !== '')
+        ? rawCarPrices[veh.id]
+        : rawCarPrices[veh.name];
       const numV = Number(val);
       if (!isNaN(numV) && numV > 0) {
-        carPrices[key] = numV;
-        const matchingVeh = activeVehicles.find(v => v.id === key || v.name === key);
-        if (matchingVeh) {
-          carPrices[matchingVeh.id] = numV;
-          carPrices[matchingVeh.name] = numV;
-        }
+        carPrices[veh.id] = numV;
+        carPrices[veh.name] = numV;
       }
     });
 
@@ -1276,15 +1284,14 @@ export default function AdminPortal() {
     const durStr = formatDurationHrMin(editDestModal.destination.hours, editDestModal.destination.mins);
     const rawCarPrices = editDestModal.destination.car_prices || {};
     const carPrices = {};
-    Object.entries(rawCarPrices).forEach(([key, val]) => {
+    activeVehicles.forEach(veh => {
+      const val = (rawCarPrices[veh.id] !== undefined && rawCarPrices[veh.id] !== '')
+        ? rawCarPrices[veh.id]
+        : rawCarPrices[veh.name];
       const numV = Number(val);
       if (!isNaN(numV) && numV > 0) {
-        carPrices[key] = numV;
-        const matchingVeh = activeVehicles.find(v => v.id === key || v.name === key);
-        if (matchingVeh) {
-          carPrices[matchingVeh.id] = numV;
-          carPrices[matchingVeh.name] = numV;
-        }
+        carPrices[veh.id] = numV;
+        carPrices[veh.name] = numV;
       }
     });
 
@@ -1307,12 +1314,15 @@ export default function AdminPortal() {
     };
 
     try {
-      await saveRouteToMySQL(updatedDest);
+      const res = await saveRouteToMySQL(updatedDest);
+      if (!res) {
+        console.warn("Edit route MySQL did not return success:", res);
+      }
     } catch (err) {
       console.warn("Edit route MySQL error:", err);
     }
 
-    const updated = destinations.map(d => d.id === updatedDest.id ? updatedDest : d);
+    const updated = destinations.map(d => (d.id === updatedDest.id || (d.pickup === updatedDest.pickup && d.dropoff === updatedDest.dropoff)) ? updatedDest : d);
     setDestinations(updated);
     safeStorageSetItem('cabsy_destinations', updated);
     try {
@@ -1427,9 +1437,11 @@ export default function AdminPortal() {
   const handleBatchCarRateChange = (destPlace, carId, value) => {
     setBatchMatrixModal(prev => {
       const prevData = prev.rates[destPlace] || { price: '', hours: '', mins: '', carPrices: {} };
+      const matchingVeh = activeVehicles.find(v => v.id === carId || v.name === carId);
       const updatedCarPrices = {
         ...(prevData.carPrices || {}),
-        [carId]: value
+        [carId]: value,
+        ...(matchingVeh ? { [matchingVeh.id]: value, [matchingVeh.name]: value } : {})
       };
       let basePrice = '';
       const firstValid = Object.values(updatedCarPrices).find(val => String(val).trim() !== '' && !isNaN(Number(val)) && Number(val) > 0);
@@ -1461,17 +1473,16 @@ export default function AdminPortal() {
 
     Object.entries(batchMatrixModal.rates).forEach(([destPlace, rateData]) => {
       if (!rateData) return;
-      const carPrices = rateData.carPrices || {};
+      const rawCarPrices = rateData.carPrices || {};
       const validCarPrices = {};
-      Object.entries(carPrices).forEach(([cId, cVal]) => {
+      activeVehicles.forEach(veh => {
+        const cVal = (rawCarPrices[veh.id] !== undefined && rawCarPrices[veh.id] !== '')
+          ? rawCarPrices[veh.id]
+          : rawCarPrices[veh.name];
         if (cVal !== '' && cVal !== null && !isNaN(Number(cVal)) && Number(cVal) > 0) {
           const numVal = Number(cVal);
-          validCarPrices[cId] = numVal;
-          const vehObj = activeVehicles.find(v => v.id === cId || v.name === cId);
-          if (vehObj) {
-            validCarPrices[vehObj.id] = numVal;
-            validCarPrices[vehObj.name] = numVal;
-          }
+          validCarPrices[veh.id] = numVal;
+          validCarPrices[veh.name] = numVal;
         }
       });
 
@@ -1568,12 +1579,21 @@ export default function AdminPortal() {
     setAddVehicleModal(false);
   };
 
-  const handleEditVehicleSubmit = (e) => {
+  const handleEditVehicleSubmit = async (e) => {
     e.preventDefault();
     if (!editVehicleModal.vehicle) return;
     const updated = editVehicleModal.vehicle;
-    setVehicles(vehicles.map(v => v.id === updated.id ? updated : v));
-    saveVehicleToMySQL(updated).catch(err => console.warn('Failed to save vehicle to MySQL:', err));
+    const updatedList = vehicles.map(v => v.id === updated.id ? updated : v);
+    setVehicles(updatedList);
+    safeStorageSetItem('cabsy_vehicles', updatedList);
+    try {
+      localStorage.setItem('cabsy_vehicles', JSON.stringify(updatedList));
+    } catch(e) {}
+    try {
+      await saveVehicleToMySQL(updated);
+    } catch (err) {
+      console.warn('Failed to save vehicle to MySQL:', err);
+    }
     setEditVehicleModal({ open: false, vehicle: null });
   };
 
@@ -4209,12 +4229,12 @@ export default function AdminPortal() {
                           <small className="text-muted block text-xs">(Base Fixed Rate)</small>
                           {dest.car_prices && Object.keys(dest.car_prices).length > 0 && (
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px', maxWidth: '260px' }}>
-                              {Object.entries(dest.car_prices).filter(([_, p]) => p !== '' && p !== null && !isNaN(Number(p)) && Number(p) > 0).map(([carId, carP]) => {
-                                const vObj = activeVehicles.find(v => v.id === carId);
-                                const carName = vObj ? vObj.name : carId;
+                              {activeVehicles.map(v => {
+                                const price = dest.car_prices?.[v.id] ?? dest.car_prices?.[v.name];
+                                if (!price || isNaN(Number(price)) || Number(price) <= 0) return null;
                                 return (
-                                  <span key={carId} style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '4px', fontSize: '11px', padding: '1px 5px', fontWeight: '700', color: '#166534' }}>
-                                    {carName}: ₹{carP}
+                                  <span key={v.id} style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '4px', fontSize: '11px', padding: '1px 5px', fontWeight: '700', color: '#166534' }}>
+                                    {v.name}: ₹{price}
                                   </span>
                                 );
                               })}
@@ -4284,6 +4304,19 @@ export default function AdminPortal() {
                       <span className="hostinger-vehicle-badge">Fixed Fare</span>
                       <span className="hostinger-fare-tag">₹{Number(dest.price || (dest.distanceKm * 15)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                     </div>
+                    {dest.car_prices && Object.keys(dest.car_prices).length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', padding: '6px 0' }}>
+                        {activeVehicles.map(v => {
+                          const price = dest.car_prices?.[v.id] ?? dest.car_prices?.[v.name];
+                          if (!price || isNaN(Number(price)) || Number(price) <= 0) return null;
+                          return (
+                            <span key={v.id} style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '4px', fontSize: '11px', padding: '2px 6px', fontWeight: '700', color: '#166534' }}>
+                              {v.name}: ₹{price}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
                     <div className="hostinger-card-actions">
                       <button 
                         className="btn btn-outline btn-sm flex align-center justify-center gap-1"
@@ -5888,9 +5921,14 @@ export default function AdminPortal() {
                           min="0"
                           step="1"
                           placeholder={newDestForm.price || "Auto"}
-                          value={newDestForm.car_prices?.[veh.id] ?? ''}
+                          value={newDestForm.car_prices?.[veh.id] ?? newDestForm.car_prices?.[veh.name] ?? ''}
                           onChange={e => {
-                            const updatedCarPrices = { ...(newDestForm.car_prices || {}), [veh.id]: e.target.value };
+                            const val = e.target.value;
+                            const updatedCarPrices = {
+                              ...(newDestForm.car_prices || {}),
+                              [veh.id]: val,
+                              [veh.name]: val
+                            };
                             setNewDestForm({ ...newDestForm, car_prices: updatedCarPrices });
                           }}
                           style={{ width: '100%', padding: '6px 8px 6px 20px', borderRadius: '6px', border: '1px solid #CBD5E1', fontWeight: '700', fontSize: '0.9rem' }}
@@ -6029,9 +6067,14 @@ export default function AdminPortal() {
                           min="0"
                           step="1"
                           placeholder={editDestModal.destination.price || "Auto"}
-                          value={editDestModal.destination.car_prices?.[veh.id] ?? ''}
+                          value={editDestModal.destination.car_prices?.[veh.id] ?? editDestModal.destination.car_prices?.[veh.name] ?? ''}
                           onChange={e => {
-                            const updatedCarPrices = { ...(editDestModal.destination.car_prices || {}), [veh.id]: e.target.value };
+                            const val = e.target.value;
+                            const updatedCarPrices = {
+                              ...(editDestModal.destination.car_prices || {}),
+                              [veh.id]: val,
+                              [veh.name]: val
+                            };
                             setEditDestModal({
                               ...editDestModal,
                               destination: { ...editDestModal.destination, car_prices: updatedCarPrices }
@@ -6138,7 +6181,7 @@ export default function AdminPortal() {
                             </div>
                           </td>
                           {matrixVehicles.map((veh) => {
-                            const carVal = currentData.carPrices?.[veh.id] ?? '';
+                            const carVal = currentData.carPrices?.[veh.id] ?? currentData.carPrices?.[veh.name] ?? '';
                             return (
                               <td key={veh.id} style={{ padding: '6px 8px' }}>
                                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>

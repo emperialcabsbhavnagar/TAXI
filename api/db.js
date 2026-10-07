@@ -628,6 +628,8 @@ export async function handleMySQLRequest(action, data = {}) {
           INSERT INTO routes (id, pickup, dropoff, price, duration, car_prices)
           VALUES (?, ?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE
+            pickup = VALUES(pickup),
+            dropoff = VALUES(dropoff),
             price = VALUES(price),
             duration = VALUES(duration),
             car_prices = VALUES(car_prices);
@@ -644,6 +646,8 @@ export async function handleMySQLRequest(action, data = {}) {
           INSERT INTO routes (id, pickup, dropoff, price, duration, car_prices)
           VALUES (?, ?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE
+            pickup = VALUES(pickup),
+            dropoff = VALUES(dropoff),
             price = VALUES(price),
             duration = VALUES(duration),
             car_prices = VALUES(car_prices);

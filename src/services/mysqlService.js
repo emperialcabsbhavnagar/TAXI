@@ -47,6 +47,7 @@ const sendRequest = async (action, data = {}) => {
         headers: {
           'Content-Type': 'application/json'
         },
+        cache: 'no-store',
         body: JSON.stringify({ action, data })
       });
 
