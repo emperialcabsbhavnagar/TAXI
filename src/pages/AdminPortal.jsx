@@ -900,6 +900,7 @@ export default function AdminPortal() {
   const [newInquiryForm, setNewInquiryForm] = useState({ customerName: '', customerPhone: '', pickup: '', dropoff: '', vehicle: 'Empire Regular', fare: 35.00 });
   const [newDestForm, setNewDestForm] = useState({ name: '', pickup: '', dropoff: '', price: '', duration: '' });
   const [batchMatrixModal, setBatchMatrixModal] = useState({ open: false, originPlace: '', rates: {} });
+  const [batchMatrixViewMode, setBatchMatrixViewMode] = useState('cards');
 
   // High-Scale Pagination & Search States (10,000+ routes, 5,000+ fleet vehicles)
   const [destSearchQuery, setDestSearchQuery] = useState('');
@@ -1368,58 +1369,100 @@ export default function AdminPortal() {
   };
 
   const openBatchMatrixModal = () => {
-    const origin = places[0] || '';
-    const initialRates = {};
-    places.filter(p => p !== origin).forEach(dest => {
-      const existing = destinations.find(d => 
-        d && d.pickup && d.dropoff &&
-        d.pickup.toLowerCase().trim() === origin.toLowerCase().trim() && 
-        d.dropoff.toLowerCase().trim() === dest.toLowerCase().trim()
-      );
-      if (existing) {
-        const timeObj = parseDurationHrMin(existing.duration || '');
-        let carPrices = {};
-        if (existing.car_prices) {
-          carPrices = typeof existing.car_prices === 'object' ? { ...existing.car_prices } : {};
+    try {
+      const cleanPlaces = (Array.isArray(places) ? places : [])
+        .map(p => typeof p === 'string' ? p.trim() : (p?.name || p?.title || p?.location || '').toString().trim())
+        .filter(Boolean);
+      
+      const uniquePlaces = [];
+      cleanPlaces.forEach(p => {
+        if (!uniquePlaces.some(u => u.toLowerCase() === p.toLowerCase())) {
+          uniquePlaces.push(p);
         }
-        initialRates[dest] = {
-          price: existing.price !== undefined && existing.price !== null ? String(existing.price) : '',
-          hours: timeObj.hours,
-          mins: timeObj.mins,
-          carPrices: carPrices
-        };
-      } else {
-        initialRates[dest] = { price: '', hours: '', mins: '', carPrices: {} };
+      });
+
+      if (uniquePlaces.length < 2) {
+        alert("Please add at least 2 location places in 'Available Location Places' first before configuring bulk routes.");
+        return;
       }
-    });
-    setBatchMatrixModal({ open: true, originPlace: origin, rates: initialRates });
+
+      if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+        setBatchMatrixViewMode('cards');
+      } else {
+        setBatchMatrixViewMode('table');
+      }
+
+      const origin = uniquePlaces[0] || '';
+      const initialRates = {};
+      uniquePlaces.filter(p => p.toLowerCase() !== origin.toLowerCase()).forEach(dest => {
+        const existing = (Array.isArray(destinations) ? destinations : []).find(d => 
+          d && d.pickup && d.dropoff &&
+          String(d.pickup).toLowerCase().trim() === origin.toLowerCase().trim() && 
+          String(d.dropoff).toLowerCase().trim() === dest.toLowerCase().trim()
+        );
+        if (existing) {
+          const timeObj = parseDurationHrMin(existing.duration || '');
+          let carPrices = {};
+          if (existing.car_prices && typeof existing.car_prices === 'object') {
+            carPrices = { ...existing.car_prices };
+          }
+          initialRates[dest] = {
+            price: existing.price !== undefined && existing.price !== null ? String(existing.price) : '',
+            hours: timeObj.hours,
+            mins: timeObj.mins,
+            carPrices: carPrices
+          };
+        } else {
+          initialRates[dest] = { price: '', hours: '', mins: '', carPrices: {} };
+        }
+      });
+      setBatchMatrixModal({ open: true, originPlace: origin, rates: initialRates });
+    } catch (err) {
+      console.error("Failed to open bulk pricing matrix:", err);
+      alert("Unable to open bulk pricing matrix: " + (err.message || String(err)));
+    }
   };
 
   const handleBatchOriginChange = (newOrigin) => {
-    const initialRates = {};
-    places.filter(p => p !== newOrigin).forEach(dest => {
-      const existing = destinations.find(d => 
-        d && d.pickup && d.dropoff &&
-        d.pickup.toLowerCase().trim() === newOrigin.toLowerCase().trim() && 
-        d.dropoff.toLowerCase().trim() === dest.toLowerCase().trim()
-      );
-      if (existing) {
-        const timeObj = parseDurationHrMin(existing.duration || '');
-        let carPrices = {};
-        if (existing.car_prices) {
-          carPrices = typeof existing.car_prices === 'object' ? { ...existing.car_prices } : {};
+    try {
+      const cleanPlaces = (Array.isArray(places) ? places : [])
+        .map(p => typeof p === 'string' ? p.trim() : (p?.name || p?.title || p?.location || '').toString().trim())
+        .filter(Boolean);
+      
+      const uniquePlaces = [];
+      cleanPlaces.forEach(p => {
+        if (!uniquePlaces.some(u => u.toLowerCase() === p.toLowerCase())) {
+          uniquePlaces.push(p);
         }
-        initialRates[dest] = {
-          price: existing.price !== undefined && existing.price !== null ? String(existing.price) : '',
-          hours: timeObj.hours,
-          mins: timeObj.mins,
-          carPrices: carPrices
-        };
-      } else {
-        initialRates[dest] = { price: '', hours: '', mins: '', carPrices: {} };
-      }
-    });
-    setBatchMatrixModal({ open: true, originPlace: newOrigin, rates: initialRates });
+      });
+
+      const initialRates = {};
+      uniquePlaces.filter(p => p.toLowerCase() !== String(newOrigin).toLowerCase().trim()).forEach(dest => {
+        const existing = (Array.isArray(destinations) ? destinations : []).find(d => 
+          d && d.pickup && d.dropoff &&
+          String(d.pickup).toLowerCase().trim() === String(newOrigin).toLowerCase().trim() && 
+          String(d.dropoff).toLowerCase().trim() === dest.toLowerCase().trim()
+        );
+        if (existing) {
+          const timeObj = parseDurationHrMin(existing.duration || '');
+          let carPrices = {};
+          if (existing.car_prices && typeof existing.car_prices === 'object') {
+            carPrices = { ...existing.car_prices };
+          }
+          initialRates[dest] = {
+            price: existing.price !== undefined && existing.price !== null ? String(existing.price) : '',
+            hours: timeObj.hours,
+            mins: timeObj.mins,
+            carPrices: carPrices
+          };
+        } else {
+          initialRates[dest] = { price: '', hours: '', mins: '', carPrices: {} };
+        }
+      });
+      setBatchMatrixModal({ open: true, originPlace: newOrigin, rates: initialRates });
+    } catch (err) {
+      console.error("Failed to change bulk origin:", err);
+    }
   };
 
   const handleBatchRateChange = (destPlace, field, value) => {
@@ -6106,187 +6149,274 @@ export default function AdminPortal() {
 
       {/* MODAL 10B: BATCH ROUTE PRICING MATRIX - ENTER ALL AT ONCE */}
       {batchMatrixModal.open && (
-        <div className="admin-modal-overlay" onClick={() => setBatchMatrixModal({ open: false, originPlace: '', rates: {} })}>
-          <div className="admin-modal-box card batch-matrix-modal" style={{ maxWidth: '1150px', width: '96vw', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header-flex" style={{ paddingBottom: '1rem', borderBottom: '1px solid #E2E8F0' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Sparkles size={20} className="text-green" /> Batch Route Pricing Matrix (Multi-Car Rates)
+        <div 
+          className="admin-modal-overlay batch-matrix-overlay" 
+          onClick={e => {
+            if (e.target === e.currentTarget) {
+              setBatchMatrixModal({ open: false, originPlace: '', rates: {} });
+            }
+          }}
+        >
+          <div 
+            className="admin-modal-box card batch-matrix-modal" 
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="batch-matrix-header">
+              <div style={{ flex: 1, minWidth: 0, paddingRight: '10px' }}>
+                <h3 className="batch-matrix-title">
+                  <Sparkles size={18} className="text-green" /> Batch Route Pricing Matrix
                 </h3>
-                <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748B' }}>
-                  Select an origin and set specific fixed rupee (₹) fares for all fleet vehicles simultaneously. Customers will see these exact prices live on web & app!
+                <p className="batch-matrix-subtitle">
+                  Configure fixed rupee (₹) fares for all fleet vehicles across routes. Live on web & app!
                 </p>
               </div>
-              <button className="btn-modal-close" onClick={() => setBatchMatrixModal({ open: false, originPlace: '', rates: {} })}><XCircle size={22} /></button>
+              <div className="flex align-center gap-2">
+                <div className="batch-view-toggle">
+                  <button 
+                    type="button" 
+                    className={`batch-toggle-btn ${batchMatrixViewMode === 'cards' ? 'active' : ''}`}
+                    onClick={() => setBatchMatrixViewMode('cards')}
+                    title="Mobile-friendly Card View"
+                  >
+                    Cards
+                  </button>
+                  <button 
+                    type="button" 
+                    className={`batch-toggle-btn ${batchMatrixViewMode === 'table' ? 'active' : ''}`}
+                    onClick={() => setBatchMatrixViewMode('table')}
+                    title="Spreadsheet Table View"
+                  >
+                    Table
+                  </button>
+                </div>
+                <button 
+                  className="btn-modal-close" 
+                  onClick={() => setBatchMatrixModal({ open: false, originPlace: '', rates: {} })}
+                >
+                  <XCircle size={22} />
+                </button>
+              </div>
             </div>
 
-            <div style={{ padding: '1rem 0', flex: 1, overflowY: 'auto' }}>
+            {/* Modal Body */}
+            <div className="batch-matrix-body">
               {/* Origin Selector Bar */}
-              <div style={{ background: '#F8FAFC', padding: '1rem 1.25rem', borderRadius: '14px', border: '1px solid #E2E8F0', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#10B981', display: 'inline-block' }}></span>
-                  <label style={{ fontWeight: '800', fontSize: '0.9rem', color: '#0F172A', margin: 0 }}>Starting Origin Place (From):</label>
+              <div className="batch-origin-bar">
+                <div className="batch-origin-left">
+                  <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#10B981', display: 'inline-block', flexShrink: 0 }}></span>
+                  <label style={{ fontWeight: '800', fontSize: '0.88rem', color: '#0F172A', margin: 0, whiteSpace: 'nowrap' }}>
+                    Origin (From):
+                  </label>
+                  <select 
+                    className="form-control batch-origin-select"
+                    value={batchMatrixModal.originPlace}
+                    onChange={e => handleBatchOriginChange(e.target.value)}
+                  >
+                    {places.map((pl, idx) => {
+                      const placeName = typeof pl === 'string' ? pl : (pl?.name || pl?.title || '');
+                      return <option key={idx} value={placeName}>{placeName}</option>;
+                    })}
+                  </select>
                 </div>
-                <select 
-                  className="form-control"
-                  style={{ minWidth: '260px', flex: 1, height: '42px', borderRadius: '10px', fontWeight: '700' }}
-                  value={batchMatrixModal.originPlace}
-                  onChange={e => handleBatchOriginChange(e.target.value)}
-                >
-                  {places.map((pl, idx) => (
-                    <option key={idx} value={pl}>{pl}</option>
-                  ))}
-                </select>
-                <span style={{ fontSize: '0.82rem', color: '#64748B', fontWeight: '700' }}>
-                  {places.filter(p => p !== batchMatrixModal.originPlace).length} Destinations Available • {matrixVehicles.length} of {activeVehicles.length} Vehicles Displayed
-                </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
-                  <Search size={15} style={{ color: '#64748B' }} />
-                  <input 
-                    type="text"
-                    placeholder="Filter car columns..."
-                    value={matrixVehicleFilter}
-                    onChange={e => setMatrixVehicleFilter(e.target.value)}
-                    style={{ padding: '5px 10px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.82rem', width: '160px' }}
-                  />
-                  {matrixVehicleFilter && (
-                    <button type="button" onClick={() => setMatrixVehicleFilter('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
-                  )}
+
+                <div className="batch-origin-right">
+                  <span className="batch-dest-count-tag">
+                    {places.filter(p => (typeof p === 'string' ? p : (p?.name || p?.title || '')) !== batchMatrixModal.originPlace).length} Destinations Available
+                  </span>
+                  <div className="batch-filter-search">
+                    <Search size={14} style={{ color: '#64748B' }} />
+                    <input 
+                      type="text"
+                      placeholder="Filter vehicles..."
+                      value={matrixVehicleFilter}
+                      onChange={e => setMatrixVehicleFilter(e.target.value)}
+                      className="batch-filter-input"
+                    />
+                    {matrixVehicleFilter && (
+                      <button type="button" onClick={() => setMatrixVehicleFilter('')} className="batch-clear-filter">✕</button>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Multi-Car Matrix Table */}
-              <div style={{ border: '1px solid #CBD5E1', borderRadius: '14px', overflowX: 'auto', background: '#FFFFFF' }}>
-                <table className="admin-table batch-matrix-table" style={{ minWidth: `${240 + matrixVehicles.length * 150 + 190}px`, margin: 0 }}>
-                  <thead style={{ background: '#F1F5F9', position: 'sticky', top: 0, zIndex: 10 }}>
-                    <tr>
-                      <th style={{ width: '220px', minWidth: '200px', position: 'sticky', left: 0, background: '#F1F5F9', zIndex: 11, borderRight: '2px solid #E2E8F0' }}>
-                        Drop-off Destination (To)
-                      </th>
-                      {matrixVehicles.map((veh) => (
-                        <th key={veh.id} style={{ minWidth: '145px', textAlign: 'center' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                            <span style={{ fontWeight: '800', color: '#0F172A', fontSize: '0.88rem' }}>{veh.name}</span>
-                            <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: '700', background: '#ECFDF5', padding: '1px 6px', borderRadius: '4px' }}>
-                              Fixed ₹ ({veh.passengers || '4 Seats'})
-                            </span>
-                          </div>
-                        </th>
-                      ))}
-                      <th style={{ width: '190px', minWidth: '180px', textAlign: 'center' }}>Est. Travel Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {places.filter(p => p !== batchMatrixModal.originPlace).map((destPlace, idx) => {
+              {/* View 1: Mobile-friendly Cards View */}
+              {batchMatrixViewMode === 'cards' && (
+                <div className="batch-cards-container">
+                  {places
+                    .filter(p => (typeof p === 'string' ? p : (p?.name || p?.title || '')) !== batchMatrixModal.originPlace)
+                    .map((pl, idx) => {
+                      const destPlace = typeof pl === 'string' ? pl : (pl?.name || pl?.title || '');
                       const currentData = batchMatrixModal.rates[destPlace] || { price: '', hours: '', mins: '', carPrices: {} };
                       return (
-                        <tr key={idx}>
-                          <td style={{ position: 'sticky', left: 0, background: '#FFFFFF', zIndex: 5, borderRight: '2px solid #E2E8F0' }}>
-                            <div className="route-place-cell">
+                        <div key={idx} className="batch-dest-card">
+                          <div className="batch-dest-card-header">
+                            <div className="flex align-center gap-2">
                               <span className="dot-indicator red"></span>
-                              <strong className="place-name-text" style={{ fontSize: '0.92rem' }}>{destPlace}</strong>
+                              <strong className="batch-dest-name">To: {destPlace}</strong>
                             </div>
-                          </td>
-                          {matrixVehicles.map((veh) => {
-                            const carVal = currentData.carPrices?.[veh.id] ?? currentData.carPrices?.[veh.name] ?? '';
-                            return (
-                              <td key={veh.id} style={{ padding: '6px 8px' }}>
-                                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                  <span style={{ position: 'absolute', left: '10px', fontWeight: '800', color: '#059669', fontSize: '0.9rem' }}>₹</span>
-                                  <input 
-                                    type="number"
-                                    min="0"
-                                    step="1"
-                                    placeholder={currentData.price || "Auto"}
-                                    value={carVal}
-                                    onChange={e => handleBatchCarRateChange(destPlace, veh.id, e.target.value)}
-                                    style={{
-                                      width: '100%',
-                                      padding: '8px 8px 8px 24px',
-                                      borderRadius: '8px',
-                                      border: '1.5px solid #CBD5E1',
-                                      fontWeight: '700',
-                                      fontSize: '0.9rem',
-                                      outline: 'none',
-                                      background: carVal ? '#ECFDF5' : '#FFFFFF',
-                                      borderColor: carVal ? '#10B981' : '#CBD5E1',
-                                      color: '#0F172A'
-                                    }}
-                                  />
+                            <div className="batch-dest-time-group">
+                              <span className="text-muted text-xs font-bold">⏱️ Time:</span>
+                              <input 
+                                type="number" 
+                                min="0" 
+                                max="48" 
+                                placeholder="0" 
+                                value={currentData.hours !== undefined ? currentData.hours : ''} 
+                                onChange={e => handleBatchRateChange(destPlace, 'hours', e.target.value)}
+                                className="batch-time-box"
+                              />
+                              <span className="text-xs text-muted font-bold">hr</span>
+                              <input 
+                                type="number" 
+                                min="0" 
+                                max="59" 
+                                step="5" 
+                                placeholder="0" 
+                                value={currentData.mins !== undefined ? currentData.mins : ''} 
+                                onChange={e => handleBatchRateChange(destPlace, 'mins', e.target.value)}
+                                className="batch-time-box"
+                              />
+                              <span className="text-xs text-muted font-bold">min</span>
+                            </div>
+                          </div>
+
+                          <div className="batch-cars-grid">
+                            {matrixVehicles.map((veh) => {
+                              const carVal = currentData.carPrices?.[veh.id] ?? currentData.carPrices?.[veh.name] ?? '';
+                              return (
+                                <div key={veh.id} className="batch-car-cell">
+                                  <div className="batch-car-cell-info">
+                                    <span className="batch-car-cell-name">{veh.name}</span>
+                                    <span className="batch-car-cell-seats">{veh.passengers || '4 Seats'}</span>
+                                  </div>
+                                  <div className="batch-car-cell-input-wrap">
+                                    <span className="batch-rupee-sign">₹</span>
+                                    <input 
+                                      type="number" 
+                                      min="0" 
+                                      step="1" 
+                                      placeholder={currentData.price || "Auto"}
+                                      value={carVal}
+                                      onChange={e => handleBatchCarRateChange(destPlace, veh.id, e.target.value)}
+                                      className={`batch-price-input ${carVal ? 'filled' : ''}`}
+                                    />
+                                  </div>
                                 </div>
-                              </td>
-                            );
-                          })}
-                          <td style={{ padding: '6px 8px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '3px', flex: 1 }}>
-                                <input 
-                                  type="number" 
-                                  min="0"
-                                  max="48"
-                                  placeholder="0"
-                                  value={currentData.hours !== undefined ? currentData.hours : ''}
-                                  onChange={e => handleBatchRateChange(destPlace, 'hours', e.target.value)}
-                                  style={{
-                                    width: '100%',
-                                    padding: '7px 4px',
-                                    borderRadius: '8px',
-                                    border: '1.5px solid #CBD5E1',
-                                    fontWeight: '700',
-                                    fontSize: '0.85rem',
-                                    textAlign: 'center',
-                                    outline: 'none',
-                                    background: currentData.hours ? '#F0FDF4' : '#FFFFFF',
-                                    borderColor: currentData.hours ? '#10B981' : '#CBD5E1',
-                                    color: '#0F172A'
-                                  }}
-                                />
-                                <span style={{ fontWeight: '700', fontSize: '0.78rem', color: '#64748B' }}>hr</span>
-                              </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '3px', flex: 1 }}>
-                                <input 
-                                  type="number" 
-                                  min="0"
-                                  max="59"
-                                  step="5"
-                                  placeholder="0"
-                                  value={currentData.mins !== undefined ? currentData.mins : ''}
-                                  onChange={e => handleBatchRateChange(destPlace, 'mins', e.target.value)}
-                                  style={{
-                                    width: '100%',
-                                    padding: '7px 4px',
-                                    borderRadius: '8px',
-                                    border: '1.5px solid #CBD5E1',
-                                    fontWeight: '700',
-                                    fontSize: '0.85rem',
-                                    textAlign: 'center',
-                                    outline: 'none',
-                                    background: currentData.mins ? '#F0FDF4' : '#FFFFFF',
-                                    borderColor: currentData.mins ? '#10B981' : '#CBD5E1',
-                                    color: '#0F172A'
-                                  }}
-                                />
-                                <span style={{ fontWeight: '700', fontSize: '0.78rem', color: '#64748B' }}>min</span>
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
+                              );
+                            })}
+                          </div>
+                        </div>
                       );
                     })}
-                  </tbody>
-                </table>
-              </div>
+                </div>
+              )}
+
+              {/* View 2: Spreadsheet Table View */}
+              {batchMatrixViewMode === 'table' && (
+                <div className="batch-table-scroll-wrapper">
+                  <table className="batch-matrix-table" style={{ minWidth: `${180 + matrixVehicles.length * 140 + 170}px` }}>
+                    <thead>
+                      <tr>
+                        <th className="batch-table-sticky-header">
+                          Drop-off Destination (To)
+                        </th>
+                        {matrixVehicles.map((veh) => (
+                          <th key={veh.id}>
+                            <div className="flex flex-column align-center gap-1">
+                              <span style={{ fontWeight: '800', color: '#0F172A', fontSize: '0.86rem' }}>{veh.name}</span>
+                              <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: '700', background: '#ECFDF5', padding: '1px 6px', borderRadius: '4px' }}>
+                                Fixed ₹ ({veh.passengers || '4 Seats'})
+                              </span>
+                            </div>
+                          </th>
+                        ))}
+                        <th style={{ width: '170px', minWidth: '160px', textAlign: 'center' }}>Est. Travel Time</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {places
+                        .filter(p => (typeof p === 'string' ? p : (p?.name || p?.title || '')) !== batchMatrixModal.originPlace)
+                        .map((pl, idx) => {
+                          const destPlace = typeof pl === 'string' ? pl : (pl?.name || pl?.title || '');
+                          const currentData = batchMatrixModal.rates[destPlace] || { price: '', hours: '', mins: '', carPrices: {} };
+                          return (
+                            <tr key={idx}>
+                              <td className="batch-table-sticky-cell">
+                                <div className="route-place-cell">
+                                  <span className="dot-indicator red"></span>
+                                  <strong className="place-name-text" style={{ fontSize: '0.9rem' }}>{destPlace}</strong>
+                                </div>
+                              </td>
+                              {matrixVehicles.map((veh) => {
+                                const carVal = currentData.carPrices?.[veh.id] ?? currentData.carPrices?.[veh.name] ?? '';
+                                return (
+                                  <td key={veh.id} style={{ padding: '6px 8px' }}>
+                                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                      <span style={{ position: 'absolute', left: '8px', fontWeight: '800', color: '#059669', fontSize: '0.85rem' }}>₹</span>
+                                      <input 
+                                        type="number"
+                                        min="0"
+                                        step="1"
+                                        placeholder={currentData.price || "Auto"}
+                                        value={carVal}
+                                        onChange={e => handleBatchCarRateChange(destPlace, veh.id, e.target.value)}
+                                        className={`batch-price-input ${carVal ? 'filled' : ''}`}
+                                        style={{ width: '100%', padding: '6px 6px 6px 20px', borderRadius: '8px', border: '1.5px solid #CBD5E1', fontWeight: '700', fontSize: '0.88rem' }}
+                                      />
+                                    </div>
+                                  </td>
+                                );
+                              })}
+                              <td style={{ padding: '6px 8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <input 
+                                    type="number" 
+                                    min="0" 
+                                    max="48" 
+                                    placeholder="0" 
+                                    value={currentData.hours !== undefined ? currentData.hours : ''}
+                                    onChange={e => handleBatchRateChange(destPlace, 'hours', e.target.value)}
+                                    className="batch-time-box"
+                                    style={{ flex: 1 }}
+                                  />
+                                  <span style={{ fontWeight: '700', fontSize: '0.76rem', color: '#64748B' }}>hr</span>
+                                  <input 
+                                    type="number" 
+                                    min="0" 
+                                    max="59" 
+                                    step="5" 
+                                    placeholder="0" 
+                                    value={currentData.mins !== undefined ? currentData.mins : ''}
+                                    onChange={e => handleBatchRateChange(destPlace, 'mins', e.target.value)}
+                                    className="batch-time-box"
+                                    style={{ flex: 1 }}
+                                  />
+                                  <span style={{ fontWeight: '700', fontSize: '0.76rem', color: '#64748B' }}>min</span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
-            <div className="modal-actions-flex" style={{ paddingTop: '1rem', borderTop: '1px solid #E2E8F0', marginTop: '0.5rem' }}>
-              <button type="button" className="btn btn-outline" onClick={() => setBatchMatrixModal({ open: false, originPlace: '', rates: {} })}>
+            {/* Modal Pinned Footer */}
+            <div className="batch-matrix-footer">
+              <button 
+                type="button" 
+                className="btn btn-outline" 
+                onClick={() => setBatchMatrixModal({ open: false, originPlace: '', rates: {} })}
+              >
                 Cancel
               </button>
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn btn-primary batch-save-btn"
                 onClick={handleSaveBatchMatrix}
-                style={{ minWidth: '240px', fontWeight: '800' }}
               >
                 Save All Route Rates
               </button>
