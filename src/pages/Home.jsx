@@ -62,10 +62,35 @@ export default function Home({ onOpenBooking }) {
   }, []);
 
   const fleetTrackRef = React.useRef(null);
+  const [canScrollLeft, setCanScrollLeft] = React.useState(false);
+  const [canScrollRight, setCanScrollRight] = React.useState(true);
+
+  const checkFleetScroll = () => {
+    if (!fleetTrackRef.current) return;
+    const { scrollLeft, scrollWidth, clientWidth } = fleetTrackRef.current;
+    setCanScrollLeft(scrollLeft > 10);
+    setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 10);
+  };
+
+  React.useEffect(() => {
+    const track = fleetTrackRef.current;
+    if (track) {
+      checkFleetScroll();
+      track.addEventListener('scroll', checkFleetScroll, { passive: true });
+      window.addEventListener('resize', checkFleetScroll);
+    }
+    return () => {
+      if (track) track.removeEventListener('scroll', checkFleetScroll);
+      window.removeEventListener('resize', checkFleetScroll);
+    };
+  }, [vehicles]);
+
   const handleFleetScroll = (direction) => {
     if (!fleetTrackRef.current) return;
-    const scrollAmount = 340;
-    fleetTrackRef.current.scrollBy({
+    const track = fleetTrackRef.current;
+    const firstCard = track.querySelector('.fleet-card');
+    const scrollAmount = firstCard ? (firstCard.offsetWidth + 24) : 380;
+    track.scrollBy({
       left: direction === 'left' ? -scrollAmount : scrollAmount,
       behavior: 'smooth'
     });
@@ -232,50 +257,52 @@ export default function Home({ onOpenBooking }) {
         </div>
       </section>
 
-      {/* FLEET CARDS SECTION (HORIZONTAL SLIDER BAR) */}
+      {/* FLEET CARDS SECTION (3 CARDS VISIBLE WITH LEFT & RIGHT SLIDE BUTTONS) */}
       <section className="section fleet-section">
         <div className="container">
-          <div className="section-header flex justify-between align-center" style={{ flexWrap: 'wrap', gap: '1rem', marginBottom: '2rem' }}>
-            <div>
-              <h2>Explore Our Executive Car Fleet</h2>
-              <p>Choose from our diverse range of regular sedans, spacious family SUVs, executive luxury cars, and eco-friendly electric cabs.</p>
-            </div>
-            <div className="fleet-slider-nav">
-              <button 
-                type="button" 
-                className="fleet-slider-btn" 
-                onClick={() => handleFleetScroll('left')}
-                aria-label="Previous Vehicle"
-                title="Scroll Left"
-              >
-                <ChevronLeft size={20} />
-              </button>
-              <button 
-                type="button" 
-                className="fleet-slider-btn" 
-                onClick={() => handleFleetScroll('right')}
-                aria-label="Next Vehicle"
-                title="Scroll Right"
-              >
-                <ChevronRight size={20} />
-              </button>
-            </div>
+          <div className="section-header text-center" style={{ marginBottom: '2.5rem' }}>
+            <h2>Explore Our Executive Car Fleet</h2>
+            <p>Choose from our diverse range of regular sedans, spacious family SUVs, executive luxury cars, and eco-friendly electric cabs.</p>
           </div>
 
-          <div className="fleet-slider-track" ref={fleetTrackRef}>
-            {vehicles.map((car, idx) => (
-              <div key={car.id || idx} className="card fleet-card">
-                <h3>{car.name}</h3>
-                <div style={{ background: '#DCFCE7', color: '#166534', padding: '2px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold', display: 'inline-block', marginBottom: '4px' }}>
-                  ₹{car.rate} / km
+          <div className="fleet-carousel-wrapper">
+            <button 
+              type="button" 
+              className={`fleet-nav-btn fleet-nav-prev ${!canScrollLeft ? 'disabled' : ''}`}
+              onClick={() => handleFleetScroll('left')}
+              aria-label="Previous Vehicle"
+              title="Previous Vehicle"
+              disabled={!canScrollLeft}
+            >
+              <ChevronLeft size={24} />
+            </button>
+
+            <div className="fleet-slider-track" ref={fleetTrackRef}>
+              {vehicles.map((car, idx) => (
+                <div key={car.id || idx} className="card fleet-card">
+                  <h3>{car.name}</h3>
+                  <div style={{ background: '#DCFCE7', color: '#166534', padding: '2px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold', display: 'inline-block', marginBottom: '4px' }}>
+                    ₹{car.rate} / km
+                  </div>
+                  <p className="fleet-cap">{car.passengers || '1 - 4 Passenger'}</p>
+                  <Link to="/services" className="fleet-link">Learn More &gt;</Link>
+                  <div className="fleet-img-wrap">
+                    <img src={car.image} alt={car.name} className="fleet-car-img" />
+                  </div>
                 </div>
-                <p className="fleet-cap">{car.passengers || '1 - 4 Passenger'}</p>
-                <Link to="/services" className="fleet-link">Learn More &gt;</Link>
-                <div className="fleet-img-wrap">
-                  <img src={car.image} alt={car.name} className="fleet-car-img" />
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
+
+            <button 
+              type="button" 
+              className={`fleet-nav-btn fleet-nav-next ${!canScrollRight ? 'disabled' : ''}`}
+              onClick={() => handleFleetScroll('right')}
+              aria-label="Next Vehicle"
+              title="Next Vehicle"
+              disabled={!canScrollRight}
+            >
+              <ChevronRight size={24} />
+            </button>
           </div>
         </div>
       </section>

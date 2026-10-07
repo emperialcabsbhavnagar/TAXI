@@ -559,82 +559,95 @@
   /* scale effect removed for static corporate feel */
 }
 
-/* Fleet Slider Bar & Controls */
-.fleet-slider-nav {
+/* Fleet Carousel Container with Left & Right Flank Buttons */
+.fleet-carousel-wrapper {
+  position: relative;
   display: flex;
-  gap: 0.5rem;
   align-items: center;
+  gap: 1.25rem;
+  width: 100%;
 }
 
-.fleet-slider-btn {
-  width: 42px;
-  height: 42px;
+.fleet-nav-btn {
+  flex: 0 0 50px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
-  border: 1px solid #E2E8F0;
+  border: 1.5px solid #E2E8F0;
   background: #FFFFFF;
   color: #0F172A;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  transition: all 0.25s ease;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
 }
 
-.fleet-slider-btn:hover {
+.fleet-nav-btn:hover:not(:disabled) {
   background: #0F172A;
   color: #FFFFFF;
   border-color: #0F172A;
+  transform: scale(1.06);
+}
+
+.fleet-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .fleet-slider-track {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   gap: 1.5rem;
   overflow-x: auto;
   scroll-behavior: smooth;
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
-  padding: 0.5rem 0 1.25rem 0;
-  scrollbar-width: thin;
+  padding: 0.5rem 0.25rem 1.25rem 0.25rem;
+  scrollbar-width: none; /* Hide scrollbar for sleek editorial look */
 }
 
 .fleet-slider-track::-webkit-scrollbar {
-  height: 6px;
+  display: none;
 }
 
-.fleet-slider-track::-webkit-scrollbar-track {
-  background: #F1F5F9;
-  border-radius: 999px;
-}
-
-.fleet-slider-track::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
-  border-radius: 999px;
-}
-
+/* Exactly 3 cards visible on desktop, remaining cards revealed by clicking slide buttons */
 .fleet-slider-track .fleet-card {
-  flex: 0 0 calc((100% - 4.5rem) / 4);
-  min-width: 280px;
-  max-width: 360px;
+  flex: 0 0 calc((100% - 2 * 1.5rem) / 3) !important;
+  min-width: calc((100% - 2 * 1.5rem) / 3) !important;
+  max-width: calc((100% - 2 * 1.5rem) / 3) !important;
   scroll-snap-align: start;
+  box-sizing: border-box;
 }
 
-@media (max-width: 1200px) {
+/* 2 cards visible on tablets */
+@media (max-width: 992px) {
   .fleet-slider-track .fleet-card {
-    flex: 0 0 calc((100% - 3rem) / 3);
+    flex: 0 0 calc((100% - 1.5rem) / 2) !important;
+    min-width: calc((100% - 1.5rem) / 2) !important;
+    max-width: calc((100% - 1.5rem) / 2) !important;
   }
 }
 
-@media (max-width: 860px) {
-  .fleet-slider-track .fleet-card {
-    flex: 0 0 calc((100% - 1.5rem) / 2);
+/* 1 card visible on mobile devices with compact left/right controls */
+@media (max-width: 640px) {
+  .fleet-carousel-wrapper {
+    gap: 0.5rem;
   }
-}
 
-@media (max-width: 580px) {
+  .fleet-nav-btn {
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+  }
+
   .fleet-slider-track .fleet-card {
-    flex: 0 0 85%;
-    min-width: 260px;
+    flex: 0 0 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
   }
 }
 
