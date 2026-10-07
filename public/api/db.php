@@ -956,7 +956,6 @@ switch ($action) {
 
         $notifStmt = $pdo->prepare("SELECT * FROM customer_notifications 
                                     WHERE UPPER(TRIM(target_phone)) = 'ADMIN' 
-                                      AND (delivered = 0 OR delivered IS NULL)
                                       AND created_at >= NOW() - INTERVAL 48 HOUR 
                                     ORDER BY created_at DESC LIMIT 50");
         $notifStmt->execute();

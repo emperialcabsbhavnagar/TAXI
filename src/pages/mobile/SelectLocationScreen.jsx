@@ -438,6 +438,9 @@ export default function SelectLocationScreen({
       localStorage.setItem('cabsy_user_profile', JSON.stringify({ name: customerName, phone: cleanPhone, email: 'emperialcabsbhavnagar@gmail.com' }));
     } catch (e) {}
 
+    // Save directly to Hostinger MySQL Database so Dispatch Admin is notified on all devices
+    saveContactMessageToMySQL(newMsg).catch(e => console.warn('MySQL custom route save failed:', e));
+
     notifyAdmin({
       type: 'custom_inquiry',
       title: 'New Custom Route Inquiry!',

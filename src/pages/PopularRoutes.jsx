@@ -5,7 +5,7 @@ import {
   POPULAR_FEATURED_ROUTES, 
   slugify 
 } from '../data/seoKeywordsData';
-import { loadAllRoutesFromMySQL, loadAllPlacesFromMySQL } from '../services/mysqlService';
+import { loadAllRoutesFromMySQL, loadAllPlacesFromMySQL, expandBidirectionalRoutes } from '../services/mysqlService';
 import { 
   MapPin, 
   Search, 
@@ -29,7 +29,7 @@ export default function PopularRoutes() {
       metaDesc.setAttribute('content', 'Explore all direct outstation taxi routes, fixed fares, and travel times across Bhavnagar, Ahmedabad, Vadodara, Surat, Rajkot, and all Gujarat cities with EMPERIAL CABS.');
     }
 
-    // Load custom routes from MySQL
+    // Load custom routes from MySQL and apply bidirectional expansion (1 route = 2 swapped routes)
     loadAllRoutesFromMySQL().then(routes => {
       if (Array.isArray(routes) && routes.length > 0) {
         setDbRoutes(routes);
@@ -37,8 +37,8 @@ export default function PopularRoutes() {
     }).catch(() => {});
   }, []);
 
-  // Strictly display only routes configured by Admin in MySQL with valid positive pricing
-  const allRoutesList = dbRoutes
+  // Strictly display only routes configured by Admin in MySQL with bidirectional expansion (1 route = 2 route swap)
+  const allRoutesList = expandBidirectionalRoutes(dbRoutes)
     .filter(r => {
       if (!r || !r.pickup || !r.dropoff) return false;
       const baseP = Number(r.price) || 0;

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, ShieldCheck, Wrench, ArrowRight, Star, MapPin, Navigation, Smartphone, Clock, Users, Package, Calendar, Briefcase, Plane } from 'lucide-react';
+import { CheckCircle2, ShieldCheck, Wrench, ArrowRight, Star, MapPin, Navigation, Smartphone, Clock, Users, Package, Calendar, Briefcase, Plane, ChevronLeft, ChevronRight } from 'lucide-react';
 import { loadAllVehiclesFromMySQL } from '../services/mysqlService';
 import './Pages.css';
 
@@ -60,6 +60,16 @@ export default function Home({ onOpenBooking }) {
       if (bc) bc.close();
     };
   }, []);
+
+  const fleetTrackRef = React.useRef(null);
+  const handleFleetScroll = (direction) => {
+    if (!fleetTrackRef.current) return;
+    const scrollAmount = 340;
+    fleetTrackRef.current.scrollBy({
+      left: direction === 'left' ? -scrollAmount : scrollAmount,
+      behavior: 'smooth'
+    });
+  };
 
   return (
     <div className="page-home">
@@ -222,15 +232,37 @@ export default function Home({ onOpenBooking }) {
         </div>
       </section>
 
-      {/* FLEET CARDS SECTION */}
+      {/* FLEET CARDS SECTION (HORIZONTAL SLIDER BAR) */}
       <section className="section fleet-section">
         <div className="container">
-          <div className="section-header">
-            <h2>Explore Our Executive Car Fleet</h2>
-            <p>Choose from our diverse range of regular sedans, spacious family SUVs, executive luxury cars, and eco-friendly electric cabs.</p>
+          <div className="section-header flex justify-between align-center" style={{ flexWrap: 'wrap', gap: '1rem', marginBottom: '2rem' }}>
+            <div>
+              <h2>Explore Our Executive Car Fleet</h2>
+              <p>Choose from our diverse range of regular sedans, spacious family SUVs, executive luxury cars, and eco-friendly electric cabs.</p>
+            </div>
+            <div className="fleet-slider-nav">
+              <button 
+                type="button" 
+                className="fleet-slider-btn" 
+                onClick={() => handleFleetScroll('left')}
+                aria-label="Previous Vehicle"
+                title="Scroll Left"
+              >
+                <ChevronLeft size={20} />
+              </button>
+              <button 
+                type="button" 
+                className="fleet-slider-btn" 
+                onClick={() => handleFleetScroll('right')}
+                aria-label="Next Vehicle"
+                title="Scroll Right"
+              >
+                <ChevronRight size={20} />
+              </button>
+            </div>
           </div>
 
-          <div className="grid-4-cols">
+          <div className="fleet-slider-track" ref={fleetTrackRef}>
             {vehicles.map((car, idx) => (
               <div key={car.id || idx} className="card fleet-card">
                 <h3>{car.name}</h3>

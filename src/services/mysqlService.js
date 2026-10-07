@@ -477,7 +477,9 @@ export const expandBidirectionalRoutes = (routeList) => {
         pickup: d,
         dropoff: p,
         price: Number(r.price) || 0,
+        distanceKm: r.distanceKm ? Number(r.distanceKm) : 0,
         duration: r.duration || '',
+        highway: r.highway || 'Direct Route',
         car_prices: r.car_prices || {},
         isGeneratedReverse: true
       });

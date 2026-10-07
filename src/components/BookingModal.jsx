@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import db from '../services/dbService';
-import { INITIAL_VEHICLES } from '../pages/AdminPortal';
-import { loadAllVehiclesFromMySQL, getRoutePriceFromMySQL } from '../services/mysqlService';
+import { loadAllVehiclesFromMySQL, getRoutePriceFromMySQL, saveInquiryToMySQL } from '../services/mysqlService';
 import { X, MapPin, Navigation, Car, Clock, ShieldCheck, CheckCircle } from 'lucide-react';
 import { notifyAdmin } from '../services/notificationEngine';
 import './BookingModal.css';
@@ -184,12 +183,14 @@ export default function BookingModal({ isOpen, onClose, initialData }) {
       date: new Date().toLocaleString('en-IN')
     };
     db.saveInquiry(newInq);
+    saveInquiryToMySQL(newInq).catch(e => console.warn('MySQL booking modal save failed:', e));
 
     // Send Phone/Desktop Push Notification & Bell Notif to Admin
     notifyAdmin({
       type: 'inquiry',
       title: 'New Ride Inquiry Received',
-      body: `New booking for ${newInq.customerName}: ${newInq.pickup} -> ${newInq.dropoff} (Rs ${parseFloat(estimatedFare).toFixed(2)})`
+      body: `New booking for ${newInq.customerName}: ${newInq.pickup} -> ${newInq.dropoff} (₹${parseFloat(estimatedFare).toFixed(2)})`,
+      extraData: { inquiryId: newInq.id }
     });
 
     setSubmitted(true);

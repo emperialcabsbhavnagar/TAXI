@@ -14,8 +14,8 @@ import {
   ChevronRight,
   Sparkles
 } from 'lucide-react';
-import { INITIAL_VEHICLES } from './AdminPortal';
-import { loadAllVehiclesFromMySQL, loadAllPlacesFromMySQL, loadAllRoutesFromMySQL, getRoutePriceFromMySQL, safeStorageSetItem } from '../services/mysqlService';
+import { loadAllVehiclesFromMySQL, loadAllPlacesFromMySQL, loadAllRoutesFromMySQL, getRoutePriceFromMySQL, safeStorageSetItem, saveInquiryToMySQL } from '../services/mysqlService';
+import { notifyAdmin } from '../services/notificationEngine';
 import './Pages.css';
 
 const FALLBACK_VEHICLES = [
@@ -439,6 +439,13 @@ export default function BookRide() {
     };
 
     db.saveInquiry(newInquiry);
+    saveInquiryToMySQL(newInquiry).catch(e => console.warn('MySQL book ride save failed:', e));
+    notifyAdmin({
+      type: 'inquiry',
+      title: `New Ride Inquiry ${newInquiry.id}`,
+      body: `Customer ${newInquiry.customerName} (${newInquiry.customerPhone}) requested ${newInquiry.pickup} to ${newInquiry.dropoff} (₹${newInquiry.fare})`,
+      extraData: { inquiryId: newInquiry.id }
+    });
     setBookingSuccess(newInquiry);
   };
 

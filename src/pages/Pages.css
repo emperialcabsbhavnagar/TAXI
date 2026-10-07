@@ -559,6 +559,85 @@
   /* scale effect removed for static corporate feel */
 }
 
+/* Fleet Slider Bar & Controls */
+.fleet-slider-nav {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.fleet-slider-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid #E2E8F0;
+  background: #FFFFFF;
+  color: #0F172A;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+}
+
+.fleet-slider-btn:hover {
+  background: #0F172A;
+  color: #FFFFFF;
+  border-color: #0F172A;
+}
+
+.fleet-slider-track {
+  display: flex;
+  gap: 1.5rem;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.5rem 0 1.25rem 0;
+  scrollbar-width: thin;
+}
+
+.fleet-slider-track::-webkit-scrollbar {
+  height: 6px;
+}
+
+.fleet-slider-track::-webkit-scrollbar-track {
+  background: #F1F5F9;
+  border-radius: 999px;
+}
+
+.fleet-slider-track::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 999px;
+}
+
+.fleet-slider-track .fleet-card {
+  flex: 0 0 calc((100% - 4.5rem) / 4);
+  min-width: 280px;
+  max-width: 360px;
+  scroll-snap-align: start;
+}
+
+@media (max-width: 1200px) {
+  .fleet-slider-track .fleet-card {
+    flex: 0 0 calc((100% - 3rem) / 3);
+  }
+}
+
+@media (max-width: 860px) {
+  .fleet-slider-track .fleet-card {
+    flex: 0 0 calc((100% - 1.5rem) / 2);
+  }
+}
+
+@media (max-width: 580px) {
+  .fleet-slider-track .fleet-card {
+    flex: 0 0 85%;
+    min-width: 260px;
+  }
+}
+
 /* Feature Checklists */
 .feature-section {
   min-height: clamp(680px, 82vh, 820px);

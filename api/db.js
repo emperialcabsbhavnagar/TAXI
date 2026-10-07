@@ -807,12 +807,65 @@ export async function handleMySQLRequest(action, data = {}) {
         return { success: true };
       }
 
+      case 'saveCustomerNotification': {
+        const id = data.id || ('notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4));
+        const target_phone = (data.target_phone || data.customerPhone || '').trim();
+        const target_email = (data.target_email || data.customerEmail || '').trim();
+        const title = (data.title || 'New Notification').trim();
+        const body = (data.body || '').trim();
+        const type = (data.type || 'inquiry').trim();
+        const extra_data = data.extra_data ? (typeof data.extra_data === 'object' ? JSON.stringify(data.extra_data) : data.extra_data) : null;
+
+        const sql = `
+          INSERT INTO customer_notifications (id, target_phone, target_email, title, body, type, extra_data, delivered)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+        `;
+        await executeQuery(sql, [id, target_phone, target_email, title, body, type, extra_data]);
+        return { success: true, id };
+      }
+
+      case 'getCustomerNotifications': {
+        const phone = (data.phone || '').trim();
+        const email = (data.email || '').trim();
+        const isAdmin = phone.toUpperCase() === 'ADMIN' || email.toUpperCase() === 'ADMIN';
+        const cleanPhone = phone.replace(/\D/g, '');
+        const cleanPhone10 = cleanPhone.length >= 10 ? cleanPhone.slice(-10) : cleanPhone;
+
+        const [all] = await executeQuery(`
+          SELECT * FROM customer_notifications 
+          WHERE created_at >= NOW() - INTERVAL 48 HOUR
+          ORDER BY created_at DESC LIMIT 50
+        `);
+
+        const filtered = (all || []).filter(row => {
+          const tPhone = (row.target_phone || '').toUpperCase().trim();
+          const rPhone = (row.target_phone || '').replace(/\D/g, '');
+          const rPhone10 = rPhone.length >= 10 ? rPhone.slice(-10) : rPhone;
+          const rEmail = (row.target_email || '').toLowerCase().trim();
+
+          if (isAdmin) return tPhone === 'ADMIN';
+          if (!rPhone && !rEmail) return true;
+          if (cleanPhone10 && rPhone10 && cleanPhone10 === rPhone10) return true;
+          if (email && rEmail && email.toLowerCase() === rEmail) return true;
+          return false;
+        });
+
+        return { success: true, notifications: filtered };
+      }
+
+      case 'markNotificationDelivered': {
+        const { id } = data;
+        if (!id) return { success: false, error: 'Missing ID' };
+        await executeQuery('UPDATE customer_notifications SET delivered = 1 WHERE id = ?', [id]);
+        return { success: true };
+      }
+
       case 'getAdminLiveSync': {
         const [inquiries] = await executeQuery('SELECT * FROM inquiries ORDER BY created_at DESC LIMIT 100');
         const [messages] = await executeQuery('SELECT * FROM contact_messages ORDER BY created_at DESC LIMIT 100');
         let adminNotifs = [];
         try {
-          const [nRows] = await executeQuery(`SELECT * FROM customer_notifications WHERE UPPER(TRIM(target_phone)) = 'ADMIN' AND (delivered = 0 OR delivered IS NULL) AND created_at >= NOW() - INTERVAL 48 HOUR ORDER BY created_at DESC LIMIT 50`);
+          const [nRows] = await executeQuery(`SELECT * FROM customer_notifications WHERE UPPER(TRIM(target_phone)) = 'ADMIN' AND created_at >= NOW() - INTERVAL 48 HOUR ORDER BY created_at DESC LIMIT 50`);
           adminNotifs = nRows || [];
         } catch(e) {}
         return { success: true, inquiries: inquiries || [], messages: messages || [], notifications: adminNotifs };

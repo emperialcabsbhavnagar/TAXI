@@ -863,10 +863,31 @@ export default function AdminPortal() {
   const [liveAlertToast, setLiveAlertToast] = useState(null);
   const [notifPermissionState, setNotifPermissionState] = useState(() => (typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'));
 
-  // Memory trackers to prevent repeat sound/push on every sync poll
+  // Device-persistent memory trackers to prevent repeat sound/push on every sync poll
   const knownInquiryStatusRef = React.useRef(new Map()); // id -> status
   const knownMessageIdsRef = React.useRef(new Set());
-  const knownRemoteNotifIdsRef = React.useRef(new Set());
+  const knownRemoteNotifIdsRef = React.useRef(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('cabsy_seen_admin_notif_ids') || '[]');
+      return new Set(Array.isArray(stored) ? stored.map(String) : []);
+    } catch(e) {
+      return new Set();
+    }
+  });
+  if (typeof knownRemoteNotifIdsRef.current === 'function') {
+    knownRemoteNotifIdsRef.current = knownRemoteNotifIdsRef.current();
+  }
+  const seenInquiryAlertIdsRef = React.useRef(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('cabsy_seen_inq_alert_ids') || '[]');
+      return new Set(Array.isArray(stored) ? stored.map(String) : []);
+    } catch(e) {
+      return new Set();
+    }
+  });
+  if (typeof seenInquiryAlertIdsRef.current === 'function') {
+    seenInquiryAlertIdsRef.current = seenInquiryAlertIdsRef.current();
+  }
   const isInitialLoadRef = React.useRef(true);
 
   // Manual trigger for user to grant notification permission via gesture & unlock audio
@@ -970,17 +991,70 @@ export default function AdminPortal() {
         if (isInitialLoadRef.current) {
           // On first launch, record all existing IDs and statuses
           mergedInquiries.forEach(i => {
-            if (i?.id) knownInquiryStatusRef.current.set(String(i.id), String(i.status || 'Pending'));
+            if (i?.id) {
+              const inqIdStr = String(i.id);
+              knownInquiryStatusRef.current.set(inqIdStr, String(i.status || 'Pending'));
+
+              // If an inquiry is 'Pending', recent (within last 3 hours), and NEVER seen on this admin device, alert immediately!
+              const isPending = String(i.status || 'Pending').toLowerCase() === 'pending';
+              const createdTs = i.timestamp ? new Date(i.timestamp).getTime() : (i.created_at ? new Date(i.created_at).getTime() : 0);
+              const isRecent = createdTs > 0 ? (Date.now() - createdTs < 3 * 3600 * 1000) : true;
+
+              if (isPending && isRecent && !seenInquiryAlertIdsRef.current.has(inqIdStr)) {
+                seenInquiryAlertIdsRef.current.add(inqIdStr);
+                try {
+                  const existing = JSON.parse(localStorage.getItem('cabsy_seen_inq_alert_ids') || '[]');
+                  localStorage.setItem('cabsy_seen_inq_alert_ids', JSON.stringify([inqIdStr, ...existing].slice(0, 200)));
+                } catch (e) {}
+
+                const isCust = Boolean(i.isCustom || i.tripType === 'Custom Trip' || i.tripType === 'custom-trip');
+                const notifTitle = isCust ? '🚨 New Custom Route Inquiry!' : '🚖 New Customer Ride Booking!';
+                const notifBody = `${i.customerName || 'Customer'} (${i.customerPhone || 'Direct'}): ${i.pickup} ➔ ${i.dropoff}`;
+
+                playChimeSound();
+                if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                  navigator.vibrate([200, 100, 200, 100, 200]);
+                }
+                sendSystemPushNotification(notifTitle, notifBody, 'inq-' + i.id, { tab: isCust ? 'custom_inquiries' : 'inquiries' });
+
+                const newNotifItem = {
+                  id: 'inq_notif_' + i.id,
+                  type: isCust ? 'custom' : 'inquiry',
+                  title: notifTitle,
+                  desc: notifBody,
+                  body: notifBody,
+                  time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  date: new Date().toISOString(),
+                  read: false,
+                  tab: isCust ? 'custom_inquiries' : 'inquiries'
+                };
+                setNotifications(prev => [newNotifItem, ...prev.filter(n => n.id !== newNotifItem.id)].slice(0, 50));
+                setLiveAlertToast({
+                  id: i.id,
+                  title: notifTitle,
+                  desc: notifBody,
+                  tab: isCust ? 'custom_inquiries' : 'inquiries'
+                });
+              } else {
+                seenInquiryAlertIdsRef.current.add(inqIdStr);
+              }
+            }
           });
           validMessages.forEach(m => m?.id && knownMessageIdsRef.current.add(String(m.id)));
-          adminRemoteNotifs.forEach(n => n?.id && knownRemoteNotifIdsRef.current.add(String(n.id)));
           isInitialLoadRef.current = false;
         } else {
           // Detect brand-new customer inquiries!
           const newInquiries = mergedInquiries.filter(i => i && i.id && !knownInquiryStatusRef.current.has(String(i.id)));
           if (newInquiries.length > 0) {
             newInquiries.forEach(newInq => {
-              knownInquiryStatusRef.current.set(String(newInq.id), String(newInq.status || 'Pending'));
+              const inqIdStr = String(newInq.id);
+              knownInquiryStatusRef.current.set(inqIdStr, String(newInq.status || 'Pending'));
+              seenInquiryAlertIdsRef.current.add(inqIdStr);
+              try {
+                const existing = JSON.parse(localStorage.getItem('cabsy_seen_inq_alert_ids') || '[]');
+                localStorage.setItem('cabsy_seen_inq_alert_ids', JSON.stringify([inqIdStr, ...existing].slice(0, 200)));
+              } catch (e) {}
+
               const isCust = Boolean(newInq.isCustom || newInq.tripType === 'Custom Trip' || newInq.tripType === 'custom-trip');
               const notifTitle = isCust ? '🚨 New Custom Route Inquiry!' : '🚖 New Customer Ride Booking!';
               const notifBody = `${newInq.customerName || 'Customer'} (${newInq.customerPhone || 'Direct'}): ${newInq.pickup} ➔ ${newInq.dropoff}`;
@@ -1086,21 +1160,25 @@ export default function AdminPortal() {
             });
           }
 
-          // Detect incoming remote notifications targeted for ADMIN in MySQL
+          // Detect incoming remote notifications targeted for ADMIN in MySQL (independent per-device tracking)
           if (Array.isArray(adminRemoteNotifs) && adminRemoteNotifs.length > 0) {
             adminRemoteNotifs.forEach(notifRow => {
-              if (notifRow && notifRow.id && !knownRemoteNotifIdsRef.current.has(String(notifRow.id))) {
-                knownRemoteNotifIdsRef.current.add(String(notifRow.id));
-                markNotificationDeliveredInMySQL(notifRow.id).catch(() => {});
-                
+              const notifIdStr = String(notifRow?.id || '');
+              if (notifIdStr && !knownRemoteNotifIdsRef.current.has(notifIdStr)) {
+                knownRemoteNotifIdsRef.current.add(notifIdStr);
+                try {
+                  const existing = JSON.parse(localStorage.getItem('cabsy_seen_admin_notif_ids') || '[]');
+                  localStorage.setItem('cabsy_seen_admin_notif_ids', JSON.stringify([notifIdStr, ...existing].slice(0, 200)));
+                } catch (e) {}
+
                 playChimeSound();
                 if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
                   navigator.vibrate([200, 100, 200, 100, 200]);
                 }
                 const nTitle = notifRow.title || '🚨 Dispatch Update';
                 const nBody = notifRow.body || 'You have an update from a customer.';
-                sendSystemPushNotification(nTitle, nBody, 'rem-' + notifRow.id, { tab: 'inquiries' });
-                
+                sendSystemPushNotification(nTitle, nBody, 'rem-' + notifIdStr, { tab: 'inquiries' });
+
                 const item = {
                   id: notifRow.id,
                   type: notifRow.type || 'inquiry',
@@ -1194,9 +1272,31 @@ export default function AdminPortal() {
     // Poll Hostinger MySQL safely (every 12 seconds) for real-time customer alerts!
     const interval = setInterval(() => fetchAllData(false), 12000);
 
+    // Instant sync when Admin switches back to tab or unlocks phone
+    const handleVisibilityOrFocus = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchAllData(false);
+      }
+    };
+    window.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+
+    // Auto-unlock audio playback on first user screen interaction
+    const handleGestureUnlock = () => {
+      unlockAudio();
+      window.removeEventListener('touchstart', handleGestureUnlock);
+      window.removeEventListener('click', handleGestureUnlock);
+    };
+    window.addEventListener('touchstart', handleGestureUnlock, { passive: true });
+    window.addEventListener('click', handleGestureUnlock, { passive: true });
+
     return () => {
       window.removeEventListener('EMPERIAL CABS_admin_notif', syncAdminNotifs);
       window.removeEventListener('EMPERIAL CABS_db_sync', syncAdminNotifs);
+      window.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      window.removeEventListener('touchstart', handleGestureUnlock);
+      window.removeEventListener('click', handleGestureUnlock);
       if (bc) bc.close();
       clearInterval(interval);
     };
