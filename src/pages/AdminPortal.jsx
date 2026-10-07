@@ -894,6 +894,7 @@ export default function AdminPortal() {
     }
   }, [assignModal.open, assignModal.inquiry, vehicles, drivers]);
 
+  const [newVehicleForm, setNewVehicleForm] = useState({ name: '', passengers: '4 Persons', rate: '15.00', status: 'Active', image: '', description: '' });
   const [newDriverForm, setNewDriverForm] = useState({ name: '', phone: '', vehicle: 'Empire Regular', plate: '' });
   const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', email: '' });
   const [newInquiryForm, setNewInquiryForm] = useState({ customerName: '', customerPhone: '', pickup: '', dropoff: '', vehicle: 'Empire Regular', fare: 35.00 });
@@ -3973,7 +3974,7 @@ export default function AdminPortal() {
             </div>
 
             {/* High-Scale Vehicle Search Bar & Controls */}
-            <div className="flex flex-wrap justify-between align-center gap-3 mb-4" style={{ background: '#F8FAFC', padding: '12px 16px', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
+            <div className="flex flex-wrap justify-between align-center gap-3 mb-4 admin-search-filter-bar" style={{ background: '#F8FAFC', padding: '12px 16px', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1', minWidth: '220px' }}>
                 <Search size={16} className="text-muted" />
                 <input 
@@ -4129,12 +4130,18 @@ export default function AdminPortal() {
 
             {/* SECTION 2: CONFIGURED ROUTE PRICING (FIXED ₹) */}
             <div className="card admin-table-card">
-              <div className="p-4 border-b flex justify-between align-center">
+              <div className="p-4 border-b admin-dest-header-flex">
                 <div>
                   <h3 className="m-0 text-lg font-bold">2. Configured Route Pricing (Fixed ₹ Between Places)</h3>
                   <p className="text-muted text-xs m-0 mt-1">Fixed route pricing in Rupees (₹) set directly by Admin. Independent of distance/kilometres.</p>
                 </div>
-                <div className="flex align-center gap-2">
+                <div className="admin-dest-header-actions">
+                  <button 
+                    className="btn btn-primary btn-sm flex align-center gap-1"
+                    onClick={() => setAddDestModal(true)}
+                  >
+                    <Plus size={14} /> Add Route
+                  </button>
                   <button 
                     className="btn btn-outline btn-sm flex align-center gap-1"
                     style={{ borderColor: '#10B981', color: '#047857', fontWeight: '800' }}
@@ -4149,15 +4156,15 @@ export default function AdminPortal() {
                       onClick={handleClearAllRoutes}
                       title="Permanently remove all routes from the database"
                     >
-                      <Trash2 size={14} /> Clear All Routes
+                      <Trash2 size={14} /> Clear All
                     </button>
                   )}
-                  <span className="pill-badge-sm font-bold">{destinations.length} Active Routes</span>
+                  <span className="pill-badge-sm font-bold">{destinations.length} Routes</span>
                 </div>
               </div>
 
               {/* High-Scale Route Search & Filter Bar */}
-              <div className="flex flex-wrap justify-between align-center gap-2" style={{ background: '#F8FAFC', padding: '12px 16px', borderBottom: '1px solid #E2E8F0' }}>
+              <div className="flex flex-wrap justify-between align-center gap-2 admin-search-filter-bar" style={{ background: '#F8FAFC', padding: '12px 16px', borderBottom: '1px solid #E2E8F0' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1', minWidth: '240px' }}>
                   <Search size={16} className="text-muted" />
                   <input 
@@ -5641,7 +5648,7 @@ export default function AdminPortal() {
 
               <div className="input-group mt-2">
                 <label>Vehicle Photo</label>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', margin: '6px 0' }}>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', margin: '6px 0', flexWrap: 'wrap' }}>
                   <label style={{ background: '#212B46', color: '#FFAA01', padding: '8px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                     🖼️ Select Image from Gallery
                     <input 
@@ -5752,7 +5759,7 @@ export default function AdminPortal() {
 
               <div className="input-group mt-2">
                 <label>Vehicle Photo</label>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', margin: '6px 0' }}>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', margin: '6px 0', flexWrap: 'wrap' }}>
                   <label style={{ background: '#212B46', color: '#FFAA01', padding: '8px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                     🖼️ Select Image from Gallery
                     <input 
@@ -5908,7 +5915,7 @@ export default function AdminPortal() {
                 <label style={{ fontWeight: '800', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', fontSize: '0.95rem' }}>
                   <Car size={16} className="text-amber" /> Set Fixed Price for Each Car (₹) — Customer sees this exact price
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
                   {(activeVehicles.length > 15 ? uniqueVehicleModels : activeVehicles).map(veh => (
                     <div key={veh.id} style={{ background: '#FFFFFF', padding: '8px 10px', borderRadius: '8px', border: '1px solid #CBD5E1' }}>
                       <span style={{ fontSize: '0.8rem', fontWeight: '800', color: '#334155', display: 'block', marginBottom: '4px' }}>
@@ -6054,7 +6061,7 @@ export default function AdminPortal() {
                 <label style={{ fontWeight: '800', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', fontSize: '0.95rem' }}>
                   <Car size={16} className="text-amber" /> Set Fixed Price for Each Car (₹) — Customer sees this exact price
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
                   {(activeVehicles.length > 15 ? uniqueVehicleModels : activeVehicles).map(veh => (
                     <div key={veh.id} style={{ background: '#FFFFFF', padding: '8px 10px', borderRadius: '8px', border: '1px solid #CBD5E1' }}>
                       <span style={{ fontSize: '0.8rem', fontWeight: '800', color: '#334155', display: 'block', marginBottom: '4px' }}>
@@ -6925,7 +6932,7 @@ export default function AdminPortal() {
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
         >
           <Menu size={20} />
-          <span>Sections</span>
+          <span>Menu</span>
         </button>
       </nav>
     </div>
