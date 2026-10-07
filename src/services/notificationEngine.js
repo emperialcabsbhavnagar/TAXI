@@ -105,7 +105,8 @@ export const triggerRemoteServerPush = async ({ title, body, url = '/admin?tab=i
   try {
     const endpoints = [
       '/api/send-push',
-      'https://taxii-yth5.vercel.app/api/send-push',
+      '/api/send-push.php',
+      'https://emperialcabs.com/api/send-push.php',
       'https://emperialcabs.com/api/send-push'
     ];
     for (const ep of endpoints) {

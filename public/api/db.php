@@ -57,7 +57,7 @@ function slugifyText($text) {
 
 function triggerServerPushNotification($title, $body, $url = '/admin?tab=inquiries', $tag = null) {
     try {
-        $pushUrl = 'https://taxii-yth5.vercel.app/api/send-push';
+        $pushUrl = 'https://emperialcabs.com/api/send-push.php';
         $payload = json_encode([
             'title' => $title,
             'body' => $body,
