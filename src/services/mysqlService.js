@@ -689,3 +689,9 @@ export const savePushSubscriptionToMySQL = async (subscriptionData) => {
   return res && res.success;
 };
 
+export const sendPushNotificationViaMySQL = async (payload) => {
+  const res = await sendRequest('sendPushNotification', payload);
+  return res && res.success ? res : null;
+};
+
+

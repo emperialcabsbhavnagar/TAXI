@@ -6,7 +6,7 @@
 
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { saveNotificationToMySQL, markNotificationDeliveredInMySQL, savePushSubscriptionToMySQL } from './mysqlService';
+import { saveNotificationToMySQL, markNotificationDeliveredInMySQL, savePushSubscriptionToMySQL, sendPushNotificationViaMySQL } from './mysqlService';
 
 const VAPID_PUBLIC_KEY = 'BNjJ7GWaU-7KXkdkyyxoTyNGCRFSztK8KNtPQW9BWDycOZyVpSJZB7PZJ74JfL0ZSS9DZtrgHPe-cE9U9qi23CY';
 
@@ -102,7 +102,22 @@ export const registerWebPushSubscription = async (userType = 'admin') => {
 
 // Dispatch remote server-side push (Apple APNs / Google FCM) to all registered devices
 export const triggerRemoteServerPush = async ({ title, body, url = '/admin?tab=inquiries', userType = 'admin', tag = null }) => {
+  const payload = {
+    title,
+    body,
+    url,
+    userType,
+    tag: tag || ('disp-' + Date.now())
+  };
+
   try {
+    // 1. Direct native call via Hostinger MySQL db.php API
+    const mysqlRes = await sendPushNotificationViaMySQL(payload).catch(() => null);
+    if (mysqlRes && mysqlRes.success) {
+      return mysqlRes;
+    }
+
+    // 2. Direct endpoint fallbacks
     const endpoints = [
       '/api/send-push',
       '/api/send-push.php',
@@ -114,13 +129,7 @@ export const triggerRemoteServerPush = async ({ title, body, url = '/admin?tab=i
         const res = await fetch(ep, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title,
-            body,
-            url,
-            userType,
-            tag: tag || ('disp-' + Date.now())
-          })
+          body: JSON.stringify(payload)
         });
         if (res.ok) {
           const json = await res.json().catch(() => ({}));

@@ -55,30 +55,167 @@ function slugifyText($text) {
     return empty($text) ? 'n-a' : $text;
 }
 
-function triggerServerPushNotification($title, $body, $url = '/admin?tab=inquiries', $tag = null) {
-    try {
-        $pushUrl = 'https://emperialcabs.com/api/send-push.php';
-        $payload = json_encode([
-            'title' => $title,
-            'body' => $body,
-            'url' => $url,
-            'tag' => $tag ?: ('disp-' . round(microtime(true) * 1000)),
-            'userType' => 'admin'
-        ]);
+function dispatchNativeWebPush($pdo, $title, $body, $url = '/admin?tab=inquiries', $tag = null, $userType = 'admin') {
+    if (!$pdo) return ['success' => false, 'error' => 'No database connection'];
+    $tag = $tag ?: ('disp-' . round(microtime(true) * 1000));
 
-        $ch = curl_init($pushUrl);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 3);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'Content-Length: ' . strlen($payload)
-        ]);
-        curl_exec($ch);
-        curl_close($ch);
-    } catch (Exception $e) {}
+    try {
+        $stmt = $pdo->prepare("SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_type = :ut ORDER BY id DESC LIMIT 50");
+        $stmt->execute([':ut' => $userType]);
+        $subs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+
+    if (empty($subs)) {
+        return ['success' => true, 'sentCount' => 0, 'totalSubs' => 0, 'message' => 'No push subscriptions currently registered for ' . $userType];
+    }
+
+    $vapidPublicB64u = 'BNjJ7GWaU-7KXkdkyyxoTyNGCRFSztK8KNtPQW9BWDycOZyVpSJZB7PZJ74JfL0ZSS9DZtrgHPe-cE9U9qi23CY';
+    $vapidPrivateB64u = 'yt0dGxUuTDPcsFg9ekfwuBBI8Ab7-Tt4Biy9TRtsE74';
+    $vapidSubject = 'mailto:emperialcabsbhavnagar@gmail.com';
+
+    $b64u_decode = function($d) {
+        return base64_decode(strtr($d, '-_', '+/') . str_repeat('=', 3 - (3 + strlen($d)) % 4));
+    };
+    $b64u_encode = function($d) {
+        return rtrim(strtr(base64_encode($d), '+/', '-_'), '=');
+    };
+
+    $privRaw = $b64u_decode($vapidPrivateB64u);
+    $pubRaw = $b64u_decode($vapidPublicB64u);
+    $derVapidPriv = hex2bin('30770201010420') . $privRaw . hex2bin('a00a06082a8648ce3d030107a144034200') . $pubRaw;
+    $vapidPrivPem = "-----BEGIN EC PRIVATE KEY-----\n" . chunk_split(base64_encode($derVapidPriv), 64, "\n") . "-----END EC PRIVATE KEY-----\n";
+
+    $payloadJson = json_encode([
+        'title' => $title,
+        'body' => $body,
+        'url' => $url,
+        'tag' => $tag
+    ], JSON_UNESCAPED_SLASHES);
+
+    $sentCount = 0;
+    $expiredIds = [];
+
+    foreach ($subs as $sub) {
+        $endpoint = $sub['endpoint'];
+        $clientPubRaw = $b64u_decode($sub['p256dh']);
+        $clientAuthRaw = $b64u_decode($sub['auth']);
+
+        if (strlen($clientPubRaw) !== 65 || strlen($clientAuthRaw) < 16) continue;
+
+        try {
+            $resEphemeral = openssl_pkey_new([
+                'curve_name' => 'prime256v1',
+                'private_key_type' => OPENSSL_KEYTYPE_EC
+            ]);
+            if (!$resEphemeral) continue;
+
+            $ephemeralDetails = openssl_pkey_get_details($resEphemeral);
+            $localPubRaw = "\x04" . $ephemeralDetails['ec']['x'] . $ephemeralDetails['ec']['y'];
+
+            $clientDerSpki = hex2bin('3059301306072a8648ce3d020106082a8648ce3d030107034200') . $clientPubRaw;
+            $clientPubPem = "-----BEGIN PUBLIC KEY-----\n" . chunk_split(base64_encode($clientDerSpki), 64, "\n") . "-----END PUBLIC KEY-----\n";
+            $clientPubKeyRes = openssl_pkey_get_public($clientPubPem);
+            if (!$clientPubKeyRes) continue;
+
+            $sharedSecret = openssl_pkey_derive($clientPubKeyRes, $resEphemeral);
+            if (!$sharedSecret) continue;
+
+            $hkdf_extract = function($s, $ikm) { return hash_hmac('sha256', $ikm, $s, true); };
+            $hkdf_expand = function($prk, $info, $len) {
+                $t = ''; $last = ''; $i = 1;
+                while (strlen($t) < $len) {
+                    $last = hash_hmac('sha256', $last . $info . chr($i), $prk, true);
+                    $t .= $last;
+                    $i++;
+                }
+                return substr($t, 0, $len);
+            };
+
+            $salt = random_bytes(16);
+            $prkKey = $hkdf_extract($clientAuthRaw, $sharedSecret);
+            $keyInfo = "WebPush: info\0" . $clientPubRaw . $localPubRaw;
+            $ikm = $hkdf_expand($prkKey, $keyInfo, 32);
+
+            $prk = $hkdf_extract($salt, $ikm);
+            $cek = $hkdf_expand($prk, "Content-Encoding: aes128gcm\0", 16);
+            $nonce = $hkdf_expand($prk, "Content-Encoding: nonce\0", 12);
+
+            $padded = $payloadJson . "\x02";
+            $tagBin = '';
+            $ciphertext = openssl_encrypt($padded, 'aes-128-gcm', $cek, OPENSSL_RAW_DATA, $nonce, $tagBin);
+
+            $recordSize = pack('N', 4096);
+            $idLen = chr(strlen($localPubRaw));
+            $bodyBinary = $salt . $recordSize . $idLen . $localPubRaw . $ciphertext . $tagBin;
+
+            $urlParts = parse_url($endpoint);
+            $audience = $urlParts['scheme'] . '://' . $urlParts['host'];
+
+            $jwtHeader = $b64u_encode(json_encode(['typ' => 'JWT', 'alg' => 'ES256']));
+            $jwtPayload = $b64u_encode(json_encode([
+                'aud' => $audience,
+                'exp' => time() + 86400,
+                'sub' => $vapidSubject
+            ]));
+
+            $jwtMsg = $jwtHeader . '.' . $jwtPayload;
+            $derSig = '';
+            openssl_sign($jwtMsg, $derSig, $vapidPrivPem, OPENSSL_ALGO_SHA256);
+
+            $offset = 2;
+            if (ord($derSig[1]) & 0x80) $offset += (ord($derSig[1]) & 0x7f);
+            $offset += 1; $rLen = ord($derSig[$offset++]);
+            $r = substr($derSig, $offset, $rLen); $offset += $rLen;
+            $offset += 1; $sLen = ord($derSig[$offset++]);
+            $s = substr($derSig, $offset, $sLen);
+            $rawSig = str_pad(ltrim($r, "\x00"), 32, "\x00", STR_PAD_LEFT) . str_pad(ltrim($s, "\x00"), 32, "\x00", STR_PAD_LEFT);
+            $jwtToken = $jwtMsg . '.' . $b64u_encode($rawSig);
+
+            $ch = curl_init($endpoint);
+            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $bodyBinary);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 6);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
+            curl_setopt($ch, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/octet-stream',
+                'Content-Encoding: aes128gcm',
+                'Authorization: vapid t=' . $jwtToken . ', k=' . $vapidPublicB64u,
+                'TTL: 86400',
+                'Urgency: high',
+                'Topic: ' . substr($tag, 0, 32)
+            ]);
+
+            $resp = curl_exec($ch);
+            $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($status === 200 || $status === 201) {
+                $sentCount++;
+            } elseif ($status === 404 || $status === 410) {
+                $expiredIds[] = $sub['id'];
+            }
+        } catch (Exception $e) {}
+    }
+
+    if (!empty($expiredIds)) {
+        try {
+            $inClause = implode(',', array_map('intval', $expiredIds));
+            $pdo->exec("DELETE FROM push_subscriptions WHERE id IN ($inClause)");
+        } catch (Exception $e) {}
+    }
+
+    return ['success' => true, 'sentCount' => $sentCount, 'totalSubs' => count($subs), 'expiredCount' => count($expiredIds)];
+}
+
+function triggerServerPushNotification($title, $body, $url = '/admin?tab=inquiries', $tag = null) {
+    global $pdo;
+    if ($pdo) {
+        dispatchNativeWebPush($pdo, $title, $body, $url, $tag, 'admin');
+    }
 }
 
 function regenerateDynamicSitemapFiles($pdo) {
@@ -1203,6 +1340,16 @@ switch ($action) {
         } else {
             echo json_encode(['success' => false, 'error' => 'Missing push subscription keys']);
         }
+        break;
+
+    case 'sendPushNotification':
+        $pTitle = trim($data['title'] ?? 'EMPERIAL CABS Dispatch Alert');
+        $pBody = trim($data['body'] ?? ($data['message'] ?? 'New trip update'));
+        $pUrl = trim($data['url'] ?? '/admin?tab=inquiries');
+        $pTag = trim($data['tag'] ?? ('disp-' . round(microtime(true) * 1000)));
+        $pUserType = trim($data['userType'] ?? ($data['user_type'] ?? 'admin'));
+        $pRes = dispatchNativeWebPush($pdo, $pTitle, $pBody, $pUrl, $pTag, $pUserType);
+        echo json_encode($pRes);
         break;
 
     default:
