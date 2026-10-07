@@ -1364,6 +1364,11 @@ switch ($action) {
         $user_type = trim($data['user_type'] ?? ($data['userType'] ?? 'admin'));
 
         if (!empty($endpoint) && !empty($p256dh) && !empty($auth)) {
+            // When an admin registers/links their device, clean any prior stale endpoints for admin
+            if ($user_type === 'admin') {
+                $pdo->exec("DELETE FROM push_subscriptions WHERE user_type = 'admin' AND endpoint != " . $pdo->quote($endpoint));
+            }
+
             $stmt = $pdo->prepare("INSERT INTO push_subscriptions (endpoint, p256dh, auth, user_type)
                                    VALUES (:endpoint, :p256dh, :auth, :user_type)
                                    ON DUPLICATE KEY UPDATE p256dh = VALUES(p256dh), auth = VALUES(auth), user_type = VALUES(user_type), updated_at = NOW()");
@@ -1377,6 +1382,16 @@ switch ($action) {
         } else {
             echo json_encode(['success' => false, 'error' => 'Missing push subscription keys']);
         }
+        break;
+
+    case 'cleanOldPushSubscriptions':
+        $stmt = $pdo->query("SELECT MAX(id) as max_id FROM push_subscriptions WHERE user_type = 'admin'");
+        $row = $stmt->fetch();
+        if (!empty($row['max_id'])) {
+            $maxId = intval($row['max_id']);
+            $pdo->exec("DELETE FROM push_subscriptions WHERE user_type = 'admin' AND id < {$maxId}");
+        }
+        echo json_encode(['success' => true, 'kept_id' => $maxId ?? null]);
         break;
 
     case 'sendPushNotification':
