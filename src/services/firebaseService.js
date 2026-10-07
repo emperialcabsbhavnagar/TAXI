@@ -567,33 +567,30 @@ export const sendEmailOTP = async (email) => {
 
   const payload = { email: cleanEmail, code };
 
-  // Multi-gateway burst targeting Hostinger backend PHP proxies
-  try {
-    const endpoints = [
-      '/api/send-email-otp.php',
-      'https://emperialcabs.com/api/send-email-otp.php',
-      '/api/db.php?action=sendEmailOTP',
-      'https://emperialcabs.com/api/db.php?action=sendEmailOTP'
-    ];
+  // Single-delivery: try primary endpoint, fall back only if it fails (prevents duplicate OTP emails)
+  const endpoints = [
+    'https://emperialcabs.com/api/send-email-otp.php',
+    'https://emperialcabs.com/api/db.php?action=sendEmailOTP'
+  ];
 
-    // Fire to backend endpoints concurrently
-    Promise.allSettled(
-      endpoints.map(ep =>
-        fetch(ep, {
+  (async () => {
+    for (const ep of endpoints) {
+      try {
+        const res = await fetch(ep, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        }).then(r => r.json()).catch(() => null)
-      )
-    ).then(results => {
-      const delivered = results.some(r => r.status === 'fulfilled' && r.value?.success);
-      if (delivered) {
-        console.log('[Email OTP] Successfully delivered to:', cleanEmail);
+          body: JSON.stringify({ ...payload, action: 'sendEmailOTP' })
+        });
+        const data = await res.json().catch(() => null);
+        if (data && data.success) {
+          console.log('[Email OTP] Delivered via', data.via || ep);
+          return;
+        }
+      } catch (e) {
+        console.warn('[Email OTP] Endpoint failed:', ep, e);
       }
-    }).catch(() => {});
-  } catch (e) {
-    console.warn('[Email OTP Error]:', e);
-  }
+    }
+  })();
 
   return { success: true, code };
 };
