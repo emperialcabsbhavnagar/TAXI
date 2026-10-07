@@ -6,7 +6,132 @@
 
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { saveNotificationToMySQL, markNotificationDeliveredInMySQL } from './mysqlService';
+import { saveNotificationToMySQL, markNotificationDeliveredInMySQL, savePushSubscriptionToMySQL } from './mysqlService';
+
+const VAPID_PUBLIC_KEY = 'BNjJ7GWaU-7KXkdkyyxoTyNGCRFSztK8KNtPQW9BWDycOZyVpSJZB7PZJ74JfL0ZSS9DZtrgHPe-cE9U9qi23CY';
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding)
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+// Register Apple APNs / Google FCM Push Manager Subscription & Save to Hostinger MySQL
+export const registerWebPushSubscription = async (userType = 'admin') => {
+  if (typeof window === 'undefined') return { success: false, error: 'No window context' };
+  
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    return { success: false, error: 'Web Push is not supported by this browser/OS.' };
+  }
+
+  try {
+    let permission = Notification.permission;
+    if (permission !== 'granted') {
+      permission = await Notification.requestPermission();
+    }
+    if (permission !== 'granted') {
+      return { success: false, error: 'Notification permission not granted' };
+    }
+
+    let registration = await navigator.serviceWorker.getRegistration();
+    if (!registration) {
+      registration = await navigator.serviceWorker.register('/sw.js');
+    }
+    await navigator.serviceWorker.ready;
+    registration = await navigator.serviceWorker.getRegistration();
+
+    if (!registration) {
+      return { success: false, error: 'Service worker not active' };
+    }
+
+    const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+    let subscription = await registration.pushManager.getSubscription();
+
+    if (!subscription) {
+      try {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey
+        });
+      } catch (err) {
+        console.warn('[WebPush] Initial subscribe failed, attempting clean re-subscribe:', err);
+        const oldSub = await registration.pushManager.getSubscription();
+        if (oldSub) {
+          await oldSub.unsubscribe().catch(() => {});
+        }
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey
+        });
+      }
+    }
+
+    const subJson = subscription ? subscription.toJSON() : null;
+    if (!subJson || !subJson.endpoint || !subJson.keys) {
+      return { success: false, error: 'Failed to generate Web Push subscription payload' };
+    }
+
+    const payload = {
+      endpoint: subJson.endpoint,
+      keys: {
+        p256dh: subJson.keys.p256dh,
+        auth: subJson.keys.auth
+      },
+      user_type: userType
+    };
+
+    const saved = await savePushSubscriptionToMySQL(payload);
+    try {
+      localStorage.setItem('cabsy_web_push_registered', 'true');
+      localStorage.setItem('cabsy_web_push_endpoint', subJson.endpoint);
+    } catch (e) {}
+
+    return { success: true, savedInDb: saved, endpoint: subJson.endpoint };
+  } catch (error) {
+    console.error('[WebPush] Registration error:', error);
+    return { success: false, error: error.message || String(error) };
+  }
+};
+
+// Dispatch remote server-side push (Apple APNs / Google FCM) to all registered devices
+export const triggerRemoteServerPush = async ({ title, body, url = '/admin?tab=inquiries', userType = 'admin', tag = null }) => {
+  try {
+    const endpoints = [
+      '/api/send-push',
+      'https://taxii-yth5.vercel.app/api/send-push',
+      'https://emperialcabs.com/api/send-push'
+    ];
+    for (const ep of endpoints) {
+      try {
+        const res = await fetch(ep, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            body,
+            url,
+            userType,
+            tag: tag || ('disp-' + Date.now())
+          })
+        });
+        if (res.ok) {
+          const json = await res.json().catch(() => ({}));
+          if (json && json.success) return json;
+        }
+      } catch (err) {}
+    }
+  } catch (e) {
+    console.warn('[WebPush] triggerRemoteServerPush notice:', e);
+  }
+  return null;
+};
 
 // Request system tray push notification permission
 export const requestNotificationPermission = async () => {
@@ -129,12 +254,10 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
         });
       } catch (ce) {}
 
-      // Clear old delivered notifications so the new one replaces it instead of lingering
       try {
         await LocalNotifications.removeAllDeliveredNotifications();
       } catch (ce) {}
 
-      // Consistent ID replaces any existing notification in the phone status bar
       const notifId = 1001;
       await LocalNotifications.schedule({
         notifications: [
@@ -163,7 +286,6 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
   const targetTab = extraData?.tab || 'inquiries';
   const targetUrl = extraData?.url || `/admin?tab=${targetTab}`;
 
-  // Crucial: Use PNG icons for mobile Chrome/PWA push notifications (SVG fails on Android)
   const notifOptions = {
     body: body,
     icon: '/official-app-icon.png',
@@ -179,7 +301,6 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
   };
 
   const triggerShow = () => {
-    // 2. Mobile Phone & PWA Native System Tray via ServiceWorker (Android/iOS PWA/Chrome)
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.ready.then(registration => {
         registration.showNotification(title, notifOptions);
@@ -193,7 +314,6 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
         } catch (e) {}
       });
     } else {
-      // 3. Desktop Fallback
       try {
         const n = new Notification(title, notifOptions);
         n.onclick = () => {
@@ -231,11 +351,12 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
 
   try {
     const existing = JSON.parse(localStorage.getItem('cabsy_admin_notifications') || '[]');
-    const updated = [notifObj, ...existing].slice(0, 50); // keep last 50
+    const updated = [notifObj, ...existing].slice(0, 50);
     localStorage.setItem('cabsy_admin_notifications', JSON.stringify(updated));
   } catch (e) {}
 
   const targetTab = extraData?.tab || (type === 'custom' || type === 'custom-trip' ? 'custom_inquiries' : 'inquiries');
+  const targetUrl = `/admin?tab=${targetTab}`;
 
   // 1. Save to Remote MySQL so external admin devices/PWAs receive it via polling
   try {
@@ -264,8 +385,17 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
     }
   } catch (e) {}
 
-  // 3. Trigger system push notification if permission is granted
+  // 3. Trigger local system push notification if permission is granted
   sendSystemPushNotification(title, body, 'admin-' + notifObj.id, { tab: targetTab, ...extraData });
+
+  // 4. Dispatch server-side Web Push (Apple APNs / Google FCM) so iPhone / Android lock screens get alerted in background
+  triggerRemoteServerPush({
+    title,
+    body,
+    url: targetUrl,
+    userType: 'admin',
+    tag: 'admin-' + notifObj.id
+  }).catch(() => {});
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('EMPERIAL CABS_admin_notif', { detail: notifObj }));
@@ -295,7 +425,6 @@ export const notifyCustomer = ({ type = 'inquiry', title, body, customerPhone, c
     const existing = JSON.parse(localStorage.getItem('cabsy_customer_notifications') || '[]');
     const updated = [notifObj, ...existing].slice(0, 50);
     localStorage.setItem('cabsy_customer_notifications', JSON.stringify(updated));
-    // Mark as delivered locally so app re-open never re-fires it
     localStorage.setItem('cabsy_cloud_notif_delivered_' + notifObj.id, 'true');
     const sig = (title || '').trim().toLowerCase() + '|' + (body || '').trim().toLowerCase();
     const sigs = JSON.parse(localStorage.getItem('cabsy_delivered_signatures') || '[]');
@@ -311,7 +440,6 @@ export const notifyCustomer = ({ type = 'inquiry', title, body, customerPhone, c
     window.dispatchEvent(new CustomEvent('EMPERIAL CABS_customer_notif', { detail: notifObj }));
     window.dispatchEvent(new Event('storage'));
 
-    // Real-time Cross-Tab Broadcast Channel Sync
     try {
       if ('BroadcastChannel' in window) {
         const bc = new BroadcastChannel('EMPERIAL CABS_realtime_sync');
@@ -321,8 +449,6 @@ export const notifyCustomer = ({ type = 'inquiry', title, body, customerPhone, c
     } catch (e) {}
   }
 
-  // Cross-device Cloud Sync: Only persist remote notifications (e.g. driver assigned, promos, rewards, receipts)
-  // Never save client's own booking inquiry to customer_notifications, preventing duplicate echo on app restart
   const isBookingInquiry = type === 'inquiry' || (title && title.toLowerCase().includes('booking request'));
   if (!isBookingInquiry) {
     try {
@@ -379,28 +505,25 @@ export const runEcosystemSchedulerCheck = () => {
     inquiries.forEach(inq => {
       if (inq.status === 'Cancelled' || inq.status === 'Completed') return;
 
-      // 1. Today's Trip Notification to Admin
       const flagTodayKey = `notif_sent_today_${inq.id}_${todayStr}`;
       const isTodayTrip = inq.date === 'Today' || (inq.date && inq.date.includes(todayStr));
 
       if (isTodayTrip && !localStorage.getItem(flagTodayKey)) {
         notifyAdmin({
           type: 'scheduled_today',
-          title: `📅 Upcoming Scheduled Trip Today!`,
-          body: `Customer ${inq.customerName}'s trip (${inq.pickup} → ${inq.dropoff}) is scheduled for today!`,
+          title: `Upcoming Scheduled Trip Today`,
+          body: `Customer ${inq.customerName}'s trip (${inq.pickup} to ${inq.dropoff}) is scheduled for today.`,
           extraData: { inquiryId: inq.id }
         });
         localStorage.setItem(flagTodayKey, '1');
       }
 
-      // 2. 30-Minute Pre-Trip Alert Notification to Admin
       const flag30mKey = `notif_sent_30m_${inq.id}`;
       if (inq.status === 'Confirmed' && !localStorage.getItem(flag30mKey)) {
-        // If trip created/confirmed recently or scheduled within 30 mins
         notifyAdmin({
           type: 'reminder_30m',
-          title: `⏰ 30-Minute Trip Alert!`,
-          body: `Customer ${inq.customerName}'s ride to ${inq.dropoff} is starting soon (within 30 mins)!`,
+          title: `30-Minute Trip Alert`,
+          body: `Customer ${inq.customerName}'s ride to ${inq.dropoff} is starting soon (within 30 mins).`,
           extraData: { inquiryId: inq.id }
         });
         localStorage.setItem(flag30mKey, '1');
@@ -416,11 +539,13 @@ let schedulerInterval = null;
 export const initEcosystemScheduler = () => {
   runEcosystemSchedulerCheck();
   if (schedulerInterval) clearInterval(schedulerInterval);
-  schedulerInterval = setInterval(runEcosystemSchedulerCheck, 60000); // Check every 60s
+  schedulerInterval = setInterval(runEcosystemSchedulerCheck, 60000);
 };
 
 export default {
   requestNotificationPermission,
+  registerWebPushSubscription,
+  triggerRemoteServerPush,
   sendSystemPushNotification,
   notifyAdmin,
   notifyCustomer,

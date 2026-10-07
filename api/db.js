@@ -871,6 +871,25 @@ export async function handleMySQLRequest(action, data = {}) {
         return { success: true, inquiries: inquiries || [], messages: messages || [], notifications: adminNotifs };
       }
 
+      case 'savePushSubscription': {
+        const endpoint = (data.endpoint || '').trim();
+        const p256dh = (data.keys?.p256dh || data.p256dh || '').trim();
+        const auth = (data.keys?.auth || data.auth || '').trim();
+        const user_type = (data.user_type || data.userType || 'admin').trim();
+
+        if (!endpoint || !p256dh || !auth) {
+          return { success: false, error: 'Missing push subscription keys' };
+        }
+
+        const sql = `
+          INSERT INTO push_subscriptions (endpoint, p256dh, auth, user_type)
+          VALUES (?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE p256dh = VALUES(p256dh), auth = VALUES(auth), user_type = VALUES(user_type), updated_at = NOW();
+        `;
+        await executeQuery(sql, [endpoint, p256dh, auth, user_type]);
+        return { success: true };
+      }
+
       default:
         return { success: false, error: `Unknown action: ${action}` };
     }

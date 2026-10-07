@@ -683,6 +683,9 @@ export const fetchAdminLiveSync = async () => {
   return null;
 };
 
-
-
+export const savePushSubscriptionToMySQL = async (subscriptionData) => {
+  if (!subscriptionData || !subscriptionData.endpoint) return false;
+  const res = await sendRequest('savePushSubscription', subscriptionData);
+  return res && res.success;
+};
 

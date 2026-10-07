@@ -55,6 +55,32 @@ function slugifyText($text) {
     return empty($text) ? 'n-a' : $text;
 }
 
+function triggerServerPushNotification($title, $body, $url = '/admin?tab=inquiries', $tag = null) {
+    try {
+        $pushUrl = 'https://taxii-yth5.vercel.app/api/send-push';
+        $payload = json_encode([
+            'title' => $title,
+            'body' => $body,
+            'url' => $url,
+            'tag' => $tag ?: ('disp-' . round(microtime(true) * 1000)),
+            'userType' => 'admin'
+        ]);
+
+        $ch = curl_init($pushUrl);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 3);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Content-Length: ' . strlen($payload)
+        ]);
+        curl_exec($ch);
+        curl_close($ch);
+    } catch (Exception $e) {}
+}
+
 function regenerateDynamicSitemapFiles($pdo) {
     try {
         $stmt = $pdo->query("SELECT pickup, dropoff, price, car_prices FROM routes ORDER BY id ASC");
@@ -383,6 +409,18 @@ switch ($action) {
             ':timestamp' => $data['timestamp'] ?? date('c'),
             ':date' => $data['date'] ?? date('Y-m-d')
         ]);
+        
+        $cName = $data['customerName'] ?? 'Customer';
+        $cPick = $data['pickup'] ?? 'Location';
+        $cDrop = $data['dropoff'] ?? 'Destination';
+        $cFareStr = !empty($fare) ? " (Rs. {$fare})" : "";
+        triggerServerPushNotification(
+            "New Booking: {$cName}",
+            "{$cPick} to {$cDrop}{$cFareStr}",
+            "/admin?tab=inquiries",
+            "inq-" . $id
+        );
+
         echo json_encode(['success' => true, 'id' => $id]);
         break;
 
@@ -881,6 +919,14 @@ switch ($action) {
             ':timestamp' => $timestamp,
             ':status' => $status
         ]);
+
+        triggerServerPushNotification(
+            "New Message: " . ($name ?: 'Visitor'),
+            substr($message, 0, 100),
+            "/admin?tab=messages",
+            "msg-" . $id
+        );
+
         echo json_encode(['success' => true, 'id' => $id]);
         break;
 
@@ -944,6 +990,16 @@ switch ($action) {
             ':type' => $type,
             ':extra_data' => $extra_data
         ]);
+
+        if (strtoupper($target_phone) === 'ADMIN') {
+            triggerServerPushNotification(
+                $title,
+                $body,
+                "/admin?tab=inquiries",
+                "notif-" . $id
+            );
+        }
+
         echo json_encode(['success' => true, 'id' => $id]);
         break;
 
@@ -1125,6 +1181,28 @@ switch ($action) {
         $loc = $stmt->fetch(PDO::FETCH_ASSOC);
 
         echo json_encode(['success' => true, 'location' => $loc]);
+        break;
+
+    case 'savePushSubscription':
+        $endpoint = trim($data['endpoint'] ?? '');
+        $p256dh = trim($data['keys']['p256dh'] ?? ($data['p256dh'] ?? ''));
+        $auth = trim($data['keys']['auth'] ?? ($data['auth'] ?? ''));
+        $user_type = trim($data['user_type'] ?? ($data['userType'] ?? 'admin'));
+
+        if (!empty($endpoint) && !empty($p256dh) && !empty($auth)) {
+            $stmt = $pdo->prepare("INSERT INTO push_subscriptions (endpoint, p256dh, auth, user_type)
+                                   VALUES (:endpoint, :p256dh, :auth, :user_type)
+                                   ON DUPLICATE KEY UPDATE p256dh = VALUES(p256dh), auth = VALUES(auth), user_type = VALUES(user_type), updated_at = NOW()");
+            $stmt->execute([
+                ':endpoint' => $endpoint,
+                ':p256dh' => $p256dh,
+                ':auth' => $auth,
+                ':user_type' => $user_type
+            ]);
+            echo json_encode(['success' => true]);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Missing push subscription keys']);
+        }
         break;
 
     default:

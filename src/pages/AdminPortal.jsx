@@ -50,6 +50,8 @@ import {
   getAdminNotifications, 
   initEcosystemScheduler, 
   requestNotificationPermission,
+  registerWebPushSubscription,
+  triggerRemoteServerPush,
   sendSystemPushNotification,
   playChimeSound,
   unlockAudio
@@ -890,6 +892,15 @@ export default function AdminPortal() {
   }
   const isInitialLoadRef = React.useRef(true);
 
+  // Push registration state
+  const [isPushRegistered, setIsPushRegistered] = useState(() => {
+    try {
+      return localStorage.getItem('cabsy_web_push_registered') === 'true';
+    } catch(e) {
+      return false;
+    }
+  });
+
   // Manual trigger for user to grant notification permission via gesture & unlock audio
   const handleEnableNotifications = async () => {
     try {
@@ -902,16 +913,34 @@ export default function AdminPortal() {
       if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
         navigator.vibrate([200, 100, 200, 100, 200]);
       }
+
+      // Register W3C / Apple APNs WebPush Subscription directly with VAPID
+      const pushRes = await registerWebPushSubscription('admin');
+      if (pushRes && pushRes.success) {
+        setIsPushRegistered(true);
+      }
+
       sendSystemPushNotification(
-        '🔔 Live Dispatch Alerts Active',
-        'Push notifications & audible chimes are active on your device.',
+        'Live Dispatch Alerts Active',
+        'Push notifications, audible chimes, and background lock-screen alerts are active.',
         'admin-perm-active',
         { tab: 'inquiries' }
       );
+
+      triggerRemoteServerPush({
+        title: 'EMPERIAL CABS Dispatch Live',
+        body: 'Background lock-screen push is linked to your device.',
+        url: '/admin?tab=inquiries',
+        userType: 'admin',
+        tag: 'admin-welcome-' + Date.now()
+      }).catch(() => {});
+
       setLiveAlertToast({
         id: 'perm-granted',
-        title: '🔔 Alerts Activated!',
-        desc: 'Real-time push alerts, phone vibration, and audio chimes are now operational.',
+        title: 'Alerts Activated',
+        desc: (pushRes && pushRes.success)
+          ? 'Device linked to server push. You will receive alerts even when phone is locked or app is closed.'
+          : 'Local notifications active. Background alerts enabled.',
         tab: 'inquiries'
       });
     } catch (e) {
@@ -926,15 +955,22 @@ export default function AdminPortal() {
       navigator.vibrate([200, 100, 200, 100, 200]);
     }
     sendSystemPushNotification(
-      '🔔 Test Dispatch Alert',
+      'Test Dispatch Alert',
       'Audio chime, phone vibration, and push notifications are working properly.',
       'admin-test-' + Date.now(),
       { tab: 'inquiries' }
     );
+    triggerRemoteServerPush({
+      title: 'EMPERIAL CABS Test Alert',
+      body: 'Server push notification delivered to your device.',
+      url: '/admin?tab=inquiries',
+      userType: 'admin',
+      tag: 'admin-test-' + Date.now()
+    }).catch(() => {});
     setLiveAlertToast({
       id: 'test-' + Date.now(),
-      title: 'Alert Audio & Push Working!',
-      desc: 'Tested chime sound, phone vibration, and notification successfully.',
+      title: 'Alert Audio & Push Working',
+      desc: 'Tested chime sound, phone vibration, and background push notification.',
       tab: 'inquiries'
     });
   };
@@ -942,6 +978,13 @@ export default function AdminPortal() {
   // Notification & Live MySQL Real-Time Polling Engine
   useEffect(() => {
     initEcosystemScheduler();
+
+    // Auto-sync WebPush subscription if permission is already granted
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      registerWebPushSubscription('admin').then(res => {
+        if (res && res.success) setIsPushRegistered(true);
+      }).catch(() => {});
+    }
 
     const fetchAllData = async (isInitial = false) => {
       try {
@@ -2981,7 +3024,7 @@ export default function AdminPortal() {
           <img src="/EMPERAL_CABS_Website_Logo_Sharp.svg" alt="EMPERIAL CABS" className="mobile-brand-logo" />
         </div>
         <div className="mobile-header-right flex align-center gap-2">
-          {notifPermissionState !== 'granted' && (
+          {(!isPushRegistered || notifPermissionState !== 'granted') ? (
             <button 
               className="btn flex align-center gap-1"
               onClick={handleEnableNotifications}
@@ -2996,10 +3039,29 @@ export default function AdminPortal() {
                 cursor: 'pointer',
                 boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)'
               }}
-              title="Enable iPhone Push Notifications"
+              title="Enable iPhone & Android Lock-Screen Push Alerts"
             >
               <Bell size={13} />
               <span>Enable Alerts</span>
+            </button>
+          ) : (
+            <button 
+              className="btn flex align-center gap-1"
+              onClick={handleTestAlertSound}
+              style={{
+                background: 'rgba(16, 185, 129, 0.15)',
+                color: '#10B981',
+                border: '1px solid #10B981',
+                borderRadius: '10px',
+                padding: '6px 8px',
+                fontSize: '11px',
+                fontWeight: '700',
+                cursor: 'pointer'
+              }}
+              title="Alerts Active - Tap to test lock-screen push & chime"
+            >
+              <CheckCircle2 size={12} />
+              <span>Alerts Active</span>
             </button>
           )}
           <button 
@@ -5679,6 +5741,45 @@ export default function AdminPortal() {
                 </button>
               </div>
 
+              <div className="card mt-4" style={{ border: '1px solid #E2E8F0', borderRadius: '14px', padding: '20px', background: '#FFFFFF' }}>
+                <div className="flex justify-between align-center mb-2">
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#0F172A' }}>
+                      Lock-Screen Background Push Notifications
+                    </h3>
+                    <p className="text-muted text-sm" style={{ margin: '4px 0 0 0' }}>
+                      Apple APNs & Google FCM WebPush delivers real-time sound, vibration, and banner alerts even when your phone is locked or app is closed.
+                    </p>
+                  </div>
+                  <span style={{
+                    padding: '4px 10px',
+                    borderRadius: '20px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    background: isPushRegistered ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                    color: isPushRegistered ? '#059669' : '#DC2626'
+                  }}>
+                    {isPushRegistered ? 'Active & Linked' : 'Not Linked'}
+                  </span>
+                </div>
+                <div className="flex gap-3 mt-3 flex-wrap">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm flex align-center gap-1"
+                    onClick={handleEnableNotifications}
+                  >
+                    <Bell size={14} /> Link / Re-sync This Device
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm flex align-center gap-1"
+                    onClick={handleTestAlertSound}
+                  >
+                    <Play size={14} /> Send Test Lock-Screen Push
+                  </button>
+                </div>
+              </div>
+
               <div className="purge-section mt-5 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
                 <h3 style={{ color: '#ef4444' }}>System & Database Maintenance</h3>
                 <p className="text-muted text-sm mb-3">Purge demo records or completely reset all inquiries, messages, and customer data stored in Hostinger Remote MySQL Database & local storage.</p>
@@ -5691,7 +5792,7 @@ export default function AdminPortal() {
                   </button>
                 </div>
                 <div style={{ marginTop: '12px', background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '10px 14px', borderRadius: '10px', fontSize: '12px', color: '#475569', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span>🛡️ <strong>Protected Master Data:</strong> Vehicles list, Driver roster, Locations, and KM Distance matrix are safe and will NOT be deleted during reset.</span>
+                  <span><strong>Protected Master Data:</strong> Vehicles list, Driver roster, Locations, and KM Distance matrix are safe and will NOT be deleted during reset.</span>
                 </div>
               </div>
             </form>

@@ -11,7 +11,7 @@ self.addEventListener('activate', (event) => {
 
 // Listen for push events
 self.addEventListener('push', (event) => {
-  let data = { title: 'Empire Cab Update', body: 'You have a new trip update.' };
+  let data = { title: 'EMPERIAL CABS Alert', body: 'New booking dispatch update received.' };
   try {
     if (event.data) {
       data = event.data.json();
@@ -21,18 +21,21 @@ self.addEventListener('push', (event) => {
   }
 
   const options = {
-    body: data.body,
-    icon: '/assets/images/logo.png',
-    badge: '/assets/images/logo.png',
-    vibrate: [200, 100, 200],
-    data: data.url || '/',
+    body: data.body || 'New booking dispatch update received.',
+    icon: '/official-app-icon.png',
+    badge: '/favicon.png',
+    vibrate: [300, 150, 300, 150, 300],
+    tag: data.tag || ('disp-' + Date.now()),
+    renotify: true,
+    requireInteraction: true,
+    data: data.url || '/admin?tab=inquiries',
     actions: [
-      { action: 'open', title: 'View Update' }
+      { action: 'open', title: 'Open Admin' }
     ]
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title, options)
+    self.registration.showNotification(data.title || 'EMPERIAL CABS Alert', options)
   );
 });
 

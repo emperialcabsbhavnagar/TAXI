@@ -11,6 +11,8 @@ DirectoryIndex index.html index.php
   # Directly execute Hostinger PHP MySQL API
   RewriteRule ^api/db$ /api/db.php [L,QSA]
   RewriteRule ^api/db\.php$ - [L]
+  RewriteRule ^api/send-push$ /api/send-push.php [L,QSA]
+  RewriteRule ^api/send-push\.php$ - [L]
 
   # Dynamic live sitemaps for Google Search Engine crawlers
   RewriteRule ^sitemap-routes\.xml$ /sitemap-routes.php [L]
