@@ -24,10 +24,10 @@ export default function BottomNavBar({ activeTab, setActiveTab }) {
           <circle cx="7" cy="15" r="1.5"></circle>
           <circle cx="17" cy="15" r="1.5"></circle>
         </svg>
-        <span>My Rides</span>
+        <span>Rides</span>
       </button>
 
-      {/* CENTER TAB: Short Trip */}
+      {/* CENTER TAB: Instant */}
       <button 
         className={`nav-tab-item nav-tab-center-short-trip ${activeTab === 'shortTrip' ? 'active' : ''}`} 
         onClick={() => setActiveTab('shortTrip')}
@@ -37,7 +37,7 @@ export default function BottomNavBar({ activeTab, setActiveTab }) {
             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
           </svg>
         </div>
-        <span>Short Trip</span>
+        <span>Instant</span>
       </button>
 
       <button 

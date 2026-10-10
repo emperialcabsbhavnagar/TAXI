@@ -63,39 +63,36 @@ export default function ShortTripPosterModal({ isOpen, onClose, onOpenShortTrip 
         }}
         onClick={handleAction}
       >
-        {/* Prominent Top-Right Cancel Button */}
+        {/* Top-Right Symbol-Only Close Button */}
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             handleDismiss();
           }}
-          aria-label="Cancel and return to home"
+          aria-label="Close"
           style={{
             position: 'absolute',
-            top: '12px',
-            right: '12px',
+            top: '14px',
+            right: '14px',
             zIndex: 30,
-            padding: '7px 14px',
-            borderRadius: '999px',
+            width: '36px',
+            height: '36px',
+            borderRadius: '50%',
             backgroundColor: 'rgba(15, 23, 42, 0.85)',
             color: '#FFFFFF',
-            border: '1.5px solid rgba(255, 255, 255, 0.4)',
+            border: '1.5px solid rgba(255, 255, 255, 0.45)',
             backdropFilter: 'blur(8px)',
             WebkitBackdropFilter: 'blur(8px)',
-            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.35)',
-            display: 'inline-flex',
+            boxShadow: '0 4px 14px rgba(0, 0, 0, 0.35)',
+            display: 'flex',
             alignItems: 'center',
-            gap: '6px',
-            fontSize: '13px',
-            fontWeight: 800,
-            letterSpacing: '0.02em',
+            justifyContent: 'center',
             cursor: 'pointer',
             transition: 'all 0.18s ease'
           }}
         >
-          <X size={16} strokeWidth={2.8} />
-          <span>Cancel</span>
+          <X size={18} strokeWidth={2.6} />
         </button>
 
         {/* Poster Visual Presentation */}

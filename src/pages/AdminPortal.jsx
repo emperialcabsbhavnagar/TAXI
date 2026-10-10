@@ -5230,6 +5230,53 @@ export default function AdminPortal() {
                               <div style={{ fontSize: '11px', color: '#64748B', fontWeight: 700 }}>PICKUP & DESTINATION</div>
                               <div style={{ fontSize: '13px', fontWeight: 700, color: '#0F172A' }}>{inq.pickup || 'Bhavnagar'}</div>
                               <div style={{ fontSize: '12px', color: '#64748B', marginTop: '2px' }}>{inq.dropoff || inq.notes}</div>
+                              {Boolean(inq.pickup) && (
+                                <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                                  <a
+                                    href={inq.googleMapsLink || inq.pickupGoogleMapsLink || (inq.pickupLat && inq.pickupLng ? `https://www.google.com/maps/search/?api=1&query=${inq.pickupLat},${inq.pickupLng}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(inq.pickup)}`)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      fontSize: '11px',
+                                      fontWeight: 800,
+                                      color: '#2563EB',
+                                      backgroundColor: '#EFF6FF',
+                                      border: '1px solid #BFDBFE',
+                                      padding: '3px 8px',
+                                      borderRadius: '6px',
+                                      textDecoration: 'none'
+                                    }}
+                                  >
+                                    <MapPin size={11} /> Open Google Maps
+                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const link = inq.googleMapsLink || inq.pickupGoogleMapsLink || (inq.pickupLat && inq.pickupLng ? `https://www.google.com/maps/search/?api=1&query=${inq.pickupLat},${inq.pickupLng}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(inq.pickup)}`);
+                                      navigator.clipboard?.writeText(link);
+                                      alert('Google Maps link copied to clipboard!');
+                                    }}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      color: '#475569',
+                                      backgroundColor: '#F1F5F9',
+                                      border: '1px solid #CBD5E1',
+                                      padding: '3px 8px',
+                                      borderRadius: '6px',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    Copy Maps Link
+                                  </button>
+                                </div>
+                              )}
                             </div>
 
                             <div>
@@ -8441,6 +8488,53 @@ export default function AdminPortal() {
                 <p style={{ margin: '3px 0 0', fontSize: '13px', color: '#64748B' }}>
                   {shortTripApprovalModal.inquiry.pickup} ➔ {shortTripApprovalModal.inquiry.dropoff || shortTripApprovalModal.inquiry.notes} ({shortTripApprovalModal.inquiry.selectedKm || 20} km)
                 </p>
+                {Boolean(shortTripApprovalModal.inquiry.pickup) && (
+                  <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                    <a
+                      href={shortTripApprovalModal.inquiry.googleMapsLink || shortTripApprovalModal.inquiry.pickupGoogleMapsLink || (shortTripApprovalModal.inquiry.pickupLat && shortTripApprovalModal.inquiry.pickupLng ? `https://www.google.com/maps/search/?api=1&query=${shortTripApprovalModal.inquiry.pickupLat},${shortTripApprovalModal.inquiry.pickupLng}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(shortTripApprovalModal.inquiry.pickup)}`)}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        color: '#2563EB',
+                        backgroundColor: '#EFF6FF',
+                        border: '1px solid #BFDBFE',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        textDecoration: 'none'
+                      }}
+                    >
+                      <MapPin size={11} /> Open Google Maps
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const link = shortTripApprovalModal.inquiry.googleMapsLink || shortTripApprovalModal.inquiry.pickupGoogleMapsLink || (shortTripApprovalModal.inquiry.pickupLat && shortTripApprovalModal.inquiry.pickupLng ? `https://www.google.com/maps/search/?api=1&query=${shortTripApprovalModal.inquiry.pickupLat},${shortTripApprovalModal.inquiry.pickupLng}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(shortTripApprovalModal.inquiry.pickup)}`);
+                        navigator.clipboard?.writeText(link);
+                        alert('Google Maps link copied to clipboard!');
+                      }}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        color: '#475569',
+                        backgroundColor: '#F1F5F9',
+                        border: '1px solid #CBD5E1',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Copy Maps Link
+                    </button>
+                  </div>
+                )}
               </div>
               <button 
                 type="button"

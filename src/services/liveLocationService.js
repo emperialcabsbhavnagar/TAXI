@@ -24,44 +24,7 @@ export const reverseGeocodeCoords = async (lat, lng) => {
     return 'Current Pickup Spot';
   }
 
-  // 1. Try BigDataCloud API
-  try {
-    const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data) {
-        const locality = data.locality || '';
-        const city = data.city || data.locality || 'Bhavnagar';
-        const state = data.principalSubdivision || 'Gujarat';
-        
-        // Find sub-locality / neighborhood from localityInfo if present
-        let neighborhood = '';
-        if (data.localityInfo && Array.isArray(data.localityInfo.informative)) {
-          const info = data.localityInfo.informative.find(i => i.description && (i.description.includes('society') || i.description.includes('suburb') || i.description.includes('street') || i.description.includes('road') || i.description.includes('nagar')));
-          if (info && info.name) neighborhood = info.name;
-        }
-
-        if (data.localityInfo && Array.isArray(data.localityInfo.administrative)) {
-          const admin = data.localityInfo.administrative.find(a => a.order === 8 || a.order === 9 || a.order === 10);
-          if (admin && admin.name && !neighborhood) neighborhood = admin.name;
-        }
-
-        if (neighborhood && neighborhood.toLowerCase() !== city.toLowerCase()) {
-          return `${neighborhood}, ${city}, ${state}`;
-        }
-        if (locality && locality.toLowerCase() !== city.toLowerCase()) {
-          return `${locality}, ${city}, ${state}`;
-        }
-        if (city) {
-          return `${city}, ${state}`;
-        }
-      }
-    }
-  } catch (e) {
-    console.warn('BigDataCloud API error:', e);
-  }
-
-  // 2. Try OpenStreetMap Nominatim API
+  // 1. Try OpenStreetMap Nominatim API for full street-level address & landmark
   try {
     const response = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`,
@@ -77,13 +40,24 @@ export const reverseGeocodeCoords = async (lat, lng) => {
       const data = await response.json();
       if (data && data.address) {
         const addr = data.address;
-        const road = addr.road || addr.residential || addr.suburb || addr.neighbourhood;
-        const area = addr.suburb || addr.city_district || addr.district || addr.town || addr.city;
-        const state = addr.state || addr.country;
+        const street = addr.building || addr.house_number || addr.amenity || '';
+        const road = addr.road || addr.residential || addr.suburb || addr.neighbourhood || '';
+        const area = addr.suburb || addr.neighbourhood || addr.city_district || addr.district || '';
+        const city = addr.city || addr.town || addr.village || 'Bhavnagar';
+        const postcode = addr.postcode ? ` - ${addr.postcode}` : '';
 
-        const uniqueParts = Array.from(new Set([road, area, state].filter(Boolean)));
-        if (uniqueParts.length > 0) {
-          return uniqueParts.join(', ');
+        // Build clean, human-readable full street address
+        const parts = [street, road, area, city].filter(Boolean);
+        const uniqueParts = Array.from(new Set(parts));
+        if (uniqueParts.length >= 2) {
+          return `${uniqueParts.join(', ')}${postcode}`;
+        }
+        if (data.display_name) {
+          // Take first 3-4 segments of display_name
+          const displaySegments = data.display_name.split(',').map(s => s.trim()).filter(Boolean);
+          if (displaySegments.length > 0) {
+            return displaySegments.slice(0, 4).join(', ');
+          }
         }
       }
     }
@@ -91,7 +65,39 @@ export const reverseGeocodeCoords = async (lat, lng) => {
     console.warn('Nominatim reverse geocode error:', err);
   }
 
-  return `Live GPS (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+  // 2. Try BigDataCloud API with full neighborhood & street breakdown
+  try {
+    const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data) {
+        const locality = data.locality || '';
+        const city = data.city || data.locality || 'Bhavnagar';
+        const state = data.principalSubdivision || 'Gujarat';
+        const postcode = data.postcode ? ` - ${data.postcode}` : '';
+        
+        let streetOrRoad = '';
+        if (data.localityInfo && Array.isArray(data.localityInfo.informative)) {
+          const info = data.localityInfo.informative.find(i => i.description && (i.description.includes('society') || i.description.includes('suburb') || i.description.includes('street') || i.description.includes('road') || i.description.includes('nagar') || i.description.includes('circle')));
+          if (info && info.name) streetOrRoad = info.name;
+        }
+
+        if (streetOrRoad) {
+          return `${streetOrRoad}, ${locality || city}${postcode}`;
+        }
+        if (locality && locality.toLowerCase() !== city.toLowerCase()) {
+          return `${locality}, ${city}, ${state}${postcode}`;
+        }
+        if (city) {
+          return `${city}, ${state}${postcode}`;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('BigDataCloud API error:', e);
+  }
+
+  return `Live GPS Location (${lat.toFixed(5)}, ${lng.toFixed(5)})`;
 };
 
 // Method 1: Native Hardware GPS (Capacitor)
