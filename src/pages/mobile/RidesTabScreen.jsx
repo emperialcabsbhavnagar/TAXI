@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import BottomNavBar from '../../components/BottomNavBar';
 import { INITIAL_VEHICLES } from '../AdminPortal';
 import { loadAllInquiriesFromMySQL, updateInquiryStatusInMySQL, saveInquiryToMySQL } from '../../services/mysqlService';
+import { notifyAdmin } from '../../services/notificationEngine';
 import db from '../../services/dbService';
 import { Calendar, Clock3, CheckCircle2, XCircle, Car, ArrowRight, X, Edit3, User, Phone } from 'lucide-react';
 
@@ -158,7 +159,27 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
       }
 
       window.dispatchEvent(new Event('storage'));
-      window.dispatchEvent(new CustomEvent('EMPERIAL CABS_inquiry_cancelled', { detail: { id: inqId } }));
+      window.dispatchEvent(new CustomEvent('EMPERIAL CABS_inquiry_cancelled', { detail: { id: inqId, inquiry: targetInq } }));
+
+      // Dispatch Admin Notification so dispatch team immediately receives sound, push, badge & alert
+      const custName = targetInq?.customerName || targetInq?.name || 'Customer';
+      const custPhone = targetInq?.customerPhone || targetInq?.phone || '';
+      const pickupPlace = targetInq?.pickup || 'Pickup';
+      const dropoffPlace = targetInq?.dropoff || 'Dropoff';
+      const inqDisplayId = targetInq?.id || inqId;
+
+      notifyAdmin({
+        type: 'cancellation',
+        title: `Ride Cancelled: #${inqDisplayId}`,
+        body: `Customer ${custName} (${custPhone}) cancelled trip: ${pickupPlace} → ${dropoffPlace}`,
+        extraData: {
+          inquiryId: inqDisplayId,
+          tab: 'inquiries',
+          status: 'Cancelled',
+          customerName: custName,
+          customerPhone: custPhone
+        }
+      });
     } catch (e) {
       console.error("Error cancelling inquiry:", e);
     }

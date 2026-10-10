@@ -419,8 +419,9 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
 // Dispatch Admin Notification
 export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) => {
   const inqId = extraData?.inquiryId;
+  const isCancel = type === 'cancellation' || type === 'cancelled';
   const notifObj = {
-    id: inqId ? `admin_inq_${inqId}` : ('admin_notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4)),
+    id: inqId ? (isCancel ? `admin_cancel_${inqId}` : `admin_inq_${inqId}`) : ('admin_notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4)),
     inquiryId: inqId,
     type,
     title,
@@ -436,7 +437,8 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
     const existing = JSON.parse(localStorage.getItem('cabsy_admin_notifications') || '[]');
     // Filter out previous notification for the exact same inquiry or identical title+desc
     const filtered = existing.filter(n => {
-      if (inqId && (n.inquiryId === inqId || n.id === `admin_inq_${inqId}`)) return false;
+      if (inqId && isCancel && n.id === `admin_cancel_${inqId}`) return false;
+      if (inqId && !isCancel && (n.inquiryId === inqId || n.id === `admin_inq_${inqId}`)) return false;
       if (n.title === title && n.desc === body) return false;
       return true;
     });
@@ -472,6 +474,17 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
         extraData: { tab: targetTab, inquiryId: inqId, ...extraData }
       });
     }
+  } catch (e) {}
+
+  // 3. Trigger remote server push to Admin devices via WebPush / FCM
+  try {
+    triggerRemoteServerPush({
+      title,
+      body,
+      url: targetUrl,
+      userType: 'admin',
+      tag: notifObj.id
+    }).catch(() => {});
   } catch (e) {}
 
   // 3. Trigger local system push notification ONLY if running in an active Admin context!

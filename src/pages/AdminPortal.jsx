@@ -1219,7 +1219,8 @@ export default function AdminPortal() {
               } catch(e) {}
               const rowInqId = parsedExtra.inquiryId || notifRow.inquiry_id;
               const rowMsgId = parsedExtra.messageId || notifRow.message_id;
-              const alertKey = rowInqId ? `inq_${rowInqId}` : (rowMsgId ? `msg_${rowMsgId}` : (notifIdStr || `${notifRow.title}|${notifRow.body}`));
+              const isCancelNotif = notifRow.type === 'cancellation' || notifRow.type === 'cancelled' || (notifRow.title && notifRow.title.toLowerCase().includes('cancel'));
+              const alertKey = rowInqId ? (isCancelNotif ? `inq_cancel_${rowInqId}` : `inq_${rowInqId}`) : (rowMsgId ? `msg_${rowMsgId}` : (notifIdStr || `${notifRow.title}|${notifRow.body}`));
 
               if (notifIdStr && !knownRemoteNotifIdsRef.current.has(notifIdStr)) {
                 knownRemoteNotifIdsRef.current.add(notifIdStr);
@@ -1308,14 +1309,19 @@ export default function AdminPortal() {
             const notif = event.data.notification;
             const inqId = notif.inquiryId || notif.extraData?.inquiryId;
             const msgId = notif.messageId || notif.extraData?.messageId;
-            const alertKey = inqId ? `inq_${inqId}` : (msgId ? `msg_${msgId}` : (notif.id || `${notif.title}|${notif.body}`));
+            const isCancel = notif.type === 'cancellation' || notif.type === 'cancelled' || (notif.title && notif.title.toLowerCase().includes('cancel'));
+            const alertKey = inqId ? (isCancel ? `inq_cancel_${inqId}` : `inq_${inqId}`) : (msgId ? `msg_${msgId}` : (notif.id || `${notif.title}|${notif.body}`));
             if (isUnifiedAlertSeen(alertKey)) {
               return; // Already alerted on this device!
             }
             markUnifiedAlertSeen(alertKey);
             if (inqId) {
-              seenInquiryAlertIdsRef.current.add(String(inqId));
-              knownInquiryStatusRef.current.set(String(inqId), 'Pending');
+              if (isCancel) {
+                knownInquiryStatusRef.current.set(String(inqId), 'Cancelled');
+              } else {
+                seenInquiryAlertIdsRef.current.add(String(inqId));
+                knownInquiryStatusRef.current.set(String(inqId), 'Pending');
+              }
             }
 
             sendSystemPushNotification(notif.title, notif.body || notif.desc, 'bc-' + (inqId || notif.id), notif.extraData);
@@ -1338,6 +1344,16 @@ export default function AdminPortal() {
     window.addEventListener('visibilitychange', handleVisibilityOrFocus);
     window.addEventListener('focus', handleVisibilityOrFocus);
 
+    // Listen for customer cancellation in current window
+    const handleInquiryCancelled = (e) => {
+      const cancelledId = e?.detail?.id;
+      if (cancelledId) {
+        knownInquiryStatusRef.current.set(String(cancelledId), 'Cancelled');
+      }
+      fetchAllData(false);
+    };
+    window.addEventListener('EMPERIAL CABS_inquiry_cancelled', handleInquiryCancelled);
+
     // Auto-unlock audio playback on first user screen interaction
     const handleGestureUnlock = () => {
       unlockAudio();
@@ -1350,6 +1366,7 @@ export default function AdminPortal() {
     return () => {
       window.removeEventListener('EMPERIAL CABS_admin_notif', syncAdminNotifs);
       window.removeEventListener('EMPERIAL CABS_db_sync', syncAdminNotifs);
+      window.removeEventListener('EMPERIAL CABS_inquiry_cancelled', handleInquiryCancelled);
       window.removeEventListener('visibilitychange', handleVisibilityOrFocus);
       window.removeEventListener('focus', handleVisibilityOrFocus);
       window.removeEventListener('touchstart', handleGestureUnlock);
@@ -2652,7 +2669,7 @@ export default function AdminPortal() {
 
       notifyCustomer({
         type: 'cancelled',
-        title: '❌ Booking Cancelled',
+        title: 'Booking Cancelled',
         body: `Your booking request for ${targetInq.pickup} → ${targetInq.dropoff} was cancelled by EMPERIAL CABS dispatch.`,
         customerPhone: targetInq.customerPhone,
         customerEmail: targetInq.customerEmail

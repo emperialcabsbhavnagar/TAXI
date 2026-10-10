@@ -257,6 +257,8 @@ export default function SelectLocationScreen({
     return filtered.length > 0 ? filtered : [];
   };
 
+  const getFilteredPlaces = getFilteredCities;
+
   // Filtered available pickup suggestions
   const getFilteredPickups = (query) => {
     if (!query || query.trim() === '') return availablePickups;
