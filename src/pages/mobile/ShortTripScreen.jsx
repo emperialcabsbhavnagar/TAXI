@@ -5,17 +5,18 @@ import {
   Navigation, 
   Calendar, 
   Clock, 
-  Phone, 
   CheckCircle2, 
   AlertCircle, 
   ArrowRight,
-  Loader2
+  Loader2,
+  Crosshair,
+  Car,
+  ShieldCheck
 } from 'lucide-react';
 import BottomNavBar from '../../components/BottomNavBar';
-import ShortTripLiveMap from '../../components/ShortTripLiveMap';
+import InteractiveMap from '../../components/InteractiveMap';
 import { 
   saveInquiryToMySQL, 
-  loadAllInquiriesFromMySQL, 
   loadSettingsFromMySQL,
   saveCustomerToMySQL
 } from '../../services/mysqlService';
@@ -69,9 +70,10 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
   const [googleMapsLink, setGoogleMapsLink] = useState('https://www.google.com/maps?q=21.7645,72.1519');
   const [isLocating, setIsLocating] = useState(false);
 
-  // Active Ride tracking state
-  const [activeBooking, setActiveBooking] = useState(null);
+  // Booking Confirmation State & Transition
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [confirmedBooking, setConfirmedBooking] = useState(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   // Sync pricing from MySQL settings on mount
   useEffect(() => {
@@ -101,7 +103,6 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
         setPickupLocation(fullAddr || `Current Location (${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)})`);
         setGoogleMapsLink(`https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lng}`);
       } else {
-        // Fallback Bhavnagar center with detailed label
         setPickupLocation('Waghawadi Road, Vidhyanagar, Bhavnagar - 364002');
       }
     } catch (err) {
@@ -112,55 +113,9 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
     }
   };
 
-  // Auto-detect location once on mount if initial placeholder
+  // Auto-detect location once on mount
   useEffect(() => {
     handleUseCurrentLocation();
-  }, []);
-
-  // Poll active short trip status for live arrival time, driver assignment, etc.
-  useEffect(() => {
-    const fetchActiveShortTrip = async () => {
-      try {
-        const userProf = JSON.parse(localStorage.getItem('cabsy_user_profile') || '{}');
-        const userPhone = (userProf?.phone || localStorage.getItem('cabsy_user_phone') || '').replace(/\D/g, '');
-        const userEmail = (userProf?.email || '').toLowerCase().trim();
-
-        if (!userPhone && !userEmail) return;
-
-        const inquiries = await loadAllInquiriesFromMySQL().catch(() => []);
-        if (Array.isArray(inquiries)) {
-          const match = inquiries.find(i => {
-            if (!i || !(i.isShortTrip || i.tripType === 'Short Trip' || i.tripType === 'short-trip')) return false;
-            const iPhone = (i.customerPhone || '').replace(/\D/g, '');
-            const iEmail = (i.customerEmail || '').toLowerCase().trim();
-            const phoneMatch = userPhone && iPhone && userPhone.slice(-10) === iPhone.slice(-10);
-            const emailMatch = userEmail && iEmail && userEmail === iEmail;
-            const activeStatus = ['Pending', 'Confirmed', 'In Progress', 'On Ride'].includes(i.status);
-            return (phoneMatch || emailMatch) && activeStatus;
-          });
-
-          if (match) {
-            setActiveBooking(match);
-          } else {
-            const localList = JSON.parse(localStorage.getItem('cabsy_inquiries') || '[]');
-            const localMatch = localList.find(i => {
-              if (!i || !(i.isShortTrip || i.tripType === 'Short Trip' || i.tripType === 'short-trip')) return false;
-              const iPhone = (i.customerPhone || '').replace(/\D/g, '');
-              const iEmail = (i.customerEmail || '').toLowerCase().trim();
-              const phoneMatch = userPhone && iPhone && userPhone.slice(-10) === iPhone.slice(-10);
-              const emailMatch = userEmail && iEmail && userEmail === iEmail;
-              const activeStatus = ['Pending', 'Confirmed', 'In Progress', 'On Ride'].includes(i.status);
-              return (phoneMatch || emailMatch) && activeStatus;
-            });
-            setActiveBooking(localMatch || null);
-          }
-        }
-      } catch (e) {}
-    };
-
-    fetchActiveShortTrip();
-    const interval = setInterval(fetchActiveShortTrip, 4000);
-    return () => clearInterval(interval);
   }, []);
 
   // Determine available distance options based on admin set prices
@@ -187,7 +142,40 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
 
   const extraKmRate = currentVehiclePricing.extraKmRate || (selectedVehicle === 'suv' ? 18 : 14);
 
-  // Handle Booking Submission
+  // Calculate destination & road route for Google Maps interactive map
+  const calculateMapRoute = () => {
+    const lat1 = pickupCoords?.lat || 21.7645;
+    const lng1 = pickupCoords?.lng || 72.1519;
+
+    const latDelta = selectedKm === 10 ? 0.045 : 0.082;
+    const lngDelta = selectedKm === 10 ? -0.035 : -0.065;
+
+    const dest = {
+      lat: lat1 + latDelta,
+      lng: lng1 + lngDelta,
+      label: `${selectedKm} KM Dropoff`
+    };
+
+    const mid1 = { lat: lat1 + (dest.lat - lat1) * 0.32 + 0.004, lng: lng1 + (dest.lng - lng1) * 0.28 };
+    const mid2 = { lat: lat1 + (dest.lat - lat1) * 0.65 - 0.003, lng: lng1 + (dest.lng - lng1) * 0.68 + 0.002 };
+    const mid3 = { lat: lat1 + (dest.lat - lat1) * 0.88, lng: lng1 + (dest.lng - lng1) * 0.92 };
+
+    return {
+      dest,
+      polyline: [
+        { lat: lat1, lng: lng1 },
+        mid1,
+        mid2,
+        mid3,
+        { lat: dest.lat, lng: dest.lng }
+      ]
+    };
+  };
+
+  const { dest: mapDest, polyline: mapPolyline } = calculateMapRoute();
+  const estTimeMin = selectedKm === 10 ? 16 : (selectedKm === 20 ? 28 : Math.round(selectedKm * 1.4));
+
+  // Handle Booking Submission -> Shows confirmation screen & shifts to Rides
   const handleBookNow = async () => {
     setIsSubmitting(true);
     try {
@@ -236,7 +224,7 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
         localStorage.setItem('cabsy_inquiries', JSON.stringify([newInquiry, ...existing]));
       } catch (e) {}
 
-      // 2. Save directly to Hostinger MySQL
+      // 2. Save to MySQL
       await saveInquiryToMySQL(newInquiry).catch(() => {});
       saveCustomerToMySQL(userProf).catch(() => {});
 
@@ -244,7 +232,7 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
       registerPushNotifications('customer', cPhone, cEmail).catch(() => {});
       syncNativeCustomerTrip(shortTripId, cPhone).catch(() => {});
 
-      // 4. Notify Admin with Google Maps Link & full pickup address
+      // 4. Notify Admin
       notifyAdmin({
         type: 'short_trip',
         title: `New Short Trip Booking #${shortTripId} (${selectedKm} KM)`,
@@ -258,10 +246,18 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
         }
       });
 
-      // 5. Update local state
-      setActiveBooking(newInquiry);
+      // 5. Broadcast updates
       window.dispatchEvent(new Event('storage'));
       window.dispatchEvent(new CustomEvent('EMPERIAL CABS_ride_booked', { detail: newInquiry }));
+
+      // 6. Show Confirmation Screen and automatically shift to Rides tab
+      setConfirmedBooking(newInquiry);
+      setShowConfirmModal(true);
+
+      setTimeout(() => {
+        setShowConfirmModal(false);
+        if (setActiveTab) setActiveTab('rides');
+      }, 1800);
     } catch (err) {
       console.error('Short trip booking failed:', err);
     } finally {
@@ -275,7 +271,7 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
       style={{
         width: '100%',
         minHeight: '100dvh',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: '#F8FAFC',
         color: '#0F172A',
         display: 'flex',
         flexDirection: 'column',
@@ -285,7 +281,7 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
         fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
       }}
     >
-      {/* TOP HEADER (CLEAN MONOCHROME BLACK & WHITE) */}
+      {/* TOP HEADER */}
       <div 
         style={{
           display: 'flex',
@@ -333,170 +329,51 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
         <div style={{ width: '36px' }} />
       </div>
 
-      {/* LIVE ACTIVE RIDE STATUS CARD (WHEN BOOKING IS PENDING OR CONFIRMED) */}
-      {activeBooking && (
-        <div style={{ margin: '12px 18px 4px' }}>
-          <div 
-            style={{
-              borderRadius: '20px',
-              border: '1.5px solid #0F172A',
-              backgroundColor: '#FFFFFF',
-              boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
-              overflow: 'hidden'
-            }}
-          >
-            {/* Header Status Bar */}
-            <div 
-              style={{
-                backgroundColor: activeBooking.status === 'Confirmed' ? '#0F172A' : '#1E293B',
-                color: '#FFFFFF',
-                padding: '11px 16px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div 
-                  style={{
-                    width: '9px',
-                    height: '9px',
-                    borderRadius: '50%',
-                    backgroundColor: activeBooking.status === 'Confirmed' ? '#10B981' : '#F59E0B'
-                  }} 
-                />
-                <span style={{ fontSize: '12px', fontWeight: 800, letterSpacing: '0.02em' }}>
-                  {activeBooking.status === 'Confirmed' ? 'CAB DISPATCHED & ON THE WAY' : 'SEARCHING NEAREST CHAUFFEUR...'}
-                </span>
-              </div>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94A3B8' }}>
-                #{activeBooking.id}
-              </span>
-            </div>
-
-            {/* Content Body */}
-            <div style={{ padding: '16px' }}>
-              {activeBooking.status === 'Confirmed' ? (
-                <div>
-                  {/* Big Live Cab Arrival Banner */}
-                  <div 
-                    style={{
-                      backgroundColor: '#0F172A',
-                      color: '#FFFFFF',
-                      padding: '14px 16px',
-                      borderRadius: '14px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginBottom: '12px',
-                      boxShadow: '0 4px 14px rgba(15, 23, 42, 0.25)'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <Clock size={22} strokeWidth={2.4} color="#10B981" />
-                      <div>
-                        <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#94A3B8', fontWeight: 800 }}>
-                          ESTIMATED ARRIVAL
-                        </div>
-                        <div style={{ fontSize: '18px', fontWeight: 800 }}>
-                          {activeBooking.arrivalTime ? `Reaching in ${activeBooking.arrivalTime}` : 'Arriving Shortly'}
-                        </div>
-                      </div>
-                    </div>
-                    <span style={{ fontSize: '11px', backgroundColor: 'rgba(255,255,255,0.15)', padding: '3px 9px', borderRadius: '999px', fontWeight: 800 }}>
-                      Live
-                    </span>
-                  </div>
-
-                  {/* Driver & Car Details */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-                    <div style={{ backgroundColor: '#F8FAFC', padding: '12px', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
-                      <div style={{ fontSize: '10px', color: '#64748B', fontWeight: 800, textTransform: 'uppercase' }}>CHAUFFEUR</div>
-                      <div style={{ fontSize: '14px', fontWeight: 800, color: '#0F172A', marginTop: '2px' }}>{activeBooking.driver || 'Assigned Driver'}</div>
-                      {activeBooking.driverPhone && (
-                        <a 
-                          href={`tel:${activeBooking.driverPhone}`}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px', fontSize: '12px', fontWeight: 700, color: '#0F172A', textDecoration: 'underline' }}
-                        >
-                          <Phone size={11} />
-                          <span>{activeBooking.driverPhone}</span>
-                        </a>
-                      )}
-                    </div>
-
-                    <div style={{ backgroundColor: '#F8FAFC', padding: '12px', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
-                      <div style={{ fontSize: '10px', color: '#64748B', fontWeight: 800, textTransform: 'uppercase' }}>VEHICLE NUMBER</div>
-                      <div style={{ fontSize: '14px', fontWeight: 800, color: '#0F172A', marginTop: '2px' }}>{activeBooking.plate || 'GJ-04-AB-1234'}</div>
-                      <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748B', marginTop: '2px' }}>{activeBooking.vehicle}</div>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid #F1F5F9', fontSize: '12px' }}>
-                    <span style={{ color: '#64748B', fontWeight: 600 }}>Package Fare ({activeBooking.selectedKm || 20} KM):</span>
-                    <span style={{ fontSize: '16px', fontWeight: 800, color: '#0F172A' }}>₹{activeBooking.fare}</span>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <p style={{ margin: '0 0 6px', fontSize: '13px', color: '#0F172A', fontWeight: 600 }}>
-                    Request submitted for <strong>{activeBooking.selectedKm || 20} KM ({activeBooking.vehicle})</strong>. Admin is dispatching nearest driver.
-                  </p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#64748B' }}>
-                    <Clock size={13} />
-                    <span>Instant notification will sound when driver details and arrival time are confirmed.</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SLEEK MONOCHROME HEADER CARD (REPLACED PINK CARD) */}
+      {/* TOP PROMO CARD (BOX BG: WHITE, BRAND ACCENT) */}
       <div style={{ padding: '12px 18px 10px' }}>
         <div 
           style={{
-            backgroundColor: '#0F172A',
-            color: '#FFFFFF',
+            backgroundColor: '#FFFFFF',
             borderRadius: '20px',
             padding: '16px 18px',
             display: 'flex',
             alignItems: 'center',
             gap: '14px',
-            boxShadow: '0 4px 16px rgba(15, 23, 42, 0.12)'
+            border: '1.5px solid #E2E8F0',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.04)'
           }}
         >
           <div 
             style={{
-              width: '44px',
-              height: '44px',
+              width: '46px',
+              height: '46px',
               borderRadius: '50%',
-              backgroundColor: 'rgba(255, 255, 255, 0.12)',
+              backgroundColor: '#FEE2E2',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#FFFFFF',
+              color: '#C53030',
               flexShrink: 0
             }}
           >
-            <MapPin size={22} strokeWidth={2.4} />
+            <MapPin size={24} strokeWidth={2.4} />
           </div>
 
           <div>
-            <div style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.08em', color: '#94A3B8', textTransform: 'uppercase' }}>
+            <div style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.06em', color: '#C53030', textTransform: 'uppercase' }}>
               SHORT TRIP PACKAGE
             </div>
-            <div style={{ fontSize: '18px', fontWeight: 800, marginTop: '1px', letterSpacing: '-0.01em' }}>
+            <div style={{ fontSize: '18px', fontWeight: 800, marginTop: '1px', color: '#0F172A', letterSpacing: '-0.01em' }}>
               For around {selectedKm} km
             </div>
-            <div style={{ fontSize: '12px', color: '#CBD5E1', marginTop: '2px', fontWeight: 500 }}>
+            <div style={{ fontSize: '12px', color: '#64748B', marginTop: '2px', fontWeight: 500 }}>
               Quick, Easy and Comfortable • Bhavnagar Local
             </div>
           </div>
         </div>
       </div>
 
-      {/* PICKUP & DROPOFF FORM CARD (WITH LIVE FULL ADDRESS & USE CURRENT) */}
+      {/* PICKUP & DROPOFF FORM BOX (BOX BG: WHITE) */}
       <div style={{ padding: '0 18px 12px' }}>
         <div 
           style={{
@@ -504,21 +381,14 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
             borderRadius: '20px',
             border: '1.5px solid #E2E8F0',
             padding: '16px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.04)'
           }}
         >
-          {/* Pickup Location Row */}
+          {/* Pickup Location Row (Label: "Pickup Location", No Coordinates) */}
           <div style={{ marginBottom: '14px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 800, color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
-                Pickup Location (Full Street Address)
-              </label>
-              {pickupCoords && (
-                <span style={{ fontSize: '11px', color: '#64748B', fontWeight: 600 }}>
-                  GPS: {pickupCoords.lat.toFixed(4)}, {pickupCoords.lng.toFixed(4)}
-                </span>
-              )}
-            </div>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: '6px' }}>
+              Pickup Location
+            </label>
             
             <div style={{ display: 'flex', gap: '8px' }}>
               <div 
@@ -533,12 +403,12 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
                   padding: '10px 12px'
                 }}
               >
-                <MapPin size={16} color="#0F172A" style={{ flexShrink: 0 }} />
+                <MapPin size={16} color="#C53030" style={{ flexShrink: 0 }} />
                 <input
                   type="text"
                   value={pickupLocation}
                   onChange={(e) => setPickupLocation(e.target.value)}
-                  placeholder="Street, Landmark, Area, Bhavnagar"
+                  placeholder="Select pickup location"
                   style={{
                     width: '100%',
                     border: 'none',
@@ -551,15 +421,15 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
                 />
               </div>
 
-              {/* Use Current Location Button (Sleek Black & White) */}
+              {/* Use Current Location Button */}
               <button
                 type="button"
                 onClick={handleUseCurrentLocation}
                 disabled={isLocating}
                 style={{
-                  backgroundColor: '#0F172A',
-                  color: '#FFFFFF',
-                  border: 'none',
+                  backgroundColor: '#FEE2E2',
+                  color: '#C53030',
+                  border: '1px solid #FECACA',
                   borderRadius: '12px',
                   padding: '8px 12px',
                   display: 'flex',
@@ -568,8 +438,9 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
                   justifyContent: 'center',
                   cursor: isLocating ? 'wait' : 'pointer',
                   flexShrink: 0,
-                  boxShadow: '0 2px 6px rgba(15, 23, 42, 0.2)',
-                  minWidth: '78px'
+                  boxShadow: '0 2px 6px rgba(197, 48, 48, 0.12)',
+                  minWidth: '82px',
+                  transition: 'all 0.15s ease'
                 }}
               >
                 {isLocating ? (
@@ -581,7 +452,7 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
                   </>
                 ) : (
                   <>
-                    <Navigation size={13} fill="#FFFFFF" />
+                    <Navigation size={13} fill="#C53030" />
                     <span style={{ fontSize: '10px', fontWeight: 800, marginTop: '2px', whiteSpace: 'nowrap' }}>
                       Use Current
                     </span>
@@ -612,7 +483,7 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
                 type="text"
                 value={dropoffLocation}
                 onChange={(e) => setDropoffLocation(e.target.value)}
-                placeholder="Select drop-off location or destination in Bhavnagar"
+                placeholder="Select drop-off location in Bhavnagar"
                 style={{
                   width: '100%',
                   border: 'none',
@@ -628,12 +499,20 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
         </div>
       </div>
 
-      {/* TWO SELECTION COLUMNS: DISTANCE & TIMING */}
+      {/* TWO SELECTION COLUMNS: DISTANCE & TIMING (BOX BG: WHITE) */}
       <div style={{ padding: '0 18px 12px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-          {/* Trip Distance Selector (10 km, 20 km default) */}
-          <div>
-            <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#475569', marginBottom: '6px', textTransform: 'uppercase' }}>
+          {/* Trip Distance Selector */}
+          <div 
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: '18px',
+              border: '1.5px solid #E2E8F0',
+              padding: '12px',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.04)'
+            }}
+          >
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#475569', marginBottom: '8px', textTransform: 'uppercase' }}>
               Trip Distance (Approx.)
             </label>
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -646,11 +525,11 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
                     onClick={() => setSelectedKm(km)}
                     style={{
                       flex: 1,
-                      padding: '10px 8px',
+                      padding: '9px 6px',
                       borderRadius: '12px',
-                      border: isSelected ? '2px solid #0F172A' : '1.5px solid #CBD5E1',
-                      backgroundColor: isSelected ? '#0F172A' : '#FFFFFF',
-                      color: isSelected ? '#FFFFFF' : '#0F172A',
+                      border: isSelected ? '2px solid #C53030' : '1.5px solid #CBD5E1',
+                      backgroundColor: isSelected ? '#FEE2E2' : '#FFFFFF',
+                      color: isSelected ? '#C53030' : '#0F172A',
                       fontSize: '13px',
                       fontWeight: 800,
                       cursor: 'pointer',
@@ -668,22 +547,30 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
           </div>
 
           {/* When do you need a cab? */}
-          <div>
-            <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#475569', marginBottom: '6px', textTransform: 'uppercase' }}>
+          <div 
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: '18px',
+              border: '1.5px solid #E2E8F0',
+              padding: '12px',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.04)'
+            }}
+          >
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#475569', marginBottom: '8px', textTransform: 'uppercase' }}>
               Pickup Schedule
             </label>
             <div 
               style={{
-                padding: '10px 10px',
+                padding: '9px 10px',
                 borderRadius: '12px',
                 border: '1.5px solid #CBD5E1',
-                backgroundColor: '#FFFFFF',
+                backgroundColor: '#F8FAFC',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px'
               }}
             >
-              <Calendar size={15} color="#0F172A" style={{ flexShrink: 0 }} />
+              <Calendar size={15} color="#C53030" style={{ flexShrink: 0 }} />
               <select
                 value={scheduleTime}
                 onChange={(e) => setScheduleTime(e.target.value)}
@@ -707,41 +594,114 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
         </div>
       </div>
 
-      {/* LIVE MAP REPLACING STATIC IMAGE (BHAVNAGAR 20KM ZONE WITH BLUE ROUTE LINE) */}
+      {/* LIVE MAP: IDENTICAL TO HOME SCREEN MAP (GOOGLE MAPS TILES & PINS) */}
       <div style={{ padding: '0 18px 14px' }}>
-        <ShortTripLiveMap
-          pickupCoords={pickupCoords}
-          selectedKm={selectedKm}
-          onRecenter={handleUseCurrentLocation}
-          isLocating={isLocating}
-        />
+        <div 
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: '210px',
+            borderRadius: '20px',
+            overflow: 'hidden',
+            border: '1.5px solid #E2E8F0',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.06)',
+            backgroundColor: '#FFFFFF'
+          }}
+        >
+          {/* Exact InteractiveMap from HomeScreen */}
+          <InteractiveMap
+            center={pickupCoords}
+            zoom={13}
+            userLabel="Pickup Location"
+            destination={mapDest}
+            routePolyline={mapPolyline}
+            showUserPin={true}
+            style={{ width: '100%', height: '100%' }}
+          />
+
+          {/* Floating Time & Distance Badge */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '12px',
+              left: '12px',
+              zIndex: 1000,
+              backgroundColor: '#FFFFFF',
+              color: '#0F172A',
+              padding: '6px 12px',
+              borderRadius: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
+              border: '1px solid #E2E8F0'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Clock size={13} color="#C53030" />
+              <span style={{ fontSize: '12px', fontWeight: 800, color: '#C53030' }}>{estTimeMin} min</span>
+            </div>
+            <span style={{ color: '#CBD5E1', fontSize: '11px' }}>•</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Navigation size={12} color="#0F172A" />
+              <span style={{ fontSize: '12px', fontWeight: 700, color: '#0F172A' }}>~{selectedKm} km</span>
+            </div>
+          </div>
+
+          {/* Floating Re-center GPS Button */}
+          <button
+            type="button"
+            onClick={handleUseCurrentLocation}
+            disabled={isLocating}
+            aria-label="Re-center Live Location"
+            style={{
+              position: 'absolute',
+              bottom: '12px',
+              right: '12px',
+              zIndex: 1000,
+              width: '38px',
+              height: '38px',
+              borderRadius: '50%',
+              backgroundColor: '#FFFFFF',
+              border: '1.5px solid #CBD5E1',
+              boxShadow: '0 4px 14px rgba(0, 0, 0, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: isLocating ? 'wait' : 'pointer',
+              color: '#0F172A'
+            }}
+          >
+            <Crosshair size={18} strokeWidth={2.4} />
+          </button>
+        </div>
       </div>
 
-      {/* SELECT CAB TYPE (SEDAN AND SUV ONLY PER SPECIFICATION) */}
+      {/* SELECT CAB TYPE (SEDAN AND SUV ONLY, BOX BG: WHITE) */}
       <div style={{ padding: '0 18px 14px' }}>
         <h3 style={{ margin: '0 0 10px', fontSize: '15px', fontWeight: 800, color: '#0F172A' }}>
           Select Cab Type
         </h3>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-          {/* 1. SEDAN CARD (BLACK & WHITE) */}
+          {/* 1. SEDAN CARD */}
           <div
             onClick={() => setSelectedVehicle('sedan')}
             style={{
               position: 'relative',
               backgroundColor: '#FFFFFF',
               borderRadius: '18px',
-              border: selectedVehicle === 'sedan' ? '2.5px solid #0F172A' : '1.5px solid #E2E8F0',
+              border: selectedVehicle === 'sedan' ? '2px solid #C53030' : '1.5px solid #E2E8F0',
               padding: '12px 10px',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               cursor: 'pointer',
-              boxShadow: selectedVehicle === 'sedan' ? '0 4px 14px rgba(15, 23, 42, 0.12)' : '0 1px 3px rgba(0,0,0,0.02)',
+              boxShadow: selectedVehicle === 'sedan' ? '0 4px 14px rgba(197, 48, 48, 0.14)' : '0 2px 8px rgba(0,0,0,0.03)',
               transition: 'all 0.18s ease'
             }}
           >
-            {/* Active Checkmark Pill in Pure Black */}
+            {/* Active Checkmark Pill */}
             {selectedVehicle === 'sedan' && (
               <div 
                 style={{
@@ -751,7 +711,7 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
                   width: '20px',
                   height: '20px',
                   borderRadius: '50%',
-                  backgroundColor: '#0F172A',
+                  backgroundColor: '#C53030',
                   color: '#FFFFFF',
                   display: 'flex',
                   alignItems: 'center',
@@ -781,29 +741,29 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
             <div style={{ fontSize: '11px', color: '#64748B', fontWeight: 600 }}>
               4 Seats
             </div>
-            <div style={{ fontSize: '14px', fontWeight: 800, color: '#0F172A', marginTop: '4px' }}>
+            <div style={{ fontSize: '14px', fontWeight: 800, color: '#C53030', marginTop: '4px' }}>
               ₹{selectedKm === 10 ? (pricing.sedan?.km10 || 299) : (pricing.sedan?.km20 || 499)}
             </div>
           </div>
 
-          {/* 2. SUV CARD (BLACK & WHITE) */}
+          {/* 2. SUV CARD */}
           <div
             onClick={() => setSelectedVehicle('suv')}
             style={{
               position: 'relative',
               backgroundColor: '#FFFFFF',
               borderRadius: '18px',
-              border: selectedVehicle === 'suv' ? '2.5px solid #0F172A' : '1.5px solid #E2E8F0',
+              border: selectedVehicle === 'suv' ? '2px solid #C53030' : '1.5px solid #E2E8F0',
               padding: '12px 10px',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               cursor: 'pointer',
-              boxShadow: selectedVehicle === 'suv' ? '0 4px 14px rgba(15, 23, 42, 0.12)' : '0 1px 3px rgba(0,0,0,0.02)',
+              boxShadow: selectedVehicle === 'suv' ? '0 4px 14px rgba(197, 48, 48, 0.14)' : '0 2px 8px rgba(0,0,0,0.03)',
               transition: 'all 0.18s ease'
             }}
           >
-            {/* Active Checkmark Pill in Pure Black */}
+            {/* Active Checkmark Pill */}
             {selectedVehicle === 'suv' && (
               <div 
                 style={{
@@ -813,7 +773,7 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
                   width: '20px',
                   height: '20px',
                   borderRadius: '50%',
-                  backgroundColor: '#0F172A',
+                  backgroundColor: '#C53030',
                   color: '#FFFFFF',
                   display: 'flex',
                   alignItems: 'center',
@@ -843,39 +803,40 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
             <div style={{ fontSize: '11px', color: '#64748B', fontWeight: 600 }}>
               6–7 Seats
             </div>
-            <div style={{ fontSize: '14px', fontWeight: 800, color: '#0F172A', marginTop: '4px' }}>
+            <div style={{ fontSize: '14px', fontWeight: 800, color: '#C53030', marginTop: '4px' }}>
               ₹{selectedKm === 10 ? (pricing.suv?.km10 || 449) : (pricing.suv?.km20 || 699)}
             </div>
           </div>
         </div>
       </div>
 
-      {/* CRITICAL NOTE: EXTRA KM CHARGE POLICY (FROM ADMIN SHORT TRIP SETTINGS) */}
+      {/* CRITICAL NOTE: EXTRA KM CHARGE POLICY (BOX BG: WHITE) */}
       <div style={{ padding: '0 18px 16px' }}>
         <div 
           style={{
-            backgroundColor: '#F8FAFC',
-            border: '1.5px solid #CBD5E1',
-            borderRadius: '14px',
+            backgroundColor: '#FFFFFF',
+            border: '1.5px solid #FEE2E2',
+            borderRadius: '16px',
             padding: '12px 14px',
             display: 'flex',
             alignItems: 'flex-start',
-            gap: '9px'
+            gap: '10px',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.04)'
           }}
         >
-          <AlertCircle size={17} color="#0F172A" style={{ flexShrink: 0, marginTop: '2px' }} />
+          <AlertCircle size={18} color="#C53030" style={{ flexShrink: 0, marginTop: '2px' }} />
           <div>
-            <span style={{ fontSize: '12px', fontWeight: 800, color: '#0F172A' }}>
-              Distance Policy (Admin Configured):
+            <span style={{ fontSize: '12px', fontWeight: 800, color: '#C53030' }}>
+              Important Distance Policy:
             </span>
-            <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#334155', lineHeight: 1.45, fontWeight: 500 }}>
-              This fixed package covers up to <strong>{selectedKm} KM</strong>. If your ride exceeds {selectedKm} km, extra distance is charged at <strong>₹{extraKmRate}/km</strong> for {selectedVehicle === 'suv' ? 'SUV' : 'Sedan'}.
+            <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#475569', lineHeight: 1.45, fontWeight: 500 }}>
+              This fixed package covers up to <strong>{selectedKm} KM</strong>. If your ride exceeds {selectedKm} km, extra distance will be charged at <strong>₹{extraKmRate}/km</strong> for {selectedVehicle === 'suv' ? 'SUV' : 'Sedan'}.
             </p>
           </div>
         </div>
       </div>
 
-      {/* PROMINENT SOLID BLACK "BOOK NOW →" BUTTON */}
+      {/* PROMINENT "BOOK NOW →" BUTTON (BRAND CRIMSON RED) */}
       <div style={{ padding: '0 18px 18px' }}>
         <button
           type="button"
@@ -886,7 +847,7 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
             padding: '16px 24px',
             borderRadius: '999px',
             border: 'none',
-            backgroundColor: '#0F172A',
+            backgroundColor: '#C53030',
             color: '#FFFFFF',
             fontSize: '17px',
             fontWeight: 800,
@@ -894,7 +855,7 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
             alignItems: 'center',
             justifyContent: 'center',
             gap: '10px',
-            boxShadow: '0 8px 24px rgba(15, 23, 42, 0.35)',
+            boxShadow: '0 8px 24px rgba(197, 48, 48, 0.38)',
             cursor: isSubmitting ? 'not-allowed' : 'pointer',
             transition: 'all 0.18s ease'
           }}
@@ -910,8 +871,139 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
         </button>
       </div>
 
+      {/* BOOKING CONFIRMATION MODAL (SHIFTS TO RIDES SCREEN) */}
+      {showConfirmModal && confirmedBooking && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100000,
+            backgroundColor: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(6px)',
+            WebkitBackdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+            boxSizing: 'border-box'
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: '24px',
+              padding: '24px',
+              width: '100%',
+              maxWidth: '360px',
+              boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              textAlign: 'center',
+              animation: 'confirmPop 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
+            }}
+          >
+            {/* Green Success Pulse Badge */}
+            <div
+              style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '50%',
+                backgroundColor: '#DCFCE7',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#16A34A',
+                marginBottom: '16px'
+              }}
+            >
+              <CheckCircle2 size={38} strokeWidth={2.6} />
+            </div>
+
+            <h3 style={{ margin: '0 0 4px', fontSize: '20px', fontWeight: 800, color: '#0F172A' }}>
+              Booking Confirmed!
+            </h3>
+            <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#64748B', fontWeight: 500 }}>
+              Your cab request <strong>#{confirmedBooking.id}</strong> has been submitted.
+            </p>
+
+            {/* Quick Trip Details Card */}
+            <div
+              style={{
+                width: '100%',
+                backgroundColor: '#F8FAFC',
+                borderRadius: '16px',
+                padding: '12px 14px',
+                border: '1px solid #E2E8F0',
+                marginBottom: '18px',
+                textAlign: 'left',
+                boxSizing: 'border-box'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <span style={{ fontSize: '11px', color: '#64748B', fontWeight: 700 }}>VEHICLE</span>
+                <span style={{ fontSize: '12px', color: '#0F172A', fontWeight: 800 }}>{confirmedBooking.vehicle}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <span style={{ fontSize: '11px', color: '#64748B', fontWeight: 700 }}>PACKAGE</span>
+                <span style={{ fontSize: '12px', color: '#C53030', fontWeight: 800 }}>{confirmedBooking.selectedKm} KM (₹{confirmedBooking.fare})</span>
+              </div>
+              <div>
+                <span style={{ fontSize: '11px', color: '#64748B', fontWeight: 700 }}>PICKUP</span>
+                <div style={{ fontSize: '12px', color: '#0F172A', fontWeight: 700, marginTop: '2px', lineHeight: 1.3 }}>
+                  {confirmedBooking.pickup}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#16A34A', fontWeight: 700, marginBottom: '14px' }}>
+              <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+              <span>Redirecting to My Rides...</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowConfirmModal(false);
+                if (setActiveTab) setActiveTab('rides');
+              }}
+              style={{
+                width: '100%',
+                padding: '13px 20px',
+                borderRadius: '999px',
+                border: 'none',
+                backgroundColor: '#C53030',
+                color: '#FFFFFF',
+                fontSize: '15px',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 14px rgba(197, 48, 48, 0.35)'
+              }}
+            >
+              <span>View in My Rides</span>
+              <ArrowRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Persistent Bottom App Navigation Bar */}
       <BottomNavBar activeTab={activeTab} setActiveTab={setActiveTab} />
+
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @keyframes confirmPop {
+          from { transform: scale(0.9); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }
