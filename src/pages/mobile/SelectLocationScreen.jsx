@@ -395,70 +395,68 @@ export default function SelectLocationScreen({
       timestamp: new Date().toISOString()
     };
 
-    try {
-      await saveInquiryToMySQL(inquiryPayload);
-    } catch (err) {
-      console.warn('Save custom inquiry MySQL error:', err);
-    }
+    const newMsg = {
+      id: 'MSG-' + inqId,
+      name: customerName,
+      phone: cleanPhone,
+      email: 'emperialcabsbhavnagar@gmail.com',
+      subject: `Custom Route: ${pickupLoc.trim()} → ${dropoffLoc.trim()}`,
+      message: `Customer requested unlisted route from ${pickupLoc.trim()} to ${dropoffLoc.trim()} on ${dateStr}. Please provide quote.`,
+      category: 'Custom Route Inquiry',
+      date: dateStr,
+      status: 'Unread'
+    };
 
     try {
-      await saveContactMessageToMySQL({
-        id: 'MSG-' + inqId,
-        name: customerName,
-        phone: cleanPhone,
-        email: 'emperialcabsbhavnagar@gmail.com',
-        subject: `Custom Route: ${pickupLoc.trim()} → ${dropoffLoc.trim()}`,
-        message: `Customer requested unlisted route from ${pickupLoc.trim()} to ${dropoffLoc.trim()} on ${dateStr}. Please provide quote.`,
-        category: 'Custom Route Inquiry',
-        date: dateStr,
-        status: 'Unread'
+      await saveInquiryToMySQL(inquiryPayload).catch(err => console.warn('Save custom inquiry MySQL notice:', err));
+      await saveContactMessageToMySQL(newMsg).catch(err => console.warn('Save contact message MySQL notice:', err));
+
+      try {
+        const existingInqs = JSON.parse(localStorage.getItem('cabsy_inquiries') || '[]');
+        localStorage.setItem('cabsy_inquiries', JSON.stringify([inquiryPayload, ...existingInqs]));
+      } catch (e) {}
+
+      try {
+        const existingMsgs = JSON.parse(localStorage.getItem('cabsy_contact_messages') || localStorage.getItem('cabsy_messages') || '[]');
+        localStorage.setItem('cabsy_contact_messages', JSON.stringify([newMsg, ...existingMsgs]));
+        localStorage.setItem('cabsy_messages', JSON.stringify([newMsg, ...existingMsgs]));
+        localStorage.setItem('cabsy_user_profile', JSON.stringify({ name: customerName, phone: cleanPhone, email: 'emperialcabsbhavnagar@gmail.com' }));
+      } catch (e) {}
+
+      // Dispatch Admin Notification so dispatch immediately receives push alert and dashboard update
+      notifyAdmin({
+        type: 'custom',
+        title: `New Custom Route Inquiry #${inqId}`,
+        body: `Customer ${customerName} (${cleanPhone}) requested custom route: ${pickupLoc.trim()} → ${dropoffLoc.trim()}`,
+        extraData: { 
+          tab: 'custom_inquiries', 
+          inquiryId: inqId,
+          messageId: newMsg.id,
+          customerName: customerName,
+          customerPhone: cleanPhone,
+          pickup: pickupLoc.trim(),
+          dropoff: dropoffLoc.trim()
+        }
       });
+
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new CustomEvent('EMPERIAL CABS_ride_booked', { detail: inquiryPayload }));
+      window.dispatchEvent(new Event('EMPERIAL CABS_messages_updated'));
+
+      setCustomInquiryState(prev => ({
+        ...prev,
+        isSubmitting: false,
+        isSubmitted: true,
+        error: ''
+      }));
     } catch (err) {
-      console.warn('Save contact message MySQL error:', err);
+      console.error('Custom route inquiry submit error:', err);
+      setCustomInquiryState(prev => ({
+        ...prev,
+        isSubmitting: false,
+        error: 'Failed to submit inquiry. Please try calling directly or tap call button.'
+      }));
     }
-
-    try {
-      const existingInqs = JSON.parse(localStorage.getItem('cabsy_inquiries') || '[]');
-      localStorage.setItem('cabsy_inquiries', JSON.stringify([inquiryPayload, ...existingInqs]));
-    } catch (e) {}
-
-    try {
-      const existingMsgs = JSON.parse(localStorage.getItem('cabsy_contact_messages') || localStorage.getItem('cabsy_messages') || '[]');
-      const newMsg = {
-        id: 'MSG-' + inqId,
-        name: customerName,
-        phone: cleanPhone,
-        email: 'emperialcabsbhavnagar@gmail.com',
-        subject: `Custom Route: ${pickupLoc.trim()} → ${dropoffLoc.trim()}`,
-        message: `Customer requested unlisted route from ${pickupLoc.trim()} to ${dropoffLoc.trim()} on ${dateStr}. Please provide quote.`,
-        category: 'Custom Route Inquiry',
-        date: dateStr,
-        status: 'Unread'
-      };
-      localStorage.setItem('cabsy_contact_messages', JSON.stringify([newMsg, ...existingMsgs]));
-      localStorage.setItem('cabsy_messages', JSON.stringify([newMsg, ...existingMsgs]));
-      localStorage.setItem('cabsy_user_profile', JSON.stringify({ name: customerName, phone: cleanPhone, email: 'emperialcabsbhavnagar@gmail.com' }));
-    } catch (e) {}
-
-    // Save directly to Hostinger MySQL Database so Dispatch Admin is notified on all devices
-    saveContactMessageToMySQL(newMsg).catch(e => console.warn('MySQL custom route save failed:', e));
-
-    notifyAdmin({
-      type: 'custom_inquiry',
-      title: 'New Custom Route Inquiry',
-      body: `Customer ${customerName} (${cleanPhone}) requested custom route: ${pickupLoc.trim()} → ${dropoffLoc.trim()}`,
-      extraData: { tab: 'messages', messageId: newMsg.id }
-    });
-
-    window.dispatchEvent(new Event('storage'));
-    window.dispatchEvent(new Event('EMPERIAL CABS_messages_updated'));
-
-    setCustomInquiryState(prev => ({
-      ...prev,
-      isSubmitting: false,
-      isSubmitted: true,
-      error: ''
-    }));
   };
 
   const handleSelectRoute = (route) => {

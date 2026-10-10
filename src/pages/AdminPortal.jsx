@@ -1218,9 +1218,12 @@ export default function AdminPortal() {
                 parsedExtra = typeof notifRow.extra_data === 'string' ? JSON.parse(notifRow.extra_data) : (notifRow.extra_data || {});
               } catch(e) {}
               const rowInqId = parsedExtra.inquiryId || notifRow.inquiry_id;
-              const rowMsgId = parsedExtra.messageId || notifRow.message_id;
               const isCancelNotif = notifRow.type === 'cancellation' || notifRow.type === 'cancelled' || (notifRow.title && notifRow.title.toLowerCase().includes('cancel'));
-              const alertKey = rowInqId ? (isCancelNotif ? `inq_cancel_${rowInqId}` : `inq_${rowInqId}`) : (rowMsgId ? `msg_${rowMsgId}` : (notifIdStr || `${notifRow.title}|${notifRow.body}`));
+              const isRem30 = notifRow.type === 'reminder_30m' || (notifRow.title && notifRow.title.includes('30-Minute'));
+              const isToday = notifRow.type === 'scheduled_today' || (notifRow.title && notifRow.title.includes('Today'));
+              const alertKey = parsedExtra.canonicalKey || (rowInqId 
+                ? (isCancelNotif ? `inq_cancel_${rowInqId}` : (isRem30 ? `inq_rem30_${rowInqId}` : (isToday ? `inq_today_${rowInqId}` : `inq_${rowInqId}`))) 
+                : (rowMsgId ? `msg_${rowMsgId}` : (notifIdStr || `${notifRow.title}|${notifRow.body}`)));
 
               if (notifIdStr && !knownRemoteNotifIdsRef.current.has(notifIdStr)) {
                 knownRemoteNotifIdsRef.current.add(notifIdStr);
@@ -1229,7 +1232,7 @@ export default function AdminPortal() {
                   localStorage.setItem('cabsy_seen_admin_notif_ids', JSON.stringify([notifIdStr, ...existing].slice(0, 200)));
                 } catch (e) {}
 
-                // If this inquiry/message was ALREADY alerted by inquiry diff or BroadcastChannel, do NOT duplicate alert!
+                // If this inquiry/message was ALREADY alerted by notifyAdmin or BroadcastChannel, do NOT duplicate alert!
                 if (isUnifiedAlertSeen(alertKey)) {
                   return;
                 }
@@ -1237,7 +1240,7 @@ export default function AdminPortal() {
 
                 const nTitle = notifRow.title || 'Dispatch Update';
                 const nBody = notifRow.body || 'You have an update from a customer.';
-                sendSystemPushNotification(nTitle, nBody, 'rem-' + (rowInqId || notifIdStr), { tab: 'inquiries', inquiryId: rowInqId });
+                sendSystemPushNotification(nTitle, nBody, 'disp-' + alertKey, { tab: 'inquiries', inquiryId: rowInqId });
 
                 const item = {
                   id: notifRow.id,
@@ -1310,7 +1313,11 @@ export default function AdminPortal() {
             const inqId = notif.inquiryId || notif.extraData?.inquiryId;
             const msgId = notif.messageId || notif.extraData?.messageId;
             const isCancel = notif.type === 'cancellation' || notif.type === 'cancelled' || (notif.title && notif.title.toLowerCase().includes('cancel'));
-            const alertKey = inqId ? (isCancel ? `inq_cancel_${inqId}` : `inq_${inqId}`) : (msgId ? `msg_${msgId}` : (notif.id || `${notif.title}|${notif.body}`));
+            const isRem30 = notif.type === 'reminder_30m' || (notif.title && notif.title.includes('30-Minute'));
+            const isToday = notif.type === 'scheduled_today' || (notif.title && notif.title.includes('Today'));
+            const alertKey = notif.extraData?.canonicalKey || (inqId 
+              ? (isCancel ? `inq_cancel_${inqId}` : (isRem30 ? `inq_rem30_${inqId}` : (isToday ? `inq_today_${inqId}` : `inq_${inqId}`))) 
+              : (msgId ? `msg_${msgId}` : (notif.id || `${notif.title}|${notif.body}`)));
             if (isUnifiedAlertSeen(alertKey)) {
               return; // Already alerted on this device!
             }
@@ -1324,7 +1331,7 @@ export default function AdminPortal() {
               }
             }
 
-            sendSystemPushNotification(notif.title, notif.body || notif.desc, 'bc-' + (inqId || notif.id), notif.extraData);
+            sendSystemPushNotification(notif.title, notif.body || notif.desc, 'disp-' + alertKey, notif.extraData);
             setNotifications(prev => dedupeNotificationList([notif, ...prev]));
             fetchAllData(false);
           }

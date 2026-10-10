@@ -416,17 +416,55 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
   }
 };
 
+// Unified cross-channel notification deduplication helpers
+export const isUnifiedAlertSeen = (key) => {
+  if (!key || typeof window === 'undefined') return false;
+  try {
+    const list = JSON.parse(localStorage.getItem('cabsy_seen_unified_alerts') || '[]');
+    return list.includes(String(key));
+  } catch (e) {
+    return false;
+  }
+};
+
+export const markUnifiedAlertSeen = (key) => {
+  if (!key || typeof window === 'undefined') return;
+  const str = String(key);
+  try {
+    const list = JSON.parse(localStorage.getItem('cabsy_seen_unified_alerts') || '[]');
+    if (!list.includes(str)) {
+      localStorage.setItem('cabsy_seen_unified_alerts', JSON.stringify([str, ...list].slice(0, 300)));
+    }
+  } catch (e) {}
+};
+
 // Dispatch Admin Notification
 export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) => {
   const inqId = extraData?.inquiryId;
   const isCancel = type === 'cancellation' || type === 'cancelled';
+  const isRem30 = type === 'reminder_30m' || (title && title.includes('30-Minute'));
+  const isTodayTrip = type === 'scheduled_today' || (title && title.includes('Scheduled Trip Today'));
+
+  const canonicalKey = inqId 
+    ? (isCancel 
+        ? `inq_cancel_${inqId}` 
+        : (isRem30 
+            ? `inq_rem30_${inqId}` 
+            : (isTodayTrip 
+                ? `inq_today_${inqId}` 
+                : `inq_${inqId}`)))
+    : (extraData?.messageId ? `msg_${extraData.messageId}` : ('notif_' + (title + body).replace(/[^a-zA-Z0-9]/g, '').slice(0, 32)));
+
   const notifObj = {
-    id: inqId ? (isCancel ? `admin_cancel_${inqId}` : `admin_inq_${inqId}`) : ('admin_notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4)),
+    id: inqId 
+      ? (isCancel ? `admin_cancel_${inqId}` : (isRem30 ? `admin_rem30_${inqId}` : (isTodayTrip ? `admin_today_${inqId}` : `admin_inq_${inqId}`))) 
+      : ('admin_notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4)),
     inquiryId: inqId,
     type,
     title,
     desc: body,
     body,
+    canonicalKey,
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     date: new Date().toISOString(),
     read: false,
@@ -438,7 +476,9 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
     // Filter out previous notification for the exact same inquiry or identical title+desc
     const filtered = existing.filter(n => {
       if (inqId && isCancel && n.id === `admin_cancel_${inqId}`) return false;
-      if (inqId && !isCancel && (n.inquiryId === inqId || n.id === `admin_inq_${inqId}`)) return false;
+      if (inqId && isRem30 && n.id === `admin_rem30_${inqId}`) return false;
+      if (inqId && isTodayTrip && n.id === `admin_today_${inqId}`) return false;
+      if (inqId && !isCancel && !isRem30 && !isTodayTrip && (n.inquiryId === inqId || n.id === `admin_inq_${inqId}`)) return false;
       if (n.title === title && n.desc === body) return false;
       return true;
     });
@@ -458,7 +498,7 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
       title: title,
       body: body,
       type: type,
-      extra_data: JSON.stringify({ tab: targetTab, inquiryId: inqId, ...extraData })
+      extra_data: JSON.stringify({ tab: targetTab, inquiryId: inqId, canonicalKey, ...extraData })
     }).catch(() => {});
   } catch (e) {}
 
@@ -471,7 +511,7 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
         notification: notifObj,
         title,
         body,
-        extraData: { tab: targetTab, inquiryId: inqId, ...extraData }
+        extraData: { tab: targetTab, inquiryId: inqId, canonicalKey, ...extraData }
       });
     }
   } catch (e) {}
@@ -483,14 +523,17 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
       body,
       url: targetUrl,
       userType: 'admin',
-      tag: notifObj.id
+      tag: 'disp-' + canonicalKey
     }).catch(() => {});
   } catch (e) {}
 
-  // 3. Trigger local system push notification ONLY if running in an active Admin context!
-  // Regular customers booking a ride or submitting a form must NEVER receive local admin alerts on their device.
+  // 4. Trigger local system push notification ONLY if running in an active Admin context!
+  // Checks canonical dedup so the alert is NEVER duplicated across BroadcastChannel or polling!
   if (isAdminContext()) {
-    sendSystemPushNotification(title, body, 'admin-' + notifObj.id, { tab: targetTab, inquiryId: inqId, ...extraData });
+    if (!isUnifiedAlertSeen(canonicalKey)) {
+      markUnifiedAlertSeen(canonicalKey);
+      sendSystemPushNotification(title, body, 'disp-' + canonicalKey, { tab: targetTab, inquiryId: inqId, ...extraData });
+    }
   }
 
   if (typeof window !== 'undefined') {
@@ -606,30 +649,47 @@ export const runEcosystemSchedulerCheck = () => {
     const todayStr = now.toISOString().split('T')[0];
 
     inquiries.forEach(inq => {
-      if (inq.status === 'Cancelled' || inq.status === 'Completed') return;
+      if (!inq || inq.status === 'Cancelled' || inq.status === 'Completed' || inq.status === 'Rejected') return;
+
+      const dateVal = String(inq.scheduledDate || inq.date || '');
+      const isTodayTrip = dateVal === 'Today' || dateVal.includes(todayStr);
 
       const flagTodayKey = `notif_sent_today_${inq.id}_${todayStr}`;
-      const isTodayTrip = inq.date === 'Today' || (inq.date && inq.date.includes(todayStr));
-
       if (isTodayTrip && !localStorage.getItem(flagTodayKey)) {
+        localStorage.setItem(flagTodayKey, '1');
         notifyAdmin({
           type: 'scheduled_today',
-          title: `Upcoming Scheduled Trip Today`,
+          title: `Upcoming Scheduled Trip Today: #${inq.id}`,
           body: `Customer ${inq.customerName}'s trip (${inq.pickup} to ${inq.dropoff}) is scheduled for today.`,
-          extraData: { inquiryId: inq.id }
+          extraData: { inquiryId: inq.id, tab: 'inquiries' }
         });
-        localStorage.setItem(flagTodayKey, '1');
       }
 
+      // 30-Minute Trip Alert: Must be CONFIRMED, scheduled for TODAY, and starting in 0-35 minutes!
       const flag30mKey = `notif_sent_30m_${inq.id}`;
-      if (inq.status === 'Confirmed' && !localStorage.getItem(flag30mKey)) {
-        notifyAdmin({
-          type: 'reminder_30m',
-          title: `30-Minute Trip Alert`,
-          body: `Customer ${inq.customerName}'s ride to ${inq.dropoff} is starting soon (within 30 mins).`,
-          extraData: { inquiryId: inq.id }
-        });
-        localStorage.setItem(flag30mKey, '1');
+      if (inq.status === 'Confirmed' && isTodayTrip && !localStorage.getItem(flag30mKey)) {
+        const timeStr = String(inq.scheduledTime || inq.time || '');
+        const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+        if (match) {
+          let hours = parseInt(match[1], 10);
+          const minutes = parseInt(match[2], 10);
+          const ampm = match[3] ? match[3].toUpperCase() : null;
+          if (ampm === 'PM' && hours < 12) hours += 12;
+          if (ampm === 'AM' && hours === 12) hours = 0;
+
+          const tripDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0);
+          const diffMinutes = (tripDate.getTime() - now.getTime()) / (1000 * 60);
+
+          if (diffMinutes >= -5 && diffMinutes <= 35) {
+            localStorage.setItem(flag30mKey, '1');
+            notifyAdmin({
+              type: 'reminder_30m',
+              title: `30-Minute Trip Alert: #${inq.id}`,
+              body: `Customer ${inq.customerName}'s ride to ${inq.dropoff} is starting soon (${inq.scheduledTime || 'within 30 mins'}).`,
+              extraData: { inquiryId: inq.id, tab: 'inquiries' }
+            });
+          }
+        }
       }
     });
   } catch (e) {

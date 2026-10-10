@@ -84,7 +84,11 @@ export default async function handler(req, res) {
             }
           }, payload, {
             urgency: 'high',
-            TTL: 86400
+            TTL: 86400,
+            headers: (sub.endpoint && sub.endpoint.includes('push.apple.com')) ? {
+              'apns-push-type': 'alert',
+              'apns-priority': '10'
+            } : {}
           });
           sentCount++;
         } catch (pushErr) {

@@ -236,14 +236,19 @@ foreach ($subs as $sub) {
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 6);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
-        curl_setopt($ch, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        $headers = [
             'Content-Type: application/octet-stream',
             'Content-Encoding: aes128gcm',
             'Authorization: vapid t=' . $jwtToken . ', k=' . $vapidPublicB64u,
             'TTL: 86400',
             'Urgency: high'
-        ]);
+        ];
+        if (stripos($endpoint, 'push.apple.com') !== false) {
+            $headers[] = 'apns-push-type: alert';
+            $headers[] = 'apns-priority: 10';
+            $headers[] = 'apns-expiration: ' . (time() + 86400);
+        }
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 
         $resp = curl_exec($ch);
         $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);

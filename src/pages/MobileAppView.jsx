@@ -289,6 +289,19 @@ export default function MobileAppView() {
       });
 
       if (userTrips.length > 0) {
+        // Mark all restored historical trips as already notified so login never echoes old driver/receipt alerts
+        userTrips.forEach(inq => {
+          if (inq?.id) {
+            localStorage.setItem(`cabsy_driver_assigned_notified_${inq.id}`, 'true');
+            if (inq.driver) {
+              localStorage.setItem(`cabsy_driver_assigned_notified_${inq.id}_${inq.driver}_${inq.plate || ''}`, 'true');
+            }
+            if (String(inq.status || '').toLowerCase() === 'completed') {
+              localStorage.setItem(`cabsy_trip_completed_handled_${inq.id}`, 'true');
+            }
+          }
+        });
+
         const localRaw = localStorage.getItem('cabsy_inquiries');
         const localList = localRaw ? JSON.parse(localRaw) : [];
         const existingIds = new Set(localList.map(i => i.id).filter(Boolean));
@@ -312,6 +325,19 @@ export default function MobileAppView() {
         const userProf = savedProfile ? JSON.parse(savedProfile) : null;
         const uPhone = (userProf?.phone || savedPhone || '').replace(/\D/g, '');
         const uEmail = (userProf?.email || authEmail || '').toLowerCase().trim();
+        const cleanUserPhone = uPhone.slice(-10);
+
+        // Helper for cross-platform safe timestamp parsing (handles MySQL 'YYYY-MM-DD HH:MM:SS' on iOS WebKit)
+        const parseDateSafe = (dateStr) => {
+          if (!dateStr) return 0;
+          if (typeof dateStr === 'number') return dateStr;
+          const isoStr = String(dateStr).trim().replace(' ', 'T');
+          const d = new Date(isoStr);
+          return isNaN(d.getTime()) ? 0 : d.getTime();
+        };
+
+        const now = Date.now();
+        const loginTimestamp = Number(localStorage.getItem('cabsy_login_timestamp') || sessionStorage.getItem('cabsy_login_timestamp') || 0);
 
         // 1. Get all local inquiries on this device
         let localInqs = [];
@@ -326,19 +352,22 @@ export default function MobileAppView() {
         // 2. Poll MySQL inquiries for driver assignment
         const remoteInqs = await loadAllInquiriesFromMySQL().catch(() => []);
         if (!isCancelled && Array.isArray(remoteInqs) && remoteInqs.length > 0) {
-          // If this is the initial sync after app launch or login, mark all existing inquiries as already notified
-          const syncKey = 'cabsy_inquiry_sync_initialized';
+          // If this is the initial sync after app launch or user login, mark all existing inquiries as already notified
+          const syncKey = `cabsy_inquiry_sync_initialized_${cleanUserPhone || 'guest'}`;
           const isInitialRun = !sessionStorage.getItem(syncKey);
           if (isInitialRun) {
             sessionStorage.setItem(syncKey, 'true');
             for (const inq of remoteInqs) {
-              if (inq?.id && inq.driver) {
-                const notifKey = `cabsy_driver_assigned_notified_${inq.id}_${inq.driver}_${inq.plate || ''}`;
-                localStorage.setItem(notifKey, 'true');
-              }
-              if (inq?.id && String(inq.status || '').toLowerCase() === 'completed') {
-                const compKey = `cabsy_trip_completed_handled_${inq.id}`;
-                localStorage.setItem(compKey, 'true');
+              if (inq?.id) {
+                localStorage.setItem(`cabsy_driver_assigned_notified_${inq.id}`, 'true');
+                if (inq.driver) {
+                  const notifKey = `cabsy_driver_assigned_notified_${inq.id}_${inq.driver}_${inq.plate || ''}`;
+                  localStorage.setItem(notifKey, 'true');
+                }
+                if (String(inq.status || '').toLowerCase() === 'completed') {
+                  const compKey = `cabsy_trip_completed_handled_${inq.id}`;
+                  localStorage.setItem(compKey, 'true');
+                }
               }
             }
           }
@@ -354,6 +383,10 @@ export default function MobileAppView() {
 
             if (!isUserMatch) continue;
 
+            const inqTime = parseDateSafe(inq.timestamp || inq.created_at || inq.date);
+            const isHistoricalTrip = (loginTimestamp > 0 && inqTime > 0 && inqTime <= (loginTimestamp + 3000)) ||
+                                     (inqTime > 0 && (now - inqTime) > (24 * 60 * 60 * 1000));
+
             // Only notify if trip is active (NOT Completed or Cancelled) and driver is assigned
             const activeStatuses = ['Confirmed', 'Assigned', 'In Progress', 'On Ride'];
             const inqStatus = String(inq.status || '');
@@ -362,27 +395,32 @@ export default function MobileAppView() {
 
             if (isActiveTrip && hasDriver && !isInitialRun) {
               const notifKey = `cabsy_driver_assigned_notified_${inq.id}_${inq.driver}_${inq.plate || ''}`;
-              if (!localStorage.getItem(notifKey)) {
+              const generalKey = `cabsy_driver_assigned_notified_${inq.id}`;
+              if (!localStorage.getItem(notifKey) && !localStorage.getItem(generalKey)) {
                 localStorage.setItem(notifKey, 'true');
+                localStorage.setItem(generalKey, 'true');
                 
-                const carName = inq.vehicle || inq.selectedCar || inq.carName || 'SWIFT';
-                const plateNo = inq.plate || inq.vehiclePlate || inq.carPlate || 'GJ-04-AB-1234';
-                const driverName = inq.driver;
-                const driverContact = inq.driverPhone || inq.driverNumber || '+91 98250 99887';
+                // Never push alert for past trips restored from database
+                if (!isHistoricalTrip) {
+                  const carName = inq.vehicle || inq.selectedCar || inq.carName || 'SWIFT';
+                  const plateNo = inq.plate || inq.vehiclePlate || inq.carPlate || 'GJ-04-AB-1234';
+                  const driverName = inq.driver;
+                  const driverContact = inq.driverPhone || inq.driverNumber || '+91 98250 99887';
 
-                notifyCustomer({
-                  type: 'driver_assigned',
-                  title: 'Booking Confirmed - Driver Assigned!',
-                  body: `Car: ${carName} | Plate: ${plateNo} | Driver: ${driverName} (${driverContact})`,
-                  customerPhone: inq.customerPhone,
-                  customerEmail: inq.customerEmail,
-                  extraData: {
-                    driver: driverName,
-                    driverPhone: driverContact,
-                    vehicle: carName,
-                    plate: plateNo
-                  }
-                });
+                  notifyCustomer({
+                    type: 'driver_assigned',
+                    title: 'Booking Confirmed - Driver Assigned!',
+                    body: `Car: ${carName} | Plate: ${plateNo} | Driver: ${driverName} (${driverContact})`,
+                    customerPhone: inq.customerPhone,
+                    customerEmail: inq.customerEmail,
+                    extraData: {
+                      driver: driverName,
+                      driverPhone: driverContact,
+                      vehicle: carName,
+                      plate: plateNo
+                    }
+                  });
+                }
               }
             }
 
@@ -394,17 +432,20 @@ export default function MobileAppView() {
                 localStorage.setItem('EMPERIAL CABS_last_completed_trip', JSON.stringify(inq));
                 localStorage.removeItem('EMPERIAL CABS_active_trip');
 
-                notifyCustomer({
-                  type: 'receipt',
-                  title: `🧾 Official Trip E-Receipt #${inq.id}`,
-                  body: `Trip to ${inq.dropoffCity || inq.dropoff} is completed. Total Fare: ₹${Number(inq.fare || 0).toFixed(2)}. E-Receipt is ready.`,
-                  customerPhone: inq.customerPhone,
-                  customerEmail: inq.customerEmail,
-                  extraData: { inquiryId: inq.id, fare: inq.fare, isCustom: inq.isCustom }
-                });
+                // Never push receipt alert for past trips restored from database upon login
+                if (!isHistoricalTrip) {
+                  notifyCustomer({
+                    type: 'receipt',
+                    title: `🧾 Official Trip E-Receipt #${inq.id}`,
+                    body: `Trip to ${inq.dropoffCity || inq.dropoff} is completed. Total Fare: ₹${Number(inq.fare || 0).toFixed(2)}. E-Receipt is ready.`,
+                    customerPhone: inq.customerPhone,
+                    customerEmail: inq.customerEmail,
+                    extraData: { inquiryId: inq.id, fare: inq.fare, isCustom: inq.isCustom }
+                  });
 
-                window.dispatchEvent(new CustomEvent('EMPERIAL CABS_trip_completed', { detail: inq }));
-                setAppStage('RECEIPT');
+                  window.dispatchEvent(new CustomEvent('EMPERIAL CABS_trip_completed', { detail: inq }));
+                  setAppStage('RECEIPT');
+                }
               }
             }
           }
@@ -412,70 +453,94 @@ export default function MobileAppView() {
 
         // 3. Poll MySQL cloud push notifications dispatched by Admin (e.g. from Customer Directory)
         const checkPhones = Array.from(localPhones);
-        const searchPhone = checkPhones[0] || uPhone || '';
+        const searchPhone = cleanUserPhone || checkPhones[0] || uPhone || '';
         const cloudNotifs = await fetchNotificationsFromMySQL(searchPhone, uEmail).catch(() => []);
         if (!isCancelled && Array.isArray(cloudNotifs) && cloudNotifs.length > 0) {
-          // Track already known local notifications and signatures so this device never echoes alerts
-          let knownNotifIds = new Set();
-          let knownSignatures = new Set();
-          try {
-            const raw = localStorage.getItem('cabsy_customer_notifications');
-            if (raw) {
-              const list = JSON.parse(raw);
-              list.forEach(n => {
-                if (n?.id) knownNotifIds.add(n.id);
-                if (n?.title && n?.body) {
-                  knownSignatures.add((n.title || '').trim().toLowerCase() + '|' + (n.body || '').trim().toLowerCase());
-                }
-              });
-            }
-            const savedSigs = JSON.parse(localStorage.getItem('cabsy_delivered_signatures') || '[]');
-            savedSigs.forEach(s => knownSignatures.add(String(s).trim().toLowerCase()));
-          } catch (e) {}
-
-          for (const cn of cloudNotifs) {
-            // A) If already marked delivered on MySQL, skip immediately
-            if (cn.delivered == 1 || cn.delivered === '1' || cn.delivered === true) {
-              continue;
-            }
-
-            // B) Location ping ACK
-            if (cn.type === 'LOCATION_PING') {
-              markNotificationDeliveredInMySQL(cn.id).catch(() => {});
-              continue;
-            }
-
-            // C) Never echo booking inquiries back to the customer phone on app startup
-            const isBookingInquiry = cn.type === 'inquiry' || 
-              (cn.title && cn.title.toLowerCase().includes('booking request')) ||
-              (cn.title && cn.title.toLowerCase().includes('inquiry'));
-            if (isBookingInquiry) {
-              markNotificationDeliveredInMySQL(cn.id).catch(() => {});
-              continue;
-            }
-
-            const cnSig = (cn.title || '').trim().toLowerCase() + '|' + (cn.body || '').trim().toLowerCase();
-            const cnKey = `cabsy_cloud_notif_delivered_${cn.id}`;
-
-            // D) Deduplication against local storage and signatures
-            if (localStorage.getItem(cnKey) === 'true' || knownNotifIds.has(cn.id) || knownSignatures.has(cnSig)) {
+          // If this is the initial sync after app launch or user login, mark all existing historical cloud notifications
+          // as already delivered so the user NEVER receives a blast of old past notifications upon login!
+          const userSyncKey = `cabsy_cloud_notif_sync_${searchPhone || 'guest'}`;
+          const isInitialUserSync = !sessionStorage.getItem(userSyncKey);
+          if (isInitialUserSync) {
+            sessionStorage.setItem(userSyncKey, 'true');
+            for (const cn of cloudNotifs) {
+              const cnKey = `cabsy_cloud_notif_delivered_${cn.id}`;
               localStorage.setItem(cnKey, 'true');
               markNotificationDeliveredInMySQL(cn.id).catch(() => {});
-              continue;
             }
-
-            localStorage.setItem(cnKey, 'true');
-            knownSignatures.add(cnSig);
+          } else {
+            // Track already known local notifications and signatures so this device never echoes alerts
+            let knownNotifIds = new Set();
+            let knownSignatures = new Set();
             try {
-              const sigs = JSON.parse(localStorage.getItem('cabsy_delivered_signatures') || '[]');
-              if (!sigs.includes(cnSig)) {
-                sigs.push(cnSig);
-                localStorage.setItem('cabsy_delivered_signatures', JSON.stringify(sigs.slice(-100)));
+              const raw = localStorage.getItem('cabsy_customer_notifications');
+              if (raw) {
+                const list = JSON.parse(raw);
+                list.forEach(n => {
+                  if (n?.id) knownNotifIds.add(n.id);
+                  if (n?.title && n?.body) {
+                    knownSignatures.add((n.title || '').trim().toLowerCase() + '|' + (n.body || '').trim().toLowerCase());
+                  }
+                });
               }
+              const savedSigs = JSON.parse(localStorage.getItem('cabsy_delivered_signatures') || '[]');
+              savedSigs.forEach(s => knownSignatures.add(String(s).trim().toLowerCase()));
             } catch (e) {}
 
-            markNotificationDeliveredInMySQL(cn.id).catch(() => {});
-            sendSystemPushNotification(cn.title, cn.body, 'cloud-' + cn.id);
+            for (const cn of cloudNotifs) {
+              // A) If already marked delivered on MySQL, skip immediately
+              if (cn.delivered == 1 || cn.delivered === '1' || cn.delivered === true) {
+                continue;
+              }
+
+              // B) Location ping ACK
+              if (cn.type === 'LOCATION_PING') {
+                markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+                continue;
+              }
+
+              // C) Never echo booking inquiries back to the customer phone on app startup
+              const isBookingInquiry = cn.type === 'inquiry' || 
+                (cn.title && cn.title.toLowerCase().includes('booking request')) ||
+                (cn.title && cn.title.toLowerCase().includes('inquiry'));
+              if (isBookingInquiry) {
+                markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+                continue;
+              }
+
+              const cnSig = (cn.title || '').trim().toLowerCase() + '|' + (cn.body || '').trim().toLowerCase();
+              const cnKey = `cabsy_cloud_notif_delivered_${cn.id}`;
+
+              // D) Deduplication against local storage and signatures
+              if (localStorage.getItem(cnKey) === 'true' || knownNotifIds.has(cn.id) || knownSignatures.has(cnSig)) {
+                localStorage.setItem(cnKey, 'true');
+                markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+                continue;
+              }
+
+              // E) Stale notification filter: If created more than 10 minutes ago, or created before login, mark seen without pushing
+              const notifTime = parseDateSafe(cn.created_at) || now;
+              const isStale = notifTime > 0 && (now - notifTime) > (10 * 60 * 1000);
+              const isBeforeLogin = loginTimestamp > 0 && notifTime > 0 && notifTime <= (loginTimestamp + 3000);
+
+              if (isStale || isBeforeLogin) {
+                localStorage.setItem(cnKey, 'true');
+                markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+                continue;
+              }
+
+              localStorage.setItem(cnKey, 'true');
+              knownSignatures.add(cnSig);
+              try {
+                const sigs = JSON.parse(localStorage.getItem('cabsy_delivered_signatures') || '[]');
+                if (!sigs.includes(cnSig)) {
+                  sigs.push(cnSig);
+                  localStorage.setItem('cabsy_delivered_signatures', JSON.stringify(sigs.slice(-100)));
+                }
+              } catch (e) {}
+
+              markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+              sendSystemPushNotification(cn.title, cn.body, 'cloud-' + cn.id);
+            }
           }
         }
 
@@ -734,10 +799,31 @@ export default function MobileAppView() {
           localStorage.setItem('cabsy_user_email_otp_target', finalProfile.email.toLowerCase().trim());
         }
 
+        const loginTs = Date.now();
+        localStorage.setItem('cabsy_login_timestamp', String(loginTs));
+        sessionStorage.setItem('cabsy_login_timestamp', String(loginTs));
+        if (finalClean) {
+          sessionStorage.setItem(`cabsy_inquiry_sync_initialized_${finalClean}`, 'true');
+          sessionStorage.setItem(`cabsy_cloud_notif_sync_${finalClean}`, 'true');
+        }
+
         db.saveCustomer(finalProfile);
         saveCustomerToMySQL(finalProfile).catch(() => {});
 
-        restoreTrips(finalProfile);
+        // Await historical trip restoration and mark all past trips so notifications are never fired
+        await restoreTrips(finalProfile);
+
+        // Pre-mark existing cloud notifications for this customer as delivered so login never echoes old alerts
+        try {
+          const preCloud = await fetchNotificationsFromMySQL(finalClean, finalProfile.email).catch(() => []);
+          if (Array.isArray(preCloud)) {
+            for (const cn of preCloud) {
+              localStorage.setItem(`cabsy_cloud_notif_delivered_${cn.id}`, 'true');
+              markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+            }
+          }
+        } catch (e) {}
+
         window.dispatchEvent(new Event('storage'));
 
         // Check if location permission has been prompted yet
@@ -1108,10 +1194,27 @@ export default function MobileAppView() {
           isCreateMode={true}
           googleData={selectedGoogleAccount}
           onBack={() => setAppStage('LETS_YOU_IN')}
-          onSave={(updatedProfile) => {
+          onSave={async (updatedProfile) => {
             if (updatedProfile) {
+              const loginTs = Date.now();
+              localStorage.setItem('cabsy_login_timestamp', String(loginTs));
+              sessionStorage.setItem('cabsy_login_timestamp', String(loginTs));
+              const finalClean = (updatedProfile.phone || '').replace(/\D/g, '').slice(-10);
+              if (finalClean) {
+                sessionStorage.setItem(`cabsy_inquiry_sync_initialized_${finalClean}`, 'true');
+                sessionStorage.setItem(`cabsy_cloud_notif_sync_${finalClean}`, 'true');
+              }
               saveCustomerToMySQL(updatedProfile).catch(() => {});
-              restoreTrips(updatedProfile);
+              await restoreTrips(updatedProfile);
+              try {
+                const preCloud = await fetchNotificationsFromMySQL(finalClean, updatedProfile.email).catch(() => []);
+                if (Array.isArray(preCloud)) {
+                  for (const cn of preCloud) {
+                    localStorage.setItem(`cabsy_cloud_notif_delivered_${cn.id}`, 'true');
+                    markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+                  }
+                }
+              } catch (e) {}
               window.dispatchEvent(new Event('storage'));
               window.dispatchEvent(new CustomEvent('EMPERIAL CABS_db_sync', { detail: { type: 'CUSTOMER_UPDATED', data: updatedProfile } }));
             }

@@ -41,6 +41,9 @@ self.addEventListener('push', (event) => {
     icon: '/official-app-icon.png',
     badge: '/favicon.png',
     tag: tag,
+    renotify: true,
+    requireInteraction: true,
+    silent: false,
     data: url
   };
 
