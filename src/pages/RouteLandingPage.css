@@ -92,12 +92,15 @@
 .route-key-metrics {
   display: flex;
   align-items: center;
-  gap: 1.75rem;
+  flex-wrap: wrap;
+  gap: 1.25rem;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 1.25rem 1.75rem;
+  padding: 1rem 1.25rem;
   border-radius: 1rem;
-  max-width: fit-content;
+  max-width: 100%;
+  width: auto;
+  box-sizing: border-box;
   margin-bottom: 2.25rem;
   backdrop-filter: blur(8px);
 }
@@ -789,15 +792,19 @@
 }
 
 @media (max-width: 768px) {
+  .route-hero-grid {
+    grid-template-columns: 1fr;
+    gap: 1.75rem;
+  }
   .route-title {
-    font-size: 2.15rem;
+    font-size: clamp(1.6rem, 5.5vw, 2.15rem);
   }
   .vehicles-pricing-grid {
     grid-template-columns: 1fr;
   }
   .grid-2-cols {
     grid-template-columns: 1fr;
-    gap: 2rem;
+    gap: 1.5rem;
   }
   .related-routes-grid {
     grid-template-columns: 1fr;
@@ -809,3 +816,35 @@
     padding-bottom: 5.5rem;
   }
 }
+
+@media (max-width: 480px) {
+  .route-hero {
+    padding: 1.5rem 0 2.25rem;
+  }
+  .route-title {
+    font-size: clamp(1.35rem, 6vw, 1.75rem);
+  }
+  .route-subtitle {
+    font-size: 0.92rem;
+    margin-bottom: 1.25rem;
+  }
+  .route-key-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+  .metric-divider {
+    display: none;
+  }
+  .route-cta-group {
+    flex-direction: column;
+    width: 100%;
+  }
+  .btn-route-primary, .btn-route-secondary, .btn-route-whatsapp {
+    width: 100%;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+}
+

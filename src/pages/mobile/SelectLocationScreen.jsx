@@ -443,9 +443,9 @@ export default function SelectLocationScreen({
 
     notifyAdmin({
       type: 'custom_inquiry',
-      title: 'New Custom Route Inquiry!',
+      title: 'New Custom Route Inquiry',
       body: `Customer ${customerName} (${cleanPhone}) requested custom route: ${pickupLoc.trim()} → ${dropoffLoc.trim()}`,
-      extraData: { tab: 'messages' }
+      extraData: { tab: 'messages', messageId: newMsg.id }
     });
 
     window.dispatchEvent(new Event('storage'));
@@ -642,7 +642,7 @@ export default function SelectLocationScreen({
                     border: '1.5px solid #CBD5E1', 
                     outline: 'none', 
                     fontFamily: 'Space Grotesk, sans-serif', 
-                    fontSize: '15px', 
+                    fontSize: '16px', 
                     fontWeight: '600', 
                     color: '#0F172A', 
                     background: '#F8FAFC',
@@ -791,7 +791,7 @@ export default function SelectLocationScreen({
                     border: '1.5px solid #CBD5E1', 
                     outline: 'none', 
                     fontFamily: 'Space Grotesk, sans-serif', 
-                    fontSize: '15px', 
+                    fontSize: '16px', 
                     fontWeight: '600', 
                     color: '#0F172A', 
                     background: '#F8FAFC',
@@ -1014,7 +1014,7 @@ export default function SelectLocationScreen({
                             borderRadius: '12px',
                             border: '1.5px solid #CBD5E1',
                             fontFamily: 'Space Grotesk, sans-serif',
-                            fontSize: '13px',
+                            fontSize: '16px',
                             fontWeight: '600',
                             color: '#0F172A',
                             boxSizing: 'border-box'
@@ -1038,7 +1038,7 @@ export default function SelectLocationScreen({
                           borderRadius: '12px',
                           border: '1.5px solid #CBD5E1',
                           fontFamily: 'Space Grotesk, sans-serif',
-                          fontSize: '13px',
+                          fontSize: '16px',
                           fontWeight: '600',
                           color: '#0F172A',
                           boxSizing: 'border-box'
@@ -1245,7 +1245,7 @@ export default function SelectLocationScreen({
                       borderRadius: '14px',
                       border: '1.5px solid #CBD5E1',
                       fontFamily: 'Space Grotesk, sans-serif',
-                      fontSize: '14px',
+                      fontSize: '16px',
                       fontWeight: '700',
                       color: '#0F172A',
                       background: '#F8FAFC',
@@ -1303,7 +1303,7 @@ export default function SelectLocationScreen({
                       borderRadius: '14px',
                       border: '1.5px solid #CBD5E1',
                       fontFamily: 'Space Grotesk, sans-serif',
-                      fontSize: '14px',
+                      fontSize: '16px',
                       fontWeight: '700',
                       color: '#0F172A',
                       background: '#F8FAFC',
@@ -1361,7 +1361,7 @@ export default function SelectLocationScreen({
                     borderRadius: '14px',
                     border: '1.5px solid #CBD5E1',
                     fontFamily: 'Space Grotesk, sans-serif',
-                    fontSize: '14px',
+                    fontSize: '16px',
                     fontWeight: '600',
                     color: '#0F172A',
                     background: '#F8FAFC',
@@ -1387,7 +1387,7 @@ export default function SelectLocationScreen({
                     borderRadius: '14px',
                     border: '1.5px solid #CBD5E1',
                     fontFamily: 'Space Grotesk, sans-serif',
-                    fontSize: '14px',
+                    fontSize: '16px',
                     fontWeight: '600',
                     color: '#0F172A',
                     background: '#F8FAFC',

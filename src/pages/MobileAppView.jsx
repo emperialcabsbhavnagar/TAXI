@@ -86,19 +86,22 @@ export default function MobileAppView() {
 
         const savedInquiries = localStorage.getItem('cabsy_inquiries');
         if (savedInquiries) {
-          const activeStatuses = ['In Progress', 'On Ride', 'Started'];
-          const activeRide = list.find(i => {
-            if (!i) return false;
-            const iPhone = i.customerPhone ? String(i.customerPhone).replace(/\D/g, '') : '';
-            const iEmail = i.customerEmail ? String(i.customerEmail).toLowerCase().trim() : '';
-            const isMatch = (uPhone && iPhone && uPhone.slice(-10) === iPhone.slice(-10)) ||
-                            (uEmail && iEmail && uEmail === iEmail);
-            const statusStr = String(i.status || '');
-            return isMatch && activeStatuses.some(s => statusStr.toLowerCase() === s.toLowerCase());
-          });
+          const list = JSON.parse(savedInquiries);
+          if (Array.isArray(list)) {
+            const activeStatuses = ['In Progress', 'On Ride', 'Started'];
+            const activeRide = list.find(i => {
+              if (!i) return false;
+              const iPhone = i.customerPhone ? String(i.customerPhone).replace(/\D/g, '') : '';
+              const iEmail = i.customerEmail ? String(i.customerEmail).toLowerCase().trim() : '';
+              const isMatch = (uPhone && iPhone && uPhone.slice(-10) === iPhone.slice(-10)) ||
+                              (uEmail && iEmail && uEmail === iEmail);
+              const statusStr = String(i.status || '');
+              return isMatch && activeStatuses.some(s => statusStr.toLowerCase() === s.toLowerCase());
+            });
 
-          if (activeRide) {
-            setAppStage('TRACKING');
+            if (activeRide) {
+              setAppStage('TRACKING');
+            }
           }
         }
       } catch (e) {}
@@ -828,14 +831,15 @@ export default function MobileAppView() {
     } catch (e) { }
 
     const selectedVehicleName = carObj?.name || 'SWIFT';
+    const ratePerKm = Number(carObj?.ratePerKm || 12);
     const totalFareNum = carObj?.totalFareNum || 770;
 
     const newInquiryId = db.getNextInquiryId();
     const walletDiscountUsed = carObj?.walletDiscountUsed || 0;
-    const originalFare = carObj?.originalFare || totalFareNum;
+    const isCustomTrip = Boolean(isCustom || carObj?.isCustom || tripType === 'custom-trip' || carObj?.tripType === 'Custom Trip');
+    const originalFare = isCustomTrip ? ratePerKm : (carObj?.originalFare || totalFareNum);
     const couponUsed = carObj?.couponUsed || (walletDiscountUsed > 0 ? `Wallet Reward (-₹${walletDiscountUsed})` : null);
 
-    const isCustomTrip = isCustom || carObj?.isCustom || tripType === 'custom-trip' || carObj?.tripType === 'Custom Trip';
     const newInquiry = {
       id: newInquiryId,
       date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
@@ -849,10 +853,11 @@ export default function MobileAppView() {
       noOfDays: carObj?.noOfDays || noOfDays || 1,
       isCustom: isCustomTrip,
       vehicle: selectedVehicleName,
-      fare: totalFareNum,
+      ratePerKm: isCustomTrip ? ratePerKm : (carObj?.ratePerKm || 12),
+      fare: isCustomTrip ? ratePerKm : totalFareNum,
       originalFare,
-      walletDiscountUsed,
-      couponUsed,
+      walletDiscountUsed: isCustomTrip ? 0 : walletDiscountUsed,
+      couponUsed: isCustomTrip ? null : couponUsed,
       tripType: isCustomTrip ? 'Custom Trip' : (carObj?.tripType || (tripType === 'round-trip' ? 'Round Trip (Return)' : 'One-Way')),
       scheduledDate,
       scheduledTime,
@@ -861,28 +866,27 @@ export default function MobileAppView() {
       timestamp: new Date().toISOString()
     };
 
-    if (walletDiscountUsed > 0) {
+    if (walletDiscountUsed > 0 && !isCustomTrip) {
       db.deductWalletBalance(userProf.phone, walletDiscountUsed, newInquiryId);
     }
 
     // 1. Save into dbService (single source of truth for localStorage inquiries)
     db.saveInquiry(newInquiry);
 
-    // 2. Trigger System Push & Notifications (Clean corporate copywriting without emojis)
+    // 2. Trigger System Notification to Admin (No emoji, proper rate breakdown)
+    const adminNotifFareText = isCustomTrip 
+      ? `₹${ratePerKm}/km as per ${selectedVehicleName}` 
+      : `₹${totalFareNum}`;
+
     notifyAdmin({
-      type: 'inquiry',
+      type: isCustomTrip ? 'custom-trip' : 'inquiry',
       title: `New Ride Inquiry ${newInquiryId}`,
-      body: `Customer ${userProf.name} requested ${newInquiry.pickup} to ${newInquiry.dropoff} (₹${totalFareNum})`,
-      extraData: { inquiryId: newInquiryId }
+      body: `Customer ${userProf.name} requested ${newInquiry.pickup} to ${newInquiry.dropoff} (${adminNotifFareText})`,
+      extraData: { inquiryId: newInquiryId, tab: isCustomTrip ? 'custom_inquiries' : 'inquiries' }
     });
 
-    notifyCustomer({
-      type: 'inquiry',
-      title: 'Booking Request Received',
-      body: `Your booking for ${newInquiry.pickup} to ${newInquiry.dropoff} is submitted. Driver assignment in progress.`,
-      customerPhone: userProf.phone,
-      customerEmail: userProf.email
-    });
+    // NOTE: Customer self-notification is intentionally suppressed here.
+    // Customer will only receive notifications when Admin acts (e.g. driver assigned, trip started).
 
     // 3. Save directly to Hostinger MySQL Database
     saveInquiryToMySQL(newInquiry).catch(e => console.warn('MySQL inquiry save failed:', e));
@@ -1228,6 +1232,8 @@ export default function MobileAppView() {
           setPromoCode={setPromoCode}
           onRequestRide={handleRequestRide}
           onBack={() => setAppStage('SELECT_CAR')}
+          tripType={tripType}
+          isCustom={isCustom}
         />
       );
 

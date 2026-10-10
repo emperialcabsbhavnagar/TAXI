@@ -12,8 +12,11 @@ export default function SelectPaymentScreen({
   promoCode, 
   setPromoCode, 
   onRequestRide, 
-  onBack 
+  onBack,
+  tripType = 'one-way',
+  isCustom = false
 }) {
+  const isCustomMode = isCustom || tripType === 'custom-trip' || tripType === 'round-trip';
   const pickupPos = getCoordsForPlace(pickupLoc || "Bhavnagar, Gujarat", userCoords);
   const destPos = getCoordsForPlace(dropoffLoc || "Ahmedabad Airport (AMD)", userCoords);
   const routePolyline = generateRoutePolyline(pickupPos, destPos);
@@ -62,7 +65,7 @@ export default function SelectPaymentScreen({
               </button>
               <div style={{ background: '#ECFDF5', color: '#047857', border: '1px solid #10B981', padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <ShieldCheck size={14} color="#10B981" />
-                <span>Fare Guaranteed ₹270</span>
+                <span>{isCustomMode ? 'Rate As Per Fleet Car (Per KM)' : 'Fixed Transparent Fare'}</span>
               </div>
             </div>
 
@@ -109,7 +112,7 @@ export default function SelectPaymentScreen({
             </div>
             <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
               <input 
-                style={{ flex: 1, background: '#F8FAFC', border: '1.5px solid #CBD5E1', borderRadius: '14px', padding: '12px 16px', outline: 'none', fontFamily: 'Space Grotesk, sans-serif', fontSize: '14px', fontWeight: '600', color: '#0F172A' }}
+                style={{ flex: 1, background: '#F8FAFC', border: '1.5px solid #CBD5E1', borderRadius: '14px', padding: '12px 16px', outline: 'none', fontFamily: 'Space Grotesk, sans-serif', fontSize: '16px', fontWeight: '600', color: '#0F172A', boxSizing: 'border-box' }}
                 placeholder="Enter promo code (e.g. EMPIRE50)"
                 value={promoCode}
                 onChange={(e) => setPromoCode(e.target.value)}

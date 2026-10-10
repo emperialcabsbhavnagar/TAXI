@@ -206,10 +206,12 @@ export default function SelectCarScreen({
         isVehicleFixed = false;
       }
 
-      // Enforce: One-way trip must ALWAYS show total fixed price, NEVER per-km rate
-      const formattedPrice = (tripType !== 'round-trip' || isVehicleFixed) 
-        ? `₹${totalFare.toLocaleString('en-IN')}` 
-        : `₹${ratePerKm}/km`;
+      const isCustomTrip = tripType === 'custom-trip' || tripType === 'round-trip';
+
+      // Enforce: Custom and round trips must tell customer per KM as per fleet car, NOT estimated fare
+      const formattedPrice = isCustomTrip
+        ? `₹${ratePerKm}/km` 
+        : `₹${totalFare.toLocaleString('en-IN')}`;
 
       return {
         id: v.id || idx + 1,
@@ -219,9 +221,9 @@ export default function SelectCarScreen({
         dist: matchedRoute?.duration || `${effectiveDistanceKm} km`,
         time: matchedRoute?.duration || `${Math.round(effectiveDistanceKm * 1.4)} min`,
         ratePerKm,
-        totalFareNum: totalFare,
+        totalFareNum: isCustomTrip ? ratePerKm : totalFare,
         price: formattedPrice,
-        isFixedPrice: isVehicleFixed || tripType !== 'round-trip'
+        isFixedPrice: !isCustomTrip && isVehicleFixed
       };
     });
   };

@@ -4,7 +4,7 @@ import { getCoordsForPlace, generateRoutePolyline, calculateDistanceKm } from '.
 import { INITIAL_VEHICLES } from '../AdminPortal';
 import { db } from '../../services/dbService';
 import { getRoutePriceFromMySQL, loadAllRoutesFromMySQL, loadAllVehiclesFromMySQL } from '../../services/mysqlService';
-import { Gift, ArrowLeft, Sparkles, CheckCircle2, Info } from 'lucide-react';
+import { Gift, ArrowLeft, Sparkles, CheckCircle2, Info, Calendar, Clock, ChevronDown } from 'lucide-react';
 
 export default function SeatScheduleScreen({ 
   userCoords,
@@ -277,9 +277,10 @@ export default function SeatScheduleScreen({
       avgKmPerDay: avgKmPerDay,
       ratePerKm: activeCarObj?.ratePerKm || 12,
       billingTerms: isRound ? 'Toll & Parking Extra • Per Day 300 KM Fixed' : 'All Inclusive',
-      totalFareNum: isRound ? 0 : netFare,
+      fare: isRound ? (activeCarObj?.ratePerKm || 12) : netFare,
+      totalFareNum: isRound ? (activeCarObj?.ratePerKm || 12) : netFare,
       displayPrice: isRound ? `₹${activeCarObj?.ratePerKm || 12}/km` : `₹${netFare}`,
-      originalFare: isRound ? 0 : baseFare,
+      originalFare: isRound ? (activeCarObj?.ratePerKm || 12) : baseFare,
       walletDiscountUsed: isRound ? 0 : discountAmount,
       couponUsed: !isRound && discountAmount > 0 ? `Wallet Reward (-₹${discountAmount})` : null
     };
@@ -438,57 +439,69 @@ export default function SeatScheduleScreen({
                   1. SCHEDULE PICKUP DATE & TIME
                 </p>
 
-                <div className="schedule-inputs-row" style={{ marginBottom: tripType === 'round-trip' ? '10px' : '16px' }}>
-                  <div className="schedule-input-box" style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                    <select 
-                      value={scheduledDate} 
-                      onChange={(e) => setScheduledDate(e.target.value)}
-                      style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none', fontFamily: 'Space Grotesk', fontSize: '14px', fontWeight: '700', color: '#0F172A', cursor: 'pointer' }}
-                    >
-                      <option value="Today, 10 Aug 2026">Today, 10 Aug 2026</option>
-                      <option value="Tomorrow, 11 Aug 2026">Tomorrow, 11 Aug 2026</option>
-                      <option value="Wed, 12 Aug 2026">Wed, 12 Aug 2026</option>
-                      <option value="Thu, 13 Aug 2026">Thu, 13 Aug 2026</option>
-                      <option value="Fri, 14 Aug 2026">Fri, 14 Aug 2026</option>
-                      <option value="Sat, 15 Aug 2026">Sat, 15 Aug 2026</option>
-                    </select>
-                  </div>
-
-                  <div className="schedule-input-box" style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                    <select 
-                      value={scheduledTime} 
-                      onChange={(e) => setScheduledTime(e.target.value)} 
-                      style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none', fontFamily: 'Space Grotesk', fontSize: '14px', fontWeight: '700', color: '#0F172A', cursor: 'pointer' }}
-                    >
-                      {[
-                        "08:00 AM", "08:30 AM", "09:00 AM", "09:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM",
-                        "12:00 PM", "12:30 PM", "01:00 PM", "01:30 PM", "02:00 PM", "02:30 PM", "03:00 PM", "03:30 PM",
-                        "04:00 PM", "04:30 PM", "05:00 PM", "05:30 PM", "06:00 PM", "06:30 PM", "07:00 PM", "07:30 PM"
-                      ].map(t => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Optional Return Date if Round Trip */}
-                {tripType === 'round-trip' && (
-                  <div style={{ marginBottom: '16px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: '800', color: '#64748B', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
-                      RETURN DATE (OPTIONAL)
-                    </label>
-                    <div className="schedule-input-box">
+                <div className="schedule-inputs-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: tripType === 'round-trip' ? '8px' : '14px' }}>
+                  <div className="schedule-input-box" style={{ position: 'relative', display: 'flex', alignItems: 'center', height: '46px', minHeight: '46px', padding: '0 8px 0 10px', background: '#F8FAFC', border: '1.5px solid #E2E8F0', borderRadius: '12px', gap: '6px' }}>
+                    <Calendar size={15} color="#FFAE00" style={{ flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '8.5px', fontWeight: '800', color: '#64748B', letterSpacing: '0.4px', textTransform: 'uppercase', lineHeight: 1 }}>PICKUP DATE</span>
                       <select 
-                        value={returnDate || 'Tomorrow, 11 Aug 2026'} 
-                        onChange={(e) => setReturnDate && setReturnDate(e.target.value)}
-                        style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none', fontFamily: 'Space Grotesk', fontSize: '14px', fontWeight: '700', color: '#0F172A', cursor: 'pointer' }}
+                        value={scheduledDate} 
+                        onChange={(e) => setScheduledDate(e.target.value)}
+                        style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none', fontFamily: 'Space Grotesk', fontSize: '12.5px', fontWeight: '700', color: '#0F172A', cursor: 'pointer', padding: 0, margin: '2px 0 0 0', textOverflow: 'ellipsis' }}
                       >
+                        <option value="Today, 10 Aug 2026">Today, 10 Aug 2026</option>
                         <option value="Tomorrow, 11 Aug 2026">Tomorrow, 11 Aug 2026</option>
                         <option value="Wed, 12 Aug 2026">Wed, 12 Aug 2026</option>
                         <option value="Thu, 13 Aug 2026">Thu, 13 Aug 2026</option>
                         <option value="Fri, 14 Aug 2026">Fri, 14 Aug 2026</option>
                         <option value="Sat, 15 Aug 2026">Sat, 15 Aug 2026</option>
                       </select>
+                    </div>
+                    <ChevronDown size={13} color="#94A3B8" style={{ flexShrink: 0 }} />
+                  </div>
+
+                  <div className="schedule-input-box" style={{ position: 'relative', display: 'flex', alignItems: 'center', height: '46px', minHeight: '46px', padding: '0 8px 0 10px', background: '#F8FAFC', border: '1.5px solid #E2E8F0', borderRadius: '12px', gap: '6px' }}>
+                    <Clock size={15} color="#FFAE00" style={{ flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '8.5px', fontWeight: '800', color: '#64748B', letterSpacing: '0.4px', textTransform: 'uppercase', lineHeight: 1 }}>TIME</span>
+                      <select 
+                        value={scheduledTime} 
+                        onChange={(e) => setScheduledTime(e.target.value)} 
+                        style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none', fontFamily: 'Space Grotesk', fontSize: '12.5px', fontWeight: '700', color: '#0F172A', cursor: 'pointer', padding: 0, margin: '2px 0 0 0' }}
+                      >
+                        {[
+                          "08:00 AM", "08:30 AM", "09:00 AM", "09:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM",
+                          "12:00 PM", "12:30 PM", "01:00 PM", "01:30 PM", "02:00 PM", "02:30 PM", "03:00 PM", "03:30 PM",
+                          "04:00 PM", "04:30 PM", "05:00 PM", "05:30 PM", "06:00 PM", "06:30 PM", "07:00 PM", "07:30 PM"
+                        ].map(t => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <ChevronDown size={13} color="#94A3B8" style={{ flexShrink: 0 }} />
+                  </div>
+                </div>
+
+                {/* Optional Return Date if Round Trip */}
+                {tripType === 'round-trip' && (
+                  <div style={{ marginBottom: '14px' }}>
+                    <div className="schedule-input-box" style={{ position: 'relative', display: 'flex', alignItems: 'center', height: '46px', minHeight: '46px', padding: '0 8px 0 10px', background: '#F8FAFC', border: '1.5px solid #E2E8F0', borderRadius: '12px', gap: '6px' }}>
+                      <Calendar size={15} color="#FFAE00" style={{ flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                        <span style={{ fontSize: '8.5px', fontWeight: '800', color: '#64748B', letterSpacing: '0.4px', textTransform: 'uppercase', lineHeight: 1 }}>RETURN DATE (OPTIONAL)</span>
+                        <select 
+                          value={returnDate || 'Tomorrow, 11 Aug 2026'} 
+                          onChange={(e) => setReturnDate && setReturnDate(e.target.value)}
+                          style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none', fontFamily: 'Space Grotesk', fontSize: '12.5px', fontWeight: '700', color: '#0F172A', cursor: 'pointer', padding: 0, margin: '2px 0 0 0' }}
+                        >
+                          <option value="Tomorrow, 11 Aug 2026">Tomorrow, 11 Aug 2026</option>
+                          <option value="Wed, 12 Aug 2026">Wed, 12 Aug 2026</option>
+                          <option value="Thu, 13 Aug 2026">Thu, 13 Aug 2026</option>
+                          <option value="Fri, 14 Aug 2026">Fri, 14 Aug 2026</option>
+                          <option value="Sat, 15 Aug 2026">Sat, 15 Aug 2026</option>
+                        </select>
+                      </div>
+                      <ChevronDown size={13} color="#94A3B8" style={{ flexShrink: 0 }} />
                     </div>
                   </div>
                 )}

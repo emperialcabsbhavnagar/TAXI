@@ -428,7 +428,8 @@ export default function BookRide() {
       exactPickupAddress: exactPickupAddress.trim() || finalPickupCity,
       exactDropoffAddress: exactDropoffAddress.trim() || finalDropoffCity,
       vehicle: currentVehicle.name,
-      fare: parseFloat(calculatedFare),
+      ratePerKm: parseFloat(currentVehicle.rate || 15),
+      fare: isCustomMode ? parseFloat(currentVehicle.rate || 15) : parseFloat(calculatedFare),
       tripType: isCustomMode ? `Round Trip (${noOfDays} Day${noOfDays > 1 ? 's' : ''})` : 'One Way Trip',
       isCustom: isCustomMode,
       noOfDays: isCustomMode ? noOfDays : 1,
@@ -440,11 +441,16 @@ export default function BookRide() {
 
     db.saveInquiry(newInquiry);
     saveInquiryToMySQL(newInquiry).catch(e => console.warn('MySQL book ride save failed:', e));
+
+    const adminFareText = isCustomMode 
+      ? `₹${currentVehicle.rate}/km as per ${currentVehicle.name}` 
+      : `₹${newInquiry.fare}`;
+
     notifyAdmin({
-      type: 'inquiry',
+      type: isCustomMode ? 'custom-trip' : 'inquiry',
       title: `New Ride Inquiry ${newInquiry.id}`,
-      body: `Customer ${newInquiry.customerName} (${newInquiry.customerPhone}) requested ${newInquiry.pickup} to ${newInquiry.dropoff} (₹${newInquiry.fare})`,
-      extraData: { inquiryId: newInquiry.id }
+      body: `Customer ${newInquiry.customerName} (${newInquiry.customerPhone}) requested ${newInquiry.pickup} to ${newInquiry.dropoff} (${adminFareText})`,
+      extraData: { inquiryId: newInquiry.id, tab: isCustomMode ? 'custom_inquiries' : 'inquiries' }
     });
     setBookingSuccess(newInquiry);
   };
@@ -486,13 +492,19 @@ export default function BookRide() {
                 <strong>{bookingSuccess.vehicle}</strong>
               </div>
               <div className="detail-item fare-item">
-                <span>Total Calculated Fare:</span>
+                <span>{bookingSuccess.isCustom ? 'Billing Rate Structure:' : 'Total Calculated Fare:'}</span>
                 <strong className="text-green text-xl">
                   {bookingSuccess.isCustom 
-                    ? `₹${bookingSuccess.fare}/KM (As per Car)` 
+                    ? `₹${bookingSuccess.ratePerKm || bookingSuccess.fare}/KM (As per Fleet Car)` 
                     : `₹${Number(bookingSuccess.fare).toFixed(2)}`}
                 </strong>
               </div>
+              {bookingSuccess.isCustom && (
+                <div className="detail-item" style={{ fontSize: '12px', color: '#64748b' }}>
+                  <span>Billing Terms:</span>
+                  <span style={{ fontWeight: '600' }}>Actual KM traveled (300 KM/Day Min) • Toll, State Tax & Parking extra</span>
+                </div>
+              )}
             </div>
 
             <div className="mt-4 flex gap-3 justify-center">
@@ -969,14 +981,14 @@ export default function BookRide() {
 
                   <div className="fare-big-box mt-3">
                     <div className="fare-label">
-                      {tripType === 'custom-trip' ? 'Billing Rate' : 'Estimated Total Fare'}
+                      {tripType === 'custom-trip' ? 'Billing Rate (Per KM as per Fleet Car)' : 'Estimated Total Fare'}
                     </div>
                     <div className="fare-price">
                       {tripType === 'custom-trip' ? `₹${currentVehicle.rate} / KM` : `₹${calculatedFare}`}
                     </div>
                     {tripType === 'custom-trip' ? (
                       <small className="fare-note" style={{ color: '#b45309', fontWeight: '700', fontSize: '11px', lineHeight: '1.4' }}>
-                        * 1 Day 300 KM fixed minimum. Toll, State Tax & Parking extra as per actual receipts.
+                        * Rate is per KM as per selected fleet vehicle ({currentVehicle.name}). Minimum 300 KM/day. Toll, State Tax & Parking extra as per actual receipts.
                       </small>
                     ) : (
                       <small className="fare-note">

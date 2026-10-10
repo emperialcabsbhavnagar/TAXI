@@ -1234,7 +1234,9 @@
 .newsletter-form {
   display: flex;
   gap: 0.75rem;
-  min-width: 380px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .newsletter-form input {
@@ -3007,7 +3009,7 @@
 
   .light-select, .light-input {
     height: 48px !important;
-    font-size: 0.95rem !important;
+    font-size: 16px !important; /* Critical 16px to prevent iOS auto-zoom */
     padding: 0 0.85rem !important;
     border-radius: 12px !important;
   }
@@ -3049,29 +3051,59 @@
 }
 
 @media (max-width: 480px) {
+  .hero-card {
+    padding: 1.5rem 0.75rem !important;
+    border-radius: 16px !important;
+  }
+
   .hero-title {
-    font-size: 1.75rem !important;
-    line-height: 1.2 !important;
+    font-size: clamp(1.45rem, 6.5vw, 1.75rem) !important;
+    line-height: 1.22 !important;
   }
 
   .hero-subtitle {
-    font-size: 0.95rem !important;
+    font-size: 0.92rem !important;
     line-height: 1.5 !important;
   }
 
   .ios-phone-frame {
     width: 100% !important;
-    max-width: 290px !important;
-    height: 470px !important;
+    max-width: 270px !important;
+    height: 440px !important;
     margin: 0 auto !important;
   }
 
   .light-booking-header h2 {
-    font-size: 1.5rem !important;
+    font-size: clamp(1.25rem, 5vw, 1.5rem) !important;
   }
 
   .vehicle-light-card {
-    padding: 0.65rem 0.75rem !important;
+    padding: 0.65rem 0.65rem !important;
+  }
+
+  .light-booking-container {
+    padding: 0.75rem 0.35rem !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .hero-title {
+    font-size: 1.35rem !important;
+  }
+
+  .hero-cta-group .btn {
+    padding: 0.75rem 1rem !important;
+    font-size: 0.92rem !important;
+  }
+
+  .pill-badge {
+    font-size: 0.8rem !important;
+    padding: 0.35rem 0.85rem !important;
+  }
+
+  .ios-phone-frame {
+    max-width: 250px !important;
+    height: 410px !important;
   }
 }
 

@@ -40,10 +40,13 @@ export default function TripReceiptScreen({ tripData, onDone }) {
   const fareNum = Number(receipt.fare || receipt.price || 270);
   const rewardVal = Number(receipt.rewardAmount || receipt.rewardGiven || 0);
   const hasReward = rewardVal > 0;
-  const isRoundTrip = Boolean(
+  const isCustomTrip = Boolean(
     receipt.isCustom || 
+    receipt.tripType === 'Custom Trip' ||
+    receipt.tripType === 'custom-trip' ||
     (receipt.tripType && (receipt.tripType.toLowerCase().includes('round') || receipt.tripType.toLowerCase().includes('custom')))
   );
+  const ratePerKmVal = Number(receipt.ratePerKm || receipt.fare || 12);
 
   const handleFinish = () => {
     try {
@@ -138,11 +141,11 @@ export default function TripReceiptScreen({ tripData, onDone }) {
             </div>
           )}
 
-          {/* Round Trip Special Terms Banner */}
-          {isRoundTrip && (
+          {/* Round / Custom Trip Special Terms Banner */}
+          {isCustomTrip && (
             <div style={{ background: '#EFF6FF', border: '1.5px solid #93C5FD', borderRadius: '12px', padding: '10px 14px', marginBottom: '14px', color: '#1E40AF', fontSize: '12.5px', fontWeight: '800', fontFamily: 'Space Grotesk', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Info size={16} color="#1E40AF" style={{ flexShrink: 0 }} />
-              <span>Round Trip Rate • Toll, Parking Extra • Per Day 300 KM Fixed Minimum</span>
+              <span>Custom / Round Trip • Rate: ₹{ratePerKmVal}/KM as per {receipt.vehicle || 'Fleet Car'} • Toll & Parking Extra</span>
             </div>
           )}
 
@@ -151,10 +154,10 @@ export default function TripReceiptScreen({ tripData, onDone }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#64748B' }}>
               <span>Vehicle Class ({receipt.vehicle || 'Regular'})</span>
               <span style={{ fontWeight: '700', color: '#0F172A' }}>
-                {isRoundTrip ? `₹${receipt.ratePerKm || 12}/km` : `₹${fareNum.toFixed(2)}`}
+                {isCustomTrip ? `₹${ratePerKmVal}/km (As per Fleet Car)` : `₹${fareNum.toFixed(2)}`}
               </span>
             </div>
-            {Number(receipt.walletDiscountUsed) > 0 && !isRoundTrip && (
+            {Number(receipt.walletDiscountUsed) > 0 && !isCustomTrip && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#059669' }}>
                 <span>Wallet Reward Discount</span>
                 <span style={{ fontWeight: '800' }}>-₹{Number(receipt.walletDiscountUsed).toFixed(2)}</span>
@@ -162,8 +165,8 @@ export default function TripReceiptScreen({ tripData, onDone }) {
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#64748B' }}>
               <span>Toll, Fuel & Chauffeur Charges</span>
-              <span style={{ fontWeight: '700', color: isRoundTrip ? '#D97706' : '#10B981' }}>
-                {isRoundTrip ? 'Toll & Parking Extra' : 'Included'}
+              <span style={{ fontWeight: '700', color: isCustomTrip ? '#D97706' : '#10B981' }}>
+                {isCustomTrip ? 'Toll & Parking Extra (300 KM/Day Min)' : 'Included'}
               </span>
             </div>
           </div>
@@ -171,10 +174,10 @@ export default function TripReceiptScreen({ tripData, onDone }) {
           {/* Total Net Fare */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '4px' }}>
             <span style={{ fontFamily: 'League Spartan, sans-serif', fontSize: '18px', fontWeight: '800', color: '#0F172A' }}>
-              {isRoundTrip ? 'Trip Booking Rate' : 'Total Fare Paid'}
+              {isCustomTrip ? 'Billing Rate (Per KM as per Fleet Car)' : 'Total Fare Paid'}
             </span>
             <span style={{ fontFamily: 'League Spartan, sans-serif', fontSize: '26px', fontWeight: '800', color: '#10B981' }}>
-              {isRoundTrip ? `₹${receipt.ratePerKm || 12}/km` : `₹${fareNum.toFixed(2)}`}
+              {isCustomTrip ? `₹${ratePerKmVal}/km` : `₹${fareNum.toFixed(2)}`}
             </span>
           </div>
         </div>

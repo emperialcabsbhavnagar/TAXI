@@ -285,3 +285,28 @@
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 480px) {
+  .city-hero {
+    padding: 2rem 0 2.5rem;
+  }
+  .city-title {
+    font-size: clamp(1.4rem, 6vw, 1.85rem) !important;
+  }
+  .city-subtitle {
+    font-size: 0.95rem;
+    margin-bottom: 1.5rem;
+  }
+  .city-cta-buttons {
+    flex-direction: column;
+    width: 100%;
+  }
+  .btn-city-primary, .btn-city-secondary {
+    width: 100%;
+    justify-content: center;
+  }
+  .city-faq-section {
+    padding: 3rem 0;
+  }
+}
+

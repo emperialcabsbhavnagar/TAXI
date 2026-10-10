@@ -209,3 +209,10 @@
     width: 100%;
   }
 }
+
+@media (max-width: 360px) {
+  .footer-box {
+    padding: 1.2rem 0.65rem;
+    border-radius: 14px;
+  }
+}

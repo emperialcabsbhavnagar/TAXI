@@ -13,6 +13,13 @@ export default function InquirySubmittedScreen({ inquiry, onGoHome, onViewRides 
     status: 'Pending'
   };
 
+  const isCustomTrip = Boolean(
+    inqData.isCustom || 
+    inqData.tripType === 'Custom Trip' || 
+    inqData.tripType === 'custom-trip' ||
+    (inqData.tripType && inqData.tripType.toLowerCase().includes('round'))
+  );
+
   return (
     <div className="real-mobile-app" style={{ background: '#F8FAFC', display: 'flex', flexDirection: 'column', minHeight: '100vh', position: 'relative' }}>
       {/* Top Header */}
@@ -92,17 +99,26 @@ export default function InquirySubmittedScreen({ inquiry, onGoHome, onViewRides 
                 <span style={{ fontSize: '14px', fontWeight: '800', color: '#0F172A', fontFamily: 'League Spartan' }}>{inqData.vehicle}</span>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <span style={{ fontSize: '11px', fontWeight: '800', color: '#64748B', display: 'block' }}>ESTIMATED FARE</span>
-                <span style={{ fontSize: '18px', fontWeight: '800', color: '#10B981', fontFamily: 'League Spartan' }}>₹{inqData.fare}</span>
+                <span style={{ fontSize: '11px', fontWeight: '800', color: '#64748B', display: 'block' }}>
+                  {isCustomTrip ? 'RATE (FLEET CAR)' : 'ESTIMATED FARE'}
+                </span>
+                <span style={{ fontSize: '18px', fontWeight: '800', color: '#10B981', fontFamily: 'League Spartan' }}>
+                  {isCustomTrip ? `₹${inqData.ratePerKm || inqData.fare || 12}/KM` : `₹${inqData.fare}`}
+                </span>
               </div>
             </div>
+            {isCustomTrip && (
+              <div style={{ fontSize: '11px', color: '#64748B', fontWeight: '700', fontFamily: 'Space Grotesk', textAlign: 'right', marginTop: '-4px' }}>
+                * Billed as per actual KM • Toll & parking extra
+              </div>
+            )}
           </div>
         </div>
 
         {/* Dispatcher Notice Box */}
         <div style={{ background: '#F0FDF4', border: '1.5px solid #BBF7D0', borderRadius: '14px', padding: '12px 14px', width: '100%', boxSizing: 'border-box' }}>
           <p style={{ margin: 0, fontSize: '12px', color: '#059669', fontFamily: 'Space Grotesk', fontWeight: '600', lineHeight: '1.4' }}>
-            ℹ️ <strong>Dispatcher Action:</strong> Our admin dispatch team has received this inquiry in the Admin Panel and will call you at <strong>{inqData.customerPhone}</strong> to confirm vehicle availability.
+            <strong>Dispatcher Action:</strong> Our admin dispatch team has received this inquiry in the Admin Panel and will call you at <strong>{inqData.customerPhone}</strong> to confirm vehicle availability.
           </p>
         </div>
 

@@ -313,3 +313,29 @@
     height: 38px;
   }
 }
+
+@media (max-width: 360px) {
+  .header-container {
+    padding: 0 8px !important;
+    gap: 4px !important;
+  }
+
+  .brand-logo-img {
+    width: 110px !important;
+    max-height: 34px !important;
+  }
+
+  .header-cta-btn {
+    padding: 4px 8px !important;
+    gap: 4px !important;
+  }
+
+  .header-cta-btn span {
+    font-size: 10px !important;
+  }
+
+  .mobile-toggle-btn {
+    width: 34px !important;
+    height: 34px !important;
+  }
+}

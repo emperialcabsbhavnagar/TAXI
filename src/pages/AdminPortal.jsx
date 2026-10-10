@@ -889,6 +889,54 @@ export default function AdminPortal() {
   if (typeof seenInquiryAlertIdsRef.current === 'function') {
     seenInquiryAlertIdsRef.current = seenInquiryAlertIdsRef.current();
   }
+  const seenUnifiedAlertKeysRef = React.useRef(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('cabsy_seen_unified_alerts') || '[]');
+      return new Set(Array.isArray(stored) ? stored.map(String) : []);
+    } catch(e) {
+      return new Set();
+    }
+  });
+  if (typeof seenUnifiedAlertKeysRef.current === 'function') {
+    seenUnifiedAlertKeysRef.current = seenUnifiedAlertKeysRef.current();
+  }
+  const markUnifiedAlertSeen = (key) => {
+    if (!key) return;
+    const str = String(key);
+    seenUnifiedAlertKeysRef.current.add(str);
+    try {
+      const existing = JSON.parse(localStorage.getItem('cabsy_seen_unified_alerts') || '[]');
+      if (!existing.includes(str)) {
+        localStorage.setItem('cabsy_seen_unified_alerts', JSON.stringify([str, ...existing].slice(0, 300)));
+      }
+    } catch(e) {}
+  };
+  const isUnifiedAlertSeen = (key) => {
+    if (!key) return false;
+    return seenUnifiedAlertKeysRef.current.has(String(key));
+  };
+
+  const dedupeNotificationList = (list) => {
+    if (!Array.isArray(list)) return [];
+    const seen = new Set();
+    const result = [];
+    for (const item of list) {
+      if (!item) continue;
+      const inqKey = item.inquiryId ? `inq_${String(item.inquiryId).toLowerCase()}` : null;
+      const msgKey = item.messageId ? `msg_${String(item.messageId).toLowerCase()}` : null;
+      const idKey = item.id ? String(item.id).toLowerCase() : null;
+      const titleBodyKey = `${(item.title || '').trim()}|${(item.desc || item.body || '').trim()}`.toLowerCase();
+      
+      const checkKeys = [inqKey, msgKey, idKey, titleBodyKey].filter(Boolean);
+      const alreadySeen = checkKeys.some(k => seen.has(k));
+      if (!alreadySeen) {
+        checkKeys.forEach(k => seen.add(k));
+        result.push(item);
+      }
+    }
+    return result.slice(0, 50);
+  };
+
   const isInitialLoadRef = React.useRef(true);
 
   // Push registration state
@@ -1070,18 +1118,21 @@ export default function AdminPortal() {
                 localStorage.setItem('cabsy_seen_inq_alert_ids', JSON.stringify([inqIdStr, ...existing].slice(0, 200)));
               } catch (e) {}
 
+              const alertKey = `inq_${inqIdStr}`;
+              if (isUnifiedAlertSeen(alertKey)) {
+                return; // Suppress duplicate: already alerted via BroadcastChannel or notifyAdmin!
+              }
+              markUnifiedAlertSeen(alertKey);
+
               const isCust = Boolean(newInq.isCustom || newInq.tripType === 'Custom Trip' || newInq.tripType === 'custom-trip');
-              const notifTitle = isCust ? '🚨 New Custom Route Inquiry!' : '🚖 New Customer Ride Booking!';
+              const notifTitle = isCust ? 'New Custom Route Inquiry' : 'New Customer Ride Booking';
               const notifBody = `${newInq.customerName || 'Customer'} (${newInq.customerPhone || 'Direct'}): ${newInq.pickup} ➔ ${newInq.dropoff}`;
               
-              playChimeSound();
-              if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-                navigator.vibrate([200, 100, 200, 100, 200]);
-              }
-              sendSystemPushNotification(notifTitle, notifBody, 'inq-' + newInq.id, { tab: isCust ? 'custom_inquiries' : 'inquiries' });
+              sendSystemPushNotification(notifTitle, notifBody, 'inq-' + newInq.id, { tab: isCust ? 'custom_inquiries' : 'inquiries', inquiryId: inqIdStr });
               
               const newNotifItem = {
                 id: 'inq_notif_' + newInq.id,
+                inquiryId: inqIdStr,
                 type: isCust ? 'custom' : 'inquiry',
                 title: notifTitle,
                 desc: notifBody,
@@ -1091,7 +1142,7 @@ export default function AdminPortal() {
                 read: false,
                 tab: isCust ? 'custom_inquiries' : 'inquiries'
               };
-              setNotifications(prev => [newNotifItem, ...prev.filter(n => n.id !== newNotifItem.id)].slice(0, 50));
+              setNotifications(prev => dedupeNotificationList([newNotifItem, ...prev]));
             });
           }
 
@@ -1103,7 +1154,7 @@ export default function AdminPortal() {
               if (prevStatus !== currentStatus) {
                 knownInquiryStatusRef.current.set(String(inq.id), currentStatus);
                 const isCancelled = currentStatus.toLowerCase() === 'cancelled';
-                const notifTitle = isCancelled ? '⚠️ Ride Cancelled by Customer!' : `Trip Status Updated: ${currentStatus}`;
+                const notifTitle = isCancelled ? 'Ride Cancelled by Customer' : `Trip Status Updated: ${currentStatus}`;
                 const notifBody = `Booking #${inq.id} (${inq.pickup} ➔ ${inq.dropoff}) is now ${currentStatus}`;
 
                 playChimeSound();
@@ -1123,7 +1174,7 @@ export default function AdminPortal() {
                   read: false,
                   tab: 'inquiries'
                 };
-                setNotifications(prev => [updateNotifItem, ...prev].slice(0, 50));
+                setNotifications(prev => dedupeNotificationList([updateNotifItem, ...prev]));
               }
             }
           });
@@ -1133,7 +1184,7 @@ export default function AdminPortal() {
           if (newMessages.length > 0) {
             newMessages.forEach(newMsg => {
               knownMessageIdsRef.current.add(String(newMsg.id));
-              const notifTitle = '📩 New Customer Contact Message!';
+              const notifTitle = 'New Customer Contact Message';
               const notifBody = `${newMsg.name || 'Customer'} (${newMsg.phone || ''}): ${newMsg.subject || newMsg.message || 'New Inquiry'}`;
               
               playChimeSound();
@@ -1144,6 +1195,7 @@ export default function AdminPortal() {
               
               const newNotifItem = {
                 id: 'msg_notif_' + newMsg.id,
+                messageId: String(newMsg.id),
                 type: 'message',
                 title: notifTitle,
                 desc: notifBody,
@@ -1153,7 +1205,7 @@ export default function AdminPortal() {
                 read: false,
                 tab: 'messages'
               };
-              setNotifications(prev => [newNotifItem, ...prev.filter(n => n.id !== newNotifItem.id)].slice(0, 50));
+              setNotifications(prev => dedupeNotificationList([newNotifItem, ...prev]));
             });
           }
 
@@ -1161,6 +1213,14 @@ export default function AdminPortal() {
           if (Array.isArray(adminRemoteNotifs) && adminRemoteNotifs.length > 0) {
             adminRemoteNotifs.forEach(notifRow => {
               const notifIdStr = String(notifRow?.id || '');
+              let parsedExtra = {};
+              try {
+                parsedExtra = typeof notifRow.extra_data === 'string' ? JSON.parse(notifRow.extra_data) : (notifRow.extra_data || {});
+              } catch(e) {}
+              const rowInqId = parsedExtra.inquiryId || notifRow.inquiry_id;
+              const rowMsgId = parsedExtra.messageId || notifRow.message_id;
+              const alertKey = rowInqId ? `inq_${rowInqId}` : (rowMsgId ? `msg_${rowMsgId}` : (notifIdStr || `${notifRow.title}|${notifRow.body}`));
+
               if (notifIdStr && !knownRemoteNotifIdsRef.current.has(notifIdStr)) {
                 knownRemoteNotifIdsRef.current.add(notifIdStr);
                 try {
@@ -1168,16 +1228,20 @@ export default function AdminPortal() {
                   localStorage.setItem('cabsy_seen_admin_notif_ids', JSON.stringify([notifIdStr, ...existing].slice(0, 200)));
                 } catch (e) {}
 
-                playChimeSound();
-                if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-                  navigator.vibrate([200, 100, 200, 100, 200]);
+                // If this inquiry/message was ALREADY alerted by inquiry diff or BroadcastChannel, do NOT duplicate alert!
+                if (isUnifiedAlertSeen(alertKey)) {
+                  return;
                 }
-                const nTitle = notifRow.title || '🚨 Dispatch Update';
+                markUnifiedAlertSeen(alertKey);
+
+                const nTitle = notifRow.title || 'Dispatch Update';
                 const nBody = notifRow.body || 'You have an update from a customer.';
-                sendSystemPushNotification(nTitle, nBody, 'rem-' + notifIdStr, { tab: 'inquiries' });
+                sendSystemPushNotification(nTitle, nBody, 'rem-' + (rowInqId || notifIdStr), { tab: 'inquiries', inquiryId: rowInqId });
 
                 const item = {
                   id: notifRow.id,
+                  inquiryId: rowInqId,
+                  messageId: rowMsgId,
                   type: notifRow.type || 'inquiry',
                   title: nTitle,
                   desc: nBody,
@@ -1187,7 +1251,7 @@ export default function AdminPortal() {
                   read: false,
                   tab: 'inquiries'
                 };
-                setNotifications(prev => [item, ...prev.filter(x => x.id !== notifRow.id)].slice(0, 50));
+                setNotifications(prev => dedupeNotificationList([item, ...prev]));
               }
             });
           }
@@ -1227,7 +1291,7 @@ export default function AdminPortal() {
     const syncAdminNotifs = () => {
       const fresh = getAdminNotifications();
       if (fresh && fresh.length > 0) {
-        setNotifications(fresh);
+        setNotifications(dedupeNotificationList(fresh));
       }
     };
 
@@ -1242,12 +1306,20 @@ export default function AdminPortal() {
         bc.onmessage = (event) => {
           if (event.data?.type === 'ADMIN_NOTIFICATION' && event.data?.notification) {
             const notif = event.data.notification;
-            playChimeSound();
-            if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-              navigator.vibrate([200, 100, 200, 100, 200]);
+            const inqId = notif.inquiryId || notif.extraData?.inquiryId;
+            const msgId = notif.messageId || notif.extraData?.messageId;
+            const alertKey = inqId ? `inq_${inqId}` : (msgId ? `msg_${msgId}` : (notif.id || `${notif.title}|${notif.body}`));
+            if (isUnifiedAlertSeen(alertKey)) {
+              return; // Already alerted on this device!
             }
-            sendSystemPushNotification(notif.title, notif.body || notif.desc, 'bc-' + notif.id, notif.extraData);
-            setNotifications(prev => [notif, ...prev.filter(x => x.id !== notif.id)].slice(0, 50));
+            markUnifiedAlertSeen(alertKey);
+            if (inqId) {
+              seenInquiryAlertIdsRef.current.add(String(inqId));
+              knownInquiryStatusRef.current.set(String(inqId), 'Pending');
+            }
+
+            sendSystemPushNotification(notif.title, notif.body || notif.desc, 'bc-' + (inqId || notif.id), notif.extraData);
+            setNotifications(prev => dedupeNotificationList([notif, ...prev]));
             fetchAllData(false);
           }
         };

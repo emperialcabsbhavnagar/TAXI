@@ -239,8 +239,77 @@ export const playChimeSound = () => {
   }
 };
 
+// Active notification debounce cache (window: 45 seconds, cross-tab persistent)
+const pushDebounceMap = new Map();
+
+export const isAdminContext = () => {
+  if (typeof window === 'undefined') return false;
+  try {
+    const path = (window.location.pathname || '').toLowerCase();
+    const search = (window.location.search || '').toLowerCase();
+    const isAdminPath = path.startsWith('/admin') || search.includes('tab=');
+    const isAdminPWA = localStorage.getItem('emperial_pwa_is_admin') === 'true';
+    const isAdminAuth = sessionStorage.getItem('emperial_admin_logged_in') === 'true' || localStorage.getItem('cabsy_admin_auth') === 'true';
+    return Boolean(isAdminPath || isAdminPWA || isAdminAuth);
+  } catch (e) {
+    return false;
+  }
+};
+
+export const isDuplicatePushAlert = (key, windowMs = 45000) => {
+  if (!key) return false;
+  const now = Date.now();
+  const cleanKey = String(key).trim().toLowerCase();
+
+  // 1. In-memory check
+  const lastMem = pushDebounceMap.get(cleanKey) || 0;
+  if (now - lastMem < windowMs) {
+    return true;
+  }
+
+  // 2. Cross-tab & cross-window persistent storage check
+  try {
+    const raw = localStorage.getItem('cabsy_global_push_dedup');
+    const dedupObj = raw ? JSON.parse(raw) : {};
+    const lastStorage = dedupObj[cleanKey] || 0;
+    if (now - lastStorage < windowMs) {
+      pushDebounceMap.set(cleanKey, lastStorage);
+      return true;
+    }
+    dedupObj[cleanKey] = now;
+    // Clean up entries older than 5 minutes
+    for (const k in dedupObj) {
+      if (now - dedupObj[k] > 300000) delete dedupObj[k];
+    }
+    localStorage.setItem('cabsy_global_push_dedup', JSON.stringify(dedupObj));
+  } catch (e) {}
+
+  pushDebounceMap.set(cleanKey, now);
+  // Auto-cleanup stale memory entries
+  if (pushDebounceMap.size > 200) {
+    for (const [k, time] of pushDebounceMap.entries()) {
+      if (now - time > 60000) pushDebounceMap.delete(k);
+    }
+  }
+  return false;
+};
+
 // Trigger Phone / Desktop System Tray Push Notification (Mobile Chrome / APK / PWA Compatible)
 export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CABS-notif', extraData = {}) => {
+  const inqId = extraData?.inquiryId;
+  const msgId = extraData?.messageId;
+  const rawKey = inqId ? `inq_${inqId}` : (
+    msgId ? `msg_${msgId}` : (
+      tag && !tag.startsWith('admin-') && !tag.startsWith('bc-') && !tag.startsWith('rem-') && !tag.startsWith('inq-') ? tag : `${title || ''}|${body || ''}`
+    )
+  );
+  const dedupKey = rawKey.trim().toLowerCase();
+
+  // Deduplicate: If an alert for this exact inquiry/message was triggered within the last 45s, suppress duplicate!
+  if (isDuplicatePushAlert(dedupKey, 45000)) {
+    return;
+  }
+
   playChimeSound();
 
   // Trigger device vibration if supported (pattern: 200ms vibrate, 100ms pause, 200ms vibrate)
@@ -249,6 +318,8 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
       navigator.vibrate([200, 100, 200, 100, 200]);
     }
   } catch (e) {}
+
+  const canonicalTag = 'emp_' + dedupKey.replace(/[^a-z0-9_]/g, '_').slice(0, 40);
 
   // 1. Mobile Phone Native System Notification Panel (Android APK via Capacitor LocalNotifications)
   try {
@@ -300,8 +371,8 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
     body: body,
     icon: '/official-app-icon.png',
     badge: '/favicon.png',
-    tag: tag || 'emperial_cabs_active_alert',
-    renotify: true,
+    tag: canonicalTag,
+    renotify: false,
     vibrate: [200, 100, 200, 100, 200],
     data: {
       tab: targetTab,
@@ -347,8 +418,10 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
 
 // Dispatch Admin Notification
 export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) => {
+  const inqId = extraData?.inquiryId;
   const notifObj = {
-    id: 'admin_notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+    id: inqId ? `admin_inq_${inqId}` : ('admin_notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4)),
+    inquiryId: inqId,
     type,
     title,
     desc: body,
@@ -361,7 +434,13 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
 
   try {
     const existing = JSON.parse(localStorage.getItem('cabsy_admin_notifications') || '[]');
-    const updated = [notifObj, ...existing].slice(0, 50);
+    // Filter out previous notification for the exact same inquiry or identical title+desc
+    const filtered = existing.filter(n => {
+      if (inqId && (n.inquiryId === inqId || n.id === `admin_inq_${inqId}`)) return false;
+      if (n.title === title && n.desc === body) return false;
+      return true;
+    });
+    const updated = [notifObj, ...filtered].slice(0, 50);
     localStorage.setItem('cabsy_admin_notifications', JSON.stringify(updated));
   } catch (e) {}
 
@@ -377,7 +456,7 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
       title: title,
       body: body,
       type: type,
-      extra_data: JSON.stringify({ tab: targetTab, ...extraData })
+      extra_data: JSON.stringify({ tab: targetTab, inquiryId: inqId, ...extraData })
     }).catch(() => {});
   } catch (e) {}
 
@@ -390,13 +469,16 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
         notification: notifObj,
         title,
         body,
-        extraData: { tab: targetTab, ...extraData }
+        extraData: { tab: targetTab, inquiryId: inqId, ...extraData }
       });
     }
   } catch (e) {}
 
-  // 3. Trigger local system push notification if permission is granted
-  sendSystemPushNotification(title, body, 'admin-' + notifObj.id, { tab: targetTab, ...extraData });
+  // 3. Trigger local system push notification ONLY if running in an active Admin context!
+  // Regular customers booking a ride or submitting a form must NEVER receive local admin alerts on their device.
+  if (isAdminContext()) {
+    sendSystemPushNotification(title, body, 'admin-' + notifObj.id, { tab: targetTab, inquiryId: inqId, ...extraData });
+  }
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('EMPERIAL CABS_admin_notif', { detail: notifObj }));
@@ -406,8 +488,15 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
   return notifObj;
 };
 
-// Dispatch Customer Notification
+// Dispatch Customer Notification (Only triggered by Admin actions such as driver assignment or status updates)
 export const notifyCustomer = ({ type = 'inquiry', title, body, customerPhone, customerEmail, extraData = {} }) => {
+  // Suppress notifications for actions performed by the customer themselves.
+  // The customer should ONLY be notified when the ADMIN performs an action (e.g. driver assigned, trip started, trip completed).
+  const isSelfAction = type === 'inquiry' || type === 'self_booking' || type === 'self_message' || (title && title.toLowerCase().includes('booking request received'));
+  if (isSelfAction && !extraData?.adminTriggered) {
+    return null;
+  }
+
   const notifObj = {
     id: 'cust_notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
     type,
