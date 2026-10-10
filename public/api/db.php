@@ -55,7 +55,7 @@ function slugifyText($text) {
     return empty($text) ? 'n-a' : $text;
 }
 
-function dispatchNativeWebPush($pdo, $title, $body, $url = '/admin?tab=inquiries', $tag = null, $userType = 'admin') {
+function dispatchNativeWebPush($pdo, $title, $body, $url = '/admin?tab=inquiries', $tag = null, $userType = 'admin', $targetPhone = '', $targetEmail = '') {
     if (!$pdo) return ['success' => false, 'error' => 'No database connection'];
     $tag = $tag ?: ('disp-' . round(microtime(true) * 1000));
 
@@ -85,9 +85,29 @@ function dispatchNativeWebPush($pdo, $title, $body, $url = '/admin?tab=inquiries
     } catch (Exception $e) {}
 
     try {
-        $stmt = $pdo->prepare("SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_type = :ut GROUP BY p256dh ORDER BY id DESC LIMIT 50");
-        $stmt->execute([':ut' => $userType]);
-        $subs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if ($userType === 'customer' && (!empty($targetPhone) || !empty($targetEmail))) {
+            $pClean = preg_replace('/\D/', '', $targetPhone);
+            $p10 = strlen($pClean) >= 10 ? substr($pClean, -10) : $pClean;
+            $emClean = strtolower(trim($targetEmail));
+            
+            $stmt = $pdo->prepare("SELECT id, endpoint, p256dh, auth FROM push_subscriptions 
+                                   WHERE user_type = 'customer' 
+                                     AND (customer_phone IS NULL OR customer_phone = '' 
+                                          OR RIGHT(customer_phone, 10) = :p10 
+                                          OR customer_phone LIKE :plike 
+                                          OR LOWER(customer_email) = :cem)
+                                   GROUP BY p256dh ORDER BY id DESC LIMIT 50");
+            $stmt->execute([
+                ':p10' => $p10,
+                ':plike' => '%' . $p10 . '%',
+                ':cem' => $emClean
+            ]);
+            $subs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } else {
+            $stmt = $pdo->prepare("SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_type = :ut GROUP BY p256dh ORDER BY id DESC LIMIT 50");
+            $stmt->execute([':ut' => $userType]);
+            $subs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
     } catch (Exception $e) {
         return ['success' => false, 'error' => $e->getMessage()];
     }
@@ -593,11 +613,15 @@ switch ($action) {
         $cPick = $data['pickup'] ?? 'Location';
         $cDrop = $data['dropoff'] ?? 'Destination';
         $isCust = !empty($data['isCustom']) || (isset($data['tripType']) && stripos($data['tripType'], 'custom') !== false);
-        $notifTitle = $isCust ? "New Custom Route Inquiry: {$cName}" : "New Booking: {$cName}";
+        $isShort = !empty($data['isShortTrip']) || (isset($data['tripType']) && stripos($data['tripType'], 'short') !== false);
+        
+        $notifTitle = $isShort ? "New Short Trip Booking: {$cName}" : ($isCust ? "New Custom Route Inquiry: {$cName}" : "New Booking: {$cName}");
+        $notifUrl = $isShort ? "/admin?tab=short_trips" : ($isCust ? "/admin?tab=custom_inquiries" : "/admin?tab=inquiries");
+        
         triggerServerPushNotification(
             $notifTitle,
             "{$cPick} to {$cDrop}{$cFareStr}",
-            "/admin?tab=inquiries",
+            $notifUrl,
             "disp-inq_" . $id
         );
 
@@ -613,6 +637,7 @@ switch ($action) {
         $vehicle = $data['vehicle'] ?? null;
         $driverPhone = $data['driverPhone'] ?? $data['driverNumber'] ?? null;
         $plate = $data['plate'] ?? $data['vehiclePlate'] ?? $data['carPlate'] ?? null;
+        $arrivalTime = $data['arrivalTime'] ?? ($data['reachingIn'] ?? null);
         $sender = strtolower(trim($data['sender'] ?? ($data['cancelledBy'] ?? '')));
         
         $updates = ["status = :status"];
@@ -628,6 +653,11 @@ switch ($action) {
             try { $pdo->exec("ALTER TABLE inquiries ADD COLUMN plate VARCHAR(64) DEFAULT NULL"); } catch (Exception $e) {}
             $updates[] = "plate = :plate";
             $params[':plate'] = $plate;
+        }
+        if ($arrivalTime !== null) {
+            try { $pdo->exec("ALTER TABLE inquiries ADD COLUMN arrivalTime VARCHAR(64) DEFAULT NULL"); } catch (Exception $e) {}
+            $updates[] = "arrivalTime = :arrivalTime";
+            $params[':arrivalTime'] = $arrivalTime;
         }
         
         $sql = "UPDATE inquiries SET " . implode(", ", $updates) . " WHERE id = :id";
@@ -652,9 +682,11 @@ switch ($action) {
                     $cDriverPhone = $driverPhone ?: ($inqRow['driverPhone'] ?? '+91 98250 99887');
                     $cVehicle = $vehicle ?: ($inqRow['vehicle'] ?: 'SWIFT');
                     $cPlate = $plate ?: ($inqRow['plate'] ?? 'GJ-04-AB-1234');
+                    $cArrivalTime = $arrivalTime ?: ($inqRow['arrivalTime'] ?? '');
+                    $reachPrefix = !empty($cArrivalTime) ? "Cab reaching in {$cArrivalTime}! " : "";
 
                     $confTitle = "Booking Confirmed #{$id} - Driver Assigned!";
-                    $confBody = "Booking #{$id} Confirmed! Driver: {$cDriver} ({$cDriverPhone}) | Car: {$cVehicle} (Plate: {$cPlate})";
+                    $confBody = "Booking #{$id} Confirmed! {$reachPrefix}Driver: {$cDriver} ({$cDriverPhone}) | Car: {$cVehicle} (Plate: {$cPlate})";
 
                     try {
                         $nStmt = $pdo->prepare("INSERT INTO customer_notifications (id, target_phone, target_email, title, body, type, extra_data, delivered)
@@ -665,11 +697,11 @@ switch ($action) {
                             ':te' => $cEmail,
                             ':title' => $confTitle,
                             ':body' => $confBody,
-                            ':extra' => json_encode(['inquiryId' => $id, 'driver' => $cDriver, 'driverPhone' => $cDriverPhone, 'vehicle' => $cVehicle, 'plate' => $cPlate, 'adminTriggered' => true])
+                            ':extra' => json_encode(['inquiryId' => $id, 'driver' => $cDriver, 'driverPhone' => $cDriverPhone, 'vehicle' => $cVehicle, 'plate' => $cPlate, 'arrivalTime' => $cArrivalTime, 'adminTriggered' => true])
                         ]);
                     } catch (Exception $e) {}
 
-                    dispatchNativeWebPush($pdo, $confTitle, $confBody, '/?tab=rides', 'disp-cust-' . $id, 'customer');
+                    dispatchNativeWebPush($pdo, $confTitle, $confBody, '/?tab=rides', 'disp-cust-' . $id, 'customer', $cPhone, $cEmail);
                 } else if ($status === 'Rejected') {
                     $rejTitle = "Booking Request #{$id} Rejected";
                     $rejBody = "Your booking request #{$id} could not be accepted at this time.";
@@ -687,7 +719,7 @@ switch ($action) {
                         ]);
                     } catch (Exception $e) {}
 
-                    dispatchNativeWebPush($pdo, $rejTitle, $rejBody, '/?tab=rides', 'disp-cust-rej-' . $id, 'customer');
+                    dispatchNativeWebPush($pdo, $rejTitle, $rejBody, '/?tab=rides', 'disp-cust-rej-' . $id, 'customer', $cPhone, $cEmail);
                 } else if ($status === 'Cancelled') {
                     if ($sender === 'admin') {
                         // Admin cancelled -> Notify Customer
@@ -707,7 +739,7 @@ switch ($action) {
                             ]);
                         } catch (Exception $e) {}
 
-                        dispatchNativeWebPush($pdo, $cancTitle, $cancBody, '/?tab=rides', 'disp-cust-cancel-' . $id, 'customer');
+                        dispatchNativeWebPush($pdo, $cancTitle, $cancBody, '/?tab=rides', 'disp-cust-cancel-' . $id, 'customer', $cPhone, $cEmail);
                     } else {
                         // Customer cancelled -> Notify Admin
                         $adminCancTitle = "Trip Cancelled by Customer #{$id}";
@@ -1482,7 +1514,9 @@ switch ($action) {
         $endpoint = trim($data['endpoint'] ?? '');
         $p256dh = trim($data['keys']['p256dh'] ?? ($data['p256dh'] ?? ''));
         $auth = trim($data['keys']['auth'] ?? ($data['auth'] ?? ''));
-        $user_type = trim($data['user_type'] ?? ($data['userType'] ?? 'admin'));
+        $user_type = trim($data['user_type'] ?? ($data['userType'] ?? 'customer'));
+        $cust_phone = trim($data['customer_phone'] ?? ($data['customerPhone'] ?? ''));
+        $cust_email = trim($data['customer_email'] ?? ($data['customerEmail'] ?? ''));
 
         if (!empty($endpoint) && !empty($p256dh) && !empty($auth)) {
             // When an admin registers/links their device, clean any prior stale endpoints for admin
@@ -1490,14 +1524,21 @@ switch ($action) {
                 $pdo->exec("DELETE FROM push_subscriptions WHERE user_type = 'admin' AND endpoint != " . $pdo->quote($endpoint));
             }
 
-            $stmt = $pdo->prepare("INSERT INTO push_subscriptions (endpoint, p256dh, auth, user_type)
-                                   VALUES (:endpoint, :p256dh, :auth, :user_type)
-                                   ON DUPLICATE KEY UPDATE p256dh = VALUES(p256dh), auth = VALUES(auth), user_type = VALUES(user_type), updated_at = NOW()");
+            try {
+                $pdo->exec("ALTER TABLE push_subscriptions ADD COLUMN customer_phone VARCHAR(50) DEFAULT NULL");
+                $pdo->exec("ALTER TABLE push_subscriptions ADD COLUMN customer_email VARCHAR(100) DEFAULT NULL");
+            } catch (Exception $e) {}
+
+            $stmt = $pdo->prepare("INSERT INTO push_subscriptions (endpoint, p256dh, auth, user_type, customer_phone, customer_email)
+                                   VALUES (:endpoint, :p256dh, :auth, :user_type, :cphone, :cemail)
+                                   ON DUPLICATE KEY UPDATE p256dh = VALUES(p256dh), auth = VALUES(auth), user_type = VALUES(user_type), customer_phone = VALUES(customer_phone), customer_email = VALUES(customer_email), updated_at = NOW()");
             $stmt->execute([
                 ':endpoint' => $endpoint,
                 ':p256dh' => $p256dh,
                 ':auth' => $auth,
-                ':user_type' => $user_type
+                ':user_type' => $user_type,
+                ':cphone' => $cust_phone ?: null,
+                ':cemail' => $cust_email ?: null
             ]);
             echo json_encode(['success' => true]);
         } else {

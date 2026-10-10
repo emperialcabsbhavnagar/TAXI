@@ -4,7 +4,7 @@ import App from './App.jsx'
 import './index.css'
 
 // Register PWA Service Worker for Push Notifications
-if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
       .then(reg => {

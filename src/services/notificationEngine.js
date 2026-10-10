@@ -6,6 +6,7 @@
 
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { saveNotificationToMySQL, markNotificationDeliveredInMySQL, savePushSubscriptionToMySQL, sendPushNotificationViaMySQL } from './mysqlService';
 
 const VAPID_PUBLIC_KEY = 'BNjJ7GWaU-7KXkdkyyxoTyNGCRFSztK8KNtPQW9BWDycOZyVpSJZB7PZJ74JfL0ZSS9DZtrgHPe-cE9U9qi23CY';
@@ -23,8 +24,101 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
+// Helper to get saved customer phone & email
+export function getSavedCustomerCredentials() {
+  let phone = '';
+  let email = '';
+  if (typeof window !== 'undefined') {
+    try {
+      phone = localStorage.getItem('cabsy_user_phone') || '';
+      const rawProf = localStorage.getItem('cabsy_user_profile');
+      if (rawProf) {
+        const p = JSON.parse(rawProf);
+        if (p?.phone && !phone) phone = p.phone;
+        if (p?.email) email = p.email;
+      }
+    } catch (e) {}
+  }
+  return { phone, email };
+}
+
+// Native Trip Sync bridge for Android background wake-up
+export const syncNativeCustomerTrip = async (inquiryId, phone) => {
+  if (typeof window === 'undefined') return;
+  const cCreds = getSavedCustomerCredentials();
+  const targetPhone = phone || cCreds.phone;
+  try {
+    if (window.Capacitor?.Plugins?.NativeTripSync) {
+      await window.Capacitor.Plugins.NativeTripSync.syncCustomerTrip({
+        inquiryId: String(inquiryId || ''),
+        phone: String(targetPhone || '')
+      });
+    }
+  } catch (e) {}
+};
+
+// Global listener for Native Push Notifications (Android APK & iOS)
+if (typeof window !== 'undefined' && Capacitor.isNativePlatform()) {
+  try {
+    PushNotifications.addListener('registration', async (token) => {
+      console.log('[Push] Native device registered, token:', token?.value);
+      if (token?.value) {
+        const creds = getSavedCustomerCredentials();
+        await savePushSubscriptionToMySQL({
+          endpoint: `fcm:${token.value}`,
+          keys: {
+            p256dh: token.value.slice(0, 80),
+            auth: token.value.slice(0, 22)
+          },
+          user_type: isAdminContext() ? 'admin' : 'customer',
+          customer_phone: creds.phone,
+          customer_email: creds.email
+        }).catch(() => {});
+      }
+    });
+
+    PushNotifications.addListener('pushNotificationReceived', (notification) => {
+      console.log('[Push] Foreground notification received:', notification);
+    });
+
+    PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+      console.log('[Push] Notification tapped from tray:', action);
+      if (typeof window !== 'undefined') {
+        window.location.href = '/?tab=rides';
+      }
+    });
+  } catch (e) {}
+}
+
+// Universal push registration for both Native Android/iOS (PushNotifications) & Web/PWA (ServiceWorker PushManager)
+export const registerPushNotifications = async (userType = 'customer', customerPhone = '', customerEmail = '') => {
+  if (typeof window === 'undefined') return { success: false, error: 'No window context' };
+
+  let nativeSuccess = false;
+  // 1. Native Capacitor Push Notifications (Android APK / iOS app)
+  if (Capacitor.isNativePlatform()) {
+    try {
+      let perm = await PushNotifications.checkPermissions();
+      if (perm.receive !== 'granted') {
+        perm = await PushNotifications.requestPermissions();
+      }
+      if (perm.receive === 'granted') {
+        await PushNotifications.register();
+        nativeSuccess = true;
+      }
+    } catch (ne) {
+      console.warn('[Push] Native PushNotifications init warning:', ne);
+    }
+  }
+
+  // 2. WebPush via ServiceWorker PushManager (for PWA, Android Chrome, and Desktop)
+  const webResult = await registerWebPushSubscription(userType, customerPhone, customerEmail).catch(() => ({ success: false }));
+
+  return { success: Boolean(nativeSuccess || webResult?.success), nativeSuccess, webResult };
+};
+
 // Register Apple APNs / Google FCM Push Manager Subscription & Save to Hostinger MySQL
-export const registerWebPushSubscription = async (userType = 'admin') => {
+export const registerWebPushSubscription = async (userType = 'customer', customerPhone = '', customerEmail = '') => {
   if (typeof window === 'undefined') return { success: false, error: 'No window context' };
   
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
@@ -78,13 +172,16 @@ export const registerWebPushSubscription = async (userType = 'admin') => {
       return { success: false, error: 'Failed to generate Web Push subscription payload' };
     }
 
+    const creds = getSavedCustomerCredentials();
     const payload = {
       endpoint: subJson.endpoint,
       keys: {
         p256dh: subJson.keys.p256dh,
         auth: subJson.keys.auth
       },
-      user_type: userType
+      user_type: userType,
+      customer_phone: customerPhone || creds.phone || '',
+      customer_email: customerEmail || creds.email || ''
     };
 
     const saved = await savePushSubscriptionToMySQL(payload);
@@ -668,7 +765,9 @@ export const initEcosystemScheduler = () => {
 
 export default {
   requestNotificationPermission,
+  registerPushNotifications,
   registerWebPushSubscription,
+  syncNativeCustomerTrip,
   triggerRemoteServerPush,
   sendSystemPushNotification,
   notifyAdmin,

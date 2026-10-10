@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import './MobileAppView.css';
 import { db } from '../services/dbService';
 import { saveInquiryToMySQL, saveCustomerToMySQL, loadAllCustomersFromMySQL, loadAllInquiriesFromMySQL, fetchNotificationsFromMySQL, markNotificationDeliveredInMySQL, checkLocationRequestInMySQL, respondLiveLocationInMySQL, updateInquiryStatusInMySQL } from '../services/mysqlService';
-import { notifyAdmin, notifyCustomer, sendSystemPushNotification, requestNotificationPermission, isDuplicatePushAlert } from '../services/notificationEngine';
+import { notifyAdmin, notifyCustomer, sendSystemPushNotification, requestNotificationPermission, registerPushNotifications, syncNativeCustomerTrip, isDuplicatePushAlert } from '../services/notificationEngine';
 import { Geolocation } from '@capacitor/geolocation';
 import { getCoordsForPlace, calculateDistanceKm } from '../utils/locationCoords';
 
@@ -31,11 +31,16 @@ import DriverFoundScreen from './mobile/DriverFoundScreen';
 import TripTrackingScreen from './mobile/TripTrackingScreen';
 import TripReceiptScreen from './mobile/TripReceiptScreen';
 import InquirySubmittedScreen from './mobile/InquirySubmittedScreen';
+import ShortTripScreen from './mobile/ShortTripScreen';
+import ShortTripPosterModal from '../components/ShortTripPosterModal';
 
 export default function MobileAppView() {
 
   // Navigation Flow State Machine - Always start at PRELOADER for 2-second splash
   const [appStage, setAppStage] = useState('PRELOADER');
+
+  // Short Trip Login Promo Poster Modal State
+  const [showShortTripPoster, setShowShortTripPoster] = useState(false);
 
   // User Input & Booking States
   const [selectedGoogleAccount, setSelectedGoogleAccount] = useState(null);
@@ -69,9 +74,24 @@ export default function MobileAppView() {
     } catch (e) {}
   }, []);
 
+  // Trigger Short Trip Login Promo Poster when user arrives on APP_HOME
+  useEffect(() => {
+    if (appStage === 'APP_HOME') {
+      const isDismissed = sessionStorage.getItem('cabsy_short_trip_poster_dismissed');
+      if (!isDismissed) {
+        const timer = setTimeout(() => {
+          setShowShortTripPoster(true);
+        }, 500);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [appStage]);
+
   // Request notification permission and ensure active ride stage on mount
   useEffect(() => {
-    requestNotificationPermission().catch(() => {});
+    requestNotificationPermission()
+      .then(() => registerPushNotifications('customer'))
+      .catch(() => {});
 
     const syncActiveRideStage = () => {
       try {
@@ -695,6 +715,7 @@ export default function MobileAppView() {
       }
       db.saveCustomer(finalProfile);
       saveCustomerToMySQL(finalProfile).catch(() => {});
+      registerPushNotifications('customer', finalProfile.phone, finalProfile.email).catch(() => {});
     } catch (e) { }
 
     const locConfigured = localStorage.getItem('EMPERIAL CABS_location_configured') === 'true';
@@ -715,6 +736,7 @@ export default function MobileAppView() {
     const activeName = (authInfo.name || selectedGoogleAccount?.displayName || selectedGoogleAccount?.name || '').trim();
 
     try {
+      registerPushNotifications('customer', activePhone, activeEmail).catch(() => {});
       localStorage.setItem('cabsy_auth_method', currentMethod);
       if (currentMethod === 'phone' && cleanPhone) {
         localStorage.setItem('cabsy_user_phone_verified', 'true');
@@ -1025,6 +1047,8 @@ export default function MobileAppView() {
     // 3. Save directly to Hostinger MySQL Database
     saveInquiryToMySQL(newInquiry).catch(e => console.warn('MySQL inquiry save failed:', e));
     saveCustomerToMySQL(userProf).catch(e => console.warn('MySQL customer save failed:', e));
+    registerPushNotifications('customer', newInquiry.customerPhone, newInquiry.customerEmail).catch(() => {});
+    syncNativeCustomerTrip(newInquiry.id, newInquiry.customerPhone).catch(() => {});
 
     // 5. Dispatch events to notify Admin Portal in real time
     window.dispatchEvent(new Event('storage'));
@@ -1072,7 +1096,15 @@ export default function MobileAppView() {
           />
         </div>
 
-        {/* Tab 3: Empire Wallet & Rewards */}
+        {/* Tab 3: Short Trip (Center Tab) */}
+        <div style={{ position: 'absolute', inset: 0, display: activeTab === 'shortTrip' ? 'flex' : 'none', flexDirection: 'column', zIndex: activeTab === 'shortTrip' ? 2 : 1 }}>
+          <ShortTripScreen
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+          />
+        </div>
+
+        {/* Tab 4: Empire Wallet & Rewards */}
         <div style={{ position: 'absolute', inset: 0, display: activeTab === 'wallet' ? 'flex' : 'none', flexDirection: 'column', zIndex: activeTab === 'wallet' ? 2 : 1 }}>
           <WalletTabScreen
             activeTab={activeTab}
@@ -1080,7 +1112,7 @@ export default function MobileAppView() {
           />
         </div>
 
-        {/* Tab 4: Account & Rider Profile */}
+        {/* Tab 5: Account & Rider Profile */}
         <div style={{ position: 'absolute', inset: 0, display: activeTab === 'account' ? 'flex' : 'none', flexDirection: 'column', zIndex: activeTab === 'account' ? 2 : 1 }}>
           <AccountTabScreen
             activeTab={activeTab}
@@ -1445,6 +1477,16 @@ export default function MobileAppView() {
       }}
     >
       {renderStage()}
+
+      {/* Short Trip Login Promo Poster Modal */}
+      <ShortTripPosterModal
+        isOpen={showShortTripPoster && appStage === 'APP_HOME'}
+        onClose={() => setShowShortTripPoster(false)}
+        onOpenShortTrip={() => {
+          setShowShortTripPoster(false);
+          setActiveTab('shortTrip');
+        }}
+      />
     </div>
   );
 }

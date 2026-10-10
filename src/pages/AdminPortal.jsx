@@ -758,6 +758,135 @@ export default function AdminPortal() {
   const driverShare = 100 - companyShare;
   const [commissionModal, setCommissionModal] = useState(false);
 
+  // Short Trip Pricing and Approval Control States
+  const [shortTripPricing, setShortTripPricing] = useState(() => {
+    try {
+      const saved = localStorage.getItem('cabsy_short_trip_pricing');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return {
+      sedan: { km10: 299, km20: 499, km30: 0, km40: 0, extraKmRate: 14 },
+      suv: { km10: 449, km20: 699, km30: 0, km40: 0, extraKmRate: 18 }
+    };
+  });
+  const [shortTripFilter, setShortTripFilter] = useState('all'); // 'all' | 'pending' | 'confirmed' | 'completed'
+  const [shortTripApprovalModal, setShortTripApprovalModal] = useState({
+    open: false,
+    inquiry: null,
+    driverName: '',
+    driverPhone: '',
+    carPlate: '',
+    carModel: 'Sedan (4 Seater)',
+    arrivalTime: '10 Mins'
+  });
+  const [pricingSaving, setPricingSaving] = useState(false);
+
+  // Load Short Trip pricing from MySQL settings on mount
+  useEffect(() => {
+    loadSettingsFromMySQL().then(res => {
+      if (res && res.short_trip_pricing) {
+        try {
+          const parsed = typeof res.short_trip_pricing === 'string' ? JSON.parse(res.short_trip_pricing) : res.short_trip_pricing;
+          setShortTripPricing(parsed);
+          localStorage.setItem('cabsy_short_trip_pricing', JSON.stringify(parsed));
+        } catch (e) {}
+      }
+    }).catch(() => {});
+  }, []);
+
+  const handleSaveShortTripPricing = async () => {
+    setPricingSaving(true);
+    try {
+      localStorage.setItem('cabsy_short_trip_pricing', JSON.stringify(shortTripPricing));
+      await saveSettingToMySQL('short_trip_pricing', JSON.stringify(shortTripPricing));
+      alert('Short Trip pricing updated successfully!');
+    } catch (e) {
+      alert('Short Trip pricing saved locally.');
+    } finally {
+      setPricingSaving(false);
+    }
+  };
+
+  const handleOpenShortTripApproval = (inq) => {
+    if (!inq) return;
+    const defaultDriver = drivers && drivers.length > 0 ? drivers[0] : null;
+    const isSuv = inq.vehicleType === 'suv' || (inq.vehicle && inq.vehicle.toLowerCase().includes('suv'));
+    setShortTripApprovalModal({
+      open: true,
+      inquiry: inq,
+      driverName: defaultDriver?.name || 'Jayesh Parmar',
+      driverPhone: defaultDriver?.phone || '+91 98250 99887',
+      carPlate: defaultDriver?.plate || (isSuv ? 'GJ-04-ER-5678' : 'GJ-04-AB-1234'),
+      carModel: isSuv ? 'SUV (6-7 Seater)' : 'Sedan (4 Seater)',
+      arrivalTime: '10 Mins'
+    });
+  };
+
+  const handleConfirmShortTripApproval = async () => {
+    const inq = shortTripApprovalModal.inquiry;
+    if (!inq || !inq.id) return;
+    const { driverName, driverPhone, carPlate, carModel, arrivalTime } = shortTripApprovalModal;
+
+    try {
+      const updatedInquiries = inquiries.map(item => {
+        if (item.id === inq.id) {
+          return {
+            ...item,
+            status: 'Confirmed',
+            driver: driverName,
+            driverPhone: driverPhone,
+            plate: carPlate,
+            vehicle: carModel,
+            arrivalTime: arrivalTime
+          };
+        }
+        return item;
+      });
+
+      setInquiries(updatedInquiries);
+      localStorage.setItem('cabsy_inquiries', JSON.stringify(updatedInquiries));
+
+      await updateInquiryStatusInMySQL(
+        inq.id,
+        'Confirmed',
+        driverName,
+        carModel,
+        inq.fare,
+        0,
+        0,
+        driverPhone,
+        carPlate,
+        'admin',
+        arrivalTime
+      ).catch(() => {});
+
+      const confTitle = `Short Trip Confirmed #${inq.id} - Driver on the way!`;
+      const confBody = `Cab reaching in ${arrivalTime}! Driver: ${driverName} (${driverPhone}) | Car: ${carModel} (Plate: ${carPlate}). Booking #${inq.id}`;
+
+      notifyCustomer({
+        type: 'confirmed',
+        title: confTitle,
+        body: confBody,
+        customerPhone: inq.customerPhone || inq.phone,
+        customerEmail: inq.customerEmail || inq.email,
+        extraData: {
+          inquiryId: inq.id,
+          driver: driverName,
+          driverPhone: driverPhone,
+          vehicle: carModel,
+          plate: carPlate,
+          arrivalTime: arrivalTime,
+          isShortTrip: true,
+          adminTriggered: true
+        }
+      });
+
+      setShortTripApprovalModal({ open: false, inquiry: null, driverName: '', driverPhone: '', carPlate: '', carModel: 'Sedan (4 Seater)', arrivalTime: '10 Mins' });
+    } catch (e) {
+      console.error('Error confirming short trip approval:', e);
+    }
+  };
+
   useEffect(() => {
     localStorage.setItem('cabsy_messages', JSON.stringify(contactMessages));
     localStorage.setItem('cabsy_contact_messages', JSON.stringify(contactMessages));
@@ -3289,6 +3418,19 @@ export default function AdminPortal() {
           </button>
 
           <button 
+            className={`admin-nav-link ${activeTab === 'short_trips' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('short_trips'); setIsMobileMenuOpen(false); }}
+          >
+            <Zap size={19} />
+            <span>Short Trips</span>
+            {inquiries.filter(i => (i.isShortTrip || i.tripType === 'Short Trip' || i.tripType === 'short-trip') && i.status === 'Pending').length > 0 && (
+              <span className="badge-pending" style={{ background: '#ef4444' }}>
+                {inquiries.filter(i => (i.isShortTrip || i.tripType === 'Short Trip' || i.tripType === 'short-trip') && i.status === 'Pending').length}
+              </span>
+            )}
+          </button>
+
+          <button 
             className={`admin-nav-link ${activeTab === 'vehicles' ? 'active' : ''}`}
             onClick={() => { setActiveTab('vehicles'); setIsMobileMenuOpen(false); }}
           >
@@ -4770,6 +4912,419 @@ export default function AdminPortal() {
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB: SHORT TRIPS COMMAND CENTER */}
+        {activeTab === 'short_trips' && (
+          <div className="tab-pane">
+            <div className="pane-header flex justify-between align-center" style={{ marginBottom: '20px' }}>
+              <div>
+                <h2>Short Trips Command Center</h2>
+                <p>Manage Bhavnagar local short trips (10 KM, 20 KM, and extended tiers), configure pricing, and dispatch drivers with live arrival times.</p>
+              </div>
+            </div>
+
+            {/* 1. SHORT TRIP PRICING MANAGEMENT CARD */}
+            <div className="card" style={{ padding: '24px', marginBottom: '28px', borderRadius: '18px', background: '#FFFFFF', border: '1px solid #E2E8F0', boxShadow: '0 4px 18px rgba(0,0,0,0.04)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h3 style={{ margin: '0 0 4px', fontSize: '18px', fontWeight: 800, color: '#0F172A' }}>Bhavnagar Short Trip Pricing Configuration</h3>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#64748B' }}>
+                    Set fixed rates for 10 KM and 20 KM. Enter rates for 30 KM or 40 KM to offer them to customers (leave 0 to hide them).
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveShortTripPricing}
+                  disabled={pricingSaving}
+                  className="btn btn-primary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 22px', borderRadius: '10px', fontWeight: 700 }}
+                >
+                  <Save size={16} />
+                  <span>{pricingSaving ? 'Saving...' : 'Save Pricing Settings'}</span>
+                </button>
+              </div>
+
+              {/* PRICING INPUTS GRID */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+                {/* SEDAN COLUMN */}
+                <div style={{ background: '#F8FAFC', padding: '18px', borderRadius: '14px', border: '1.5px solid #E2E8F0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#DC2626' }} />
+                      <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#0F172A' }}>Sedan (Dzire / Aura AC)</h4>
+                    </div>
+                    <span style={{ fontSize: '11px', fontWeight: 700, backgroundColor: '#FEE2E2', color: '#B91C1C', padding: '3px 8px', borderRadius: '6px' }}>4 Seater</span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>10 KM Price (₹)</label>
+                      <input 
+                        type="number"
+                        className="form-control"
+                        value={shortTripPricing.sedan.km10}
+                        onChange={(e) => setShortTripPricing(prev => ({
+                          ...prev,
+                          sedan: { ...prev.sedan, km10: Number(e.target.value) }
+                        }))}
+                      />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>20 KM Price (₹)</label>
+                      <input 
+                        type="number"
+                        className="form-control"
+                        value={shortTripPricing.sedan.km20}
+                        onChange={(e) => setShortTripPricing(prev => ({
+                          ...prev,
+                          sedan: { ...prev.sedan, km20: Number(e.target.value) }
+                        }))}
+                      />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>30 KM Price (₹ - 0 to hide)</label>
+                      <input 
+                        type="number"
+                        className="form-control"
+                        value={shortTripPricing.sedan.km30}
+                        onChange={(e) => setShortTripPricing(prev => ({
+                          ...prev,
+                          sedan: { ...prev.sedan, km30: Number(e.target.value) }
+                        }))}
+                      />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>40 KM Price (₹ - 0 to hide)</label>
+                      <input 
+                        type="number"
+                        className="form-control"
+                        value={shortTripPricing.sedan.km40}
+                        onChange={(e) => setShortTripPricing(prev => ({
+                          ...prev,
+                          sedan: { ...prev.sedan, km40: Number(e.target.value) }
+                        }))}
+                      />
+                    </div>
+                    <div className="form-group" style={{ gridColumn: 'span 2', margin: 0 }}>
+                      <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>Extra KM Rate Beyond Chosen Distance (₹/km)</label>
+                      <input 
+                        type="number"
+                        className="form-control"
+                        value={shortTripPricing.sedan.extraKmRate}
+                        onChange={(e) => setShortTripPricing(prev => ({
+                          ...prev,
+                          sedan: { ...prev.sedan, extraKmRate: Number(e.target.value) }
+                        }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* SUV COLUMN */}
+                <div style={{ background: '#F8FAFC', padding: '18px', borderRadius: '14px', border: '1.5px solid #E2E8F0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#2563EB' }} />
+                      <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#0F172A' }}>SUV (Ertiga / Innova AC)</h4>
+                    </div>
+                    <span style={{ fontSize: '11px', fontWeight: 700, backgroundColor: '#DBEAFE', color: '#1D4ED8', padding: '3px 8px', borderRadius: '6px' }}>6-7 Seater</span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>10 KM Price (₹)</label>
+                      <input 
+                        type="number"
+                        className="form-control"
+                        value={shortTripPricing.suv.km10}
+                        onChange={(e) => setShortTripPricing(prev => ({
+                          ...prev,
+                          suv: { ...prev.suv, km10: Number(e.target.value) }
+                        }))}
+                      />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>20 KM Price (₹)</label>
+                      <input 
+                        type="number"
+                        className="form-control"
+                        value={shortTripPricing.suv.km20}
+                        onChange={(e) => setShortTripPricing(prev => ({
+                          ...prev,
+                          suv: { ...prev.suv, km20: Number(e.target.value) }
+                        }))}
+                      />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>30 KM Price (₹ - 0 to hide)</label>
+                      <input 
+                        type="number"
+                        className="form-control"
+                        value={shortTripPricing.suv.km30}
+                        onChange={(e) => setShortTripPricing(prev => ({
+                          ...prev,
+                          suv: { ...prev.suv, km30: Number(e.target.value) }
+                        }))}
+                      />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>40 KM Price (₹ - 0 to hide)</label>
+                      <input 
+                        type="number"
+                        className="form-control"
+                        value={shortTripPricing.suv.km40}
+                        onChange={(e) => setShortTripPricing(prev => ({
+                          ...prev,
+                          suv: { ...prev.suv, km40: Number(e.target.value) }
+                        }))}
+                      />
+                    </div>
+                    <div className="form-group" style={{ gridColumn: 'span 2', margin: 0 }}>
+                      <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>Extra KM Rate Beyond Chosen Distance (₹/km)</label>
+                      <input 
+                        type="number"
+                        className="form-control"
+                        value={shortTripPricing.suv.extraKmRate}
+                        onChange={(e) => setShortTripPricing(prev => ({
+                          ...prev,
+                          suv: { ...prev.suv, extraKmRate: Number(e.target.value) }
+                        }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. SHORT TRIPS INQUIRIES & BOOKINGS LIST */}
+            <div className="card" style={{ padding: '24px', borderRadius: '18px', background: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h3 style={{ margin: '0 0 4px', fontSize: '18px', fontWeight: 800, color: '#0F172A' }}>
+                    Short Trip Bookings ({inquiries.filter(i => i.isShortTrip || i.tripType === 'Short Trip' || i.tripType === 'short-trip').length})
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#64748B' }}>
+                    Real-time local cab bookings from Bhavnagar riders.
+                  </p>
+                </div>
+
+                {/* Filter Pills */}
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {[
+                    { id: 'all', label: 'All' },
+                    { id: 'pending', label: 'Pending' },
+                    { id: 'confirmed', label: 'On Ride / Confirmed' },
+                    { id: 'completed', label: 'Completed' }
+                  ].map(f => {
+                    const count = inquiries.filter(i => {
+                      if (!(i.isShortTrip || i.tripType === 'Short Trip' || i.tripType === 'short-trip')) return false;
+                      if (f.id === 'all') return true;
+                      if (f.id === 'pending') return i.status === 'Pending';
+                      if (f.id === 'confirmed') return ['Confirmed', 'In Progress', 'On Ride'].includes(i.status);
+                      if (f.id === 'completed') return i.status === 'Completed';
+                      return true;
+                    }).length;
+
+                    return (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => setShortTripFilter(f.id)}
+                        className={`btn btn-sm ${shortTripFilter === f.id ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ borderRadius: '8px', padding: '6px 12px', fontSize: '12px', fontWeight: 700 }}
+                      >
+                        {f.label} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* BOOKINGS CARDS LIST */}
+              {(() => {
+                const shortTripList = sortedInquiries.filter(i => {
+                  if (!(i.isShortTrip || i.tripType === 'Short Trip' || i.tripType === 'short-trip')) return false;
+                  if (shortTripFilter === 'pending') return i.status === 'Pending';
+                  if (shortTripFilter === 'confirmed') return ['Confirmed', 'In Progress', 'On Ride'].includes(i.status);
+                  if (shortTripFilter === 'completed') return i.status === 'Completed';
+                  return true;
+                });
+
+                if (shortTripList.length === 0) {
+                  return (
+                    <div style={{ textAlign: 'center', padding: '48px 20px', color: '#94A3B8' }}>
+                      <Car size={40} style={{ opacity: 0.35, marginBottom: '12px' }} />
+                      <div style={{ fontSize: '16px', fontWeight: 700, color: '#475569' }}>No short trip inquiries in this view</div>
+                      <div style={{ fontSize: '13px', marginTop: '4px' }}>Short trips booked by Bhavnagar customers will appear here in real time.</div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    {shortTripList.map(inq => {
+                      const isPending = inq.status === 'Pending';
+                      const isConfirmed = ['Confirmed', 'In Progress', 'On Ride'].includes(inq.status);
+                      const isCompleted = inq.status === 'Completed';
+
+                      return (
+                        <div 
+                          key={inq.id}
+                          style={{
+                            padding: '16px 20px',
+                            borderRadius: '14px',
+                            border: isPending ? '1.5px solid #F59E0B' : (isConfirmed ? '1.5px solid #10B981' : '1px solid #E2E8F0'),
+                            background: isPending ? '#FFFDF5' : (isConfirmed ? '#F0FDF4' : '#FFFFFF'),
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '12px',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+                          }}
+                        >
+                          {/* Top Row: ID, Badges, Date */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <span style={{ fontSize: '16px', fontWeight: 800, color: '#0F172A' }}>#{inq.id}</span>
+                              <span style={{ fontSize: '11px', fontWeight: 800, backgroundColor: '#FEE2E2', color: '#B91C1C', padding: '3px 8px', borderRadius: '6px' }}>
+                                {inq.selectedKm || 20} KM Short Trip
+                              </span>
+                              <span style={{ fontSize: '11px', fontWeight: 700, backgroundColor: '#E2E8F0', color: '#334155', padding: '3px 8px', borderRadius: '6px' }}>
+                                {inq.vehicle || 'Sedan'}
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{
+                                fontSize: '12px',
+                                fontWeight: 800,
+                                padding: '3px 10px',
+                                borderRadius: '999px',
+                                backgroundColor: isPending ? '#FEF3C7' : (isConfirmed ? '#D1FAE5' : '#E2E8F0'),
+                                color: isPending ? '#B45309' : (isConfirmed ? '#065F46' : '#334155')
+                              }}>
+                                {inq.status}
+                              </span>
+                              <span style={{ fontSize: '12px', color: '#64748B' }}>
+                                {inq.date || inq.scheduledDate || 'Today'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Middle Row: Customer, Pickup/Dropoff, Fare */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', alignItems: 'center' }}>
+                            <div>
+                              <div style={{ fontSize: '11px', color: '#64748B', fontWeight: 700 }}>CUSTOMER</div>
+                              <div style={{ fontSize: '15px', fontWeight: 800, color: '#0F172A' }}>
+                                {resolveCustomerName(inq)}
+                              </div>
+                              <a href={`tel:${inq.customerPhone || inq.phone}`} style={{ fontSize: '13px', fontWeight: 700, color: '#2563EB', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                                <Phone size={12} />
+                                <span>{inq.customerPhone || inq.phone}</span>
+                              </a>
+                            </div>
+
+                            <div>
+                              <div style={{ fontSize: '11px', color: '#64748B', fontWeight: 700 }}>PICKUP & DESTINATION</div>
+                              <div style={{ fontSize: '13px', fontWeight: 700, color: '#0F172A' }}>{inq.pickup || 'Bhavnagar'}</div>
+                              <div style={{ fontSize: '12px', color: '#64748B', marginTop: '2px' }}>{inq.dropoff || inq.notes}</div>
+                            </div>
+
+                            <div>
+                              <div style={{ fontSize: '11px', color: '#64748B', fontWeight: 700 }}>TOTAL FARE</div>
+                              <div style={{ fontSize: '20px', fontWeight: 800, color: '#C53030' }}>₹{inq.fare}</div>
+                              <div style={{ fontSize: '11px', color: '#64748B' }}>Extra km: ₹{inq.extraKmRate || 14}/km</div>
+                            </div>
+
+                            {/* Driver & Arrival Time info if confirmed */}
+                            {isConfirmed && (
+                              <div style={{ background: '#FFFFFF', padding: '10px 12px', borderRadius: '10px', border: '1.5px solid #10B981' }}>
+                                <div style={{ fontSize: '12px', color: '#065F46', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <Clock size={14} />
+                                  <span>REACHING IN: {inq.arrivalTime || '10 Mins'}</span>
+                                </div>
+                                <div style={{ fontSize: '14px', fontWeight: 800, color: '#0F172A', marginTop: '2px' }}>
+                                  {inq.driver || 'Assigned Driver'} ({inq.driverPhone})
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#64748B' }}>
+                                  Car: {inq.plate || 'GJ-04-AB-1234'}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', paddingTop: '8px', borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+                            {isPending && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-danger"
+                                  style={{ padding: '6px 14px', borderRadius: '8px', fontWeight: 700 }}
+                                  onClick={() => updateInquiryStatusInMySQL(inq.id, 'Rejected', null, null, null, null, null, null, null, 'admin')}
+                                >
+                                  Reject
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-success"
+                                  style={{ padding: '7px 18px', borderRadius: '8px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}
+                                  onClick={() => handleOpenShortTripApproval(inq)}
+                                >
+                                  <CheckCircle2 size={15} />
+                                  <span>Approve & Assign Driver</span>
+                                </button>
+                              </>
+                            )}
+
+                            {isConfirmed && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-secondary"
+                                  style={{ padding: '6px 12px', borderRadius: '8px', fontWeight: 700 }}
+                                  onClick={() => handleOpenShortTripApproval(inq)}
+                                >
+                                  Update Arrival Time
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-danger"
+                                  style={{ padding: '6px 12px', borderRadius: '8px', fontWeight: 700 }}
+                                  onClick={() => updateInquiryStatusInMySQL(inq.id, 'Cancelled', null, null, null, null, null, null, null, 'admin')}
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-primary"
+                                  style={{ padding: '7px 16px', borderRadius: '8px', fontWeight: 800 }}
+                                  onClick={() => updateInquiryStatusInMySQL(inq.id, 'Completed', inq.driver, inq.vehicle, inq.fare, 0, 0, inq.driverPhone, inq.plate, 'admin')}
+                                >
+                                  Mark Completed
+                                </button>
+                              </>
+                            )}
+
+                            {isCompleted && (
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-secondary"
+                                style={{ padding: '6px 12px', borderRadius: '8px', fontWeight: 700 }}
+                                onClick={() => setReceiptModal({ open: true, inquiry: inq })}
+                              >
+                                View Receipt
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -7865,6 +8420,197 @@ export default function AdminPortal() {
           </div>
         </div>
       )}
+      {/* MODAL: SHORT TRIP APPROVAL & CAB DISPATCH */}
+      {shortTripApprovalModal.open && shortTripApprovalModal.inquiry && (
+        <div 
+          className="admin-modal-overlay" 
+          onClick={() => setShortTripApprovalModal(prev => ({ ...prev, open: false, inquiry: null }))}
+        >
+          <div 
+            className="admin-modal-box card" 
+            style={{ maxWidth: '540px', width: '92%', borderRadius: '24px', padding: '26px' }} 
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #E2E8F0', paddingBottom: '14px', marginBottom: '18px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '19px', fontWeight: '800', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <CheckCircle2 size={22} style={{ color: '#10B981' }} />
+                  <span>Approve Short Trip #{shortTripApprovalModal.inquiry.id}</span>
+                </h3>
+                <p style={{ margin: '3px 0 0', fontSize: '13px', color: '#64748B' }}>
+                  {shortTripApprovalModal.inquiry.pickup} ➔ {shortTripApprovalModal.inquiry.dropoff || shortTripApprovalModal.inquiry.notes} ({shortTripApprovalModal.inquiry.selectedKm || 20} km)
+                </p>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShortTripApprovalModal(prev => ({ ...prev, open: false, inquiry: null }))}
+                style={{ background: '#F1F5F9', border: 'none', width: '36px', height: '36px', borderRadius: '50%', fontSize: '16px', cursor: 'pointer', color: '#0F172A', fontWeight: 'bold' }}
+              >✕</button>
+            </div>
+
+            {/* Quick Driver Selector */}
+            {drivers && drivers.length > 0 && (
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#475569', marginBottom: '6px', textTransform: 'uppercase' }}>
+                  Select from Registered Drivers
+                </label>
+                <select
+                  style={{ width: '100%', padding: '11px 14px', borderRadius: '12px', border: '1.5px solid #CBD5E1', fontSize: '14px', fontWeight: '700', color: '#0F172A', backgroundColor: '#FFFFFF' }}
+                  onChange={(e) => {
+                    const sel = drivers.find(d => String(d.id) === e.target.value || d.name === e.target.value);
+                    if (sel) {
+                      setShortTripApprovalModal(prev => ({
+                        ...prev,
+                        driverName: sel.name || prev.driverName,
+                        driverPhone: sel.phone || prev.driverPhone,
+                        carPlate: sel.plate || sel.vehicleNumber || prev.carPlate
+                      }));
+                    }
+                  }}
+                >
+                  <option value="">-- Choose Chauffeur --</option>
+                  {drivers.map(d => (
+                    <option key={d.id || d.name} value={d.id || d.name}>
+                      {d.name} ({d.phone}) - {d.plate || d.vehicleNumber || 'Plate N/A'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Driver Name & Driver Phone */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#475569', marginBottom: '6px' }}>
+                  DRIVER NAME *
+                </label>
+                <input
+                  type="text"
+                  value={shortTripApprovalModal.driverName}
+                  onChange={e => setShortTripApprovalModal(prev => ({ ...prev, driverName: e.target.value }))}
+                  placeholder="e.g. Jayesh Parmar"
+                  style={{ width: '100%', padding: '11px 14px', borderRadius: '12px', border: '1.5px solid #CBD5E1', fontSize: '14px', fontWeight: '700', color: '#0F172A', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#475569', marginBottom: '6px' }}>
+                  DRIVER PHONE *
+                </label>
+                <input
+                  type="text"
+                  value={shortTripApprovalModal.driverPhone}
+                  onChange={e => setShortTripApprovalModal(prev => ({ ...prev, driverPhone: e.target.value }))}
+                  placeholder="e.g. +91 98250 99887"
+                  style={{ width: '100%', padding: '11px 14px', borderRadius: '12px', border: '1.5px solid #CBD5E1', fontSize: '14px', fontWeight: '700', color: '#0F172A', boxSizing: 'border-box' }}
+                />
+              </div>
+            </div>
+
+            {/* Car Plate Number & Vehicle Model */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#475569', marginBottom: '6px' }}>
+                  CAR PLATE NUMBER *
+                </label>
+                <input
+                  type="text"
+                  value={shortTripApprovalModal.carPlate}
+                  onChange={e => setShortTripApprovalModal(prev => ({ ...prev, carPlate: e.target.value }))}
+                  placeholder="e.g. GJ-04-AB-1234"
+                  style={{ width: '100%', padding: '11px 14px', borderRadius: '12px', border: '1.5px solid #CBD5E1', fontSize: '14px', fontWeight: '700', color: '#0F172A', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#475569', marginBottom: '6px' }}>
+                  VEHICLE TYPE *
+                </label>
+                <select
+                  value={shortTripApprovalModal.carModel}
+                  onChange={e => setShortTripApprovalModal(prev => ({ ...prev, carModel: e.target.value }))}
+                  style={{ width: '100%', padding: '11px 14px', borderRadius: '12px', border: '1.5px solid #CBD5E1', fontSize: '14px', fontWeight: '700', color: '#0F172A', boxSizing: 'border-box', backgroundColor: '#FFFFFF' }}
+                >
+                  <option value="Sedan (4 Seater)">Sedan (4 Seater)</option>
+                  <option value="SUV (6-7 Seater)">SUV (6-7 Seater)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Estimated Cab Arrival Time */}
+            <div style={{ marginBottom: '20px', backgroundColor: '#EFF6FF', padding: '14px 16px', borderRadius: '16px', border: '1.5px solid #BFDBFE' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '800', color: '#1E40AF', marginBottom: '6px' }}>
+                <Clock size={16} />
+                <span>WHEN WILL CAB REACH PICKUP LOCATION? *</span>
+              </label>
+              <input
+                type="text"
+                value={shortTripApprovalModal.arrivalTime}
+                onChange={e => setShortTripApprovalModal(prev => ({ ...prev, arrivalTime: e.target.value }))}
+                placeholder="e.g. 10 Mins or 5-7 Mins"
+                style={{ width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1.5px solid #93C5FD', fontSize: '15px', fontWeight: '800', color: '#1E3A8A', backgroundColor: '#FFFFFF', boxSizing: 'border-box' }}
+              />
+              <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                {['5 Mins', '7-10 Mins', '10 Mins', '15 Mins', '20 Mins'].map(preset => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setShortTripApprovalModal(prev => ({ ...prev, arrivalTime: preset }))}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '8px',
+                      border: '1px solid #93C5FD',
+                      backgroundColor: shortTripApprovalModal.arrivalTime === preset ? '#2563EB' : '#FFFFFF',
+                      color: shortTripApprovalModal.arrivalTime === preset ? '#FFFFFF' : '#1E40AF',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+              <small style={{ color: '#3B82F6', fontSize: '11px', marginTop: '6px', display: 'block', fontWeight: '600' }}>
+                This exact arrival time will be shown live on the customer's app and in their push notification.
+              </small>
+            </div>
+
+            {/* Modal Actions */}
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setShortTripApprovalModal(prev => ({ ...prev, open: false, inquiry: null }))}
+                style={{ borderRadius: '12px', padding: '10px 18px', fontWeight: '700' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmShortTripApproval}
+                style={{
+                  background: 'linear-gradient(135deg, #059669 0%, #10B981 100%)',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: '12px',
+                  padding: '11px 22px',
+                  fontSize: '15px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <CheckCircle2 size={16} />
+                <span>Approve & Notify Customer</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MOBILE BOTTOM APP DOCK FOR ONE-TOUCH NAVIGATION */}
       <nav className="admin-mobile-bottom-dock">
         <button 

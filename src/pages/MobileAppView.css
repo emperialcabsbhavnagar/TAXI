@@ -977,3 +977,41 @@
   .nav-tab-item span { font-size: 10px; }
 }
 
+/* Center Short Trip Tab Button Styling */
+.nav-tab-center-short-trip {
+  position: relative;
+}
+
+.nav-tab-center-short-trip .nav-short-trip-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #FEE2E2;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.nav-tab-center-short-trip .nav-short-trip-icon-wrapper .nav-tab-svg {
+  stroke: #DC2626;
+  width: 17px;
+  height: 17px;
+}
+
+.nav-tab-center-short-trip.active {
+  color: #B91C1C !important;
+  background: #FEF2F2 !important;
+}
+
+.nav-tab-center-short-trip.active .nav-short-trip-icon-wrapper {
+  background: #DC2626;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.35);
+  transform: translateY(-2px);
+}
+
+.nav-tab-center-short-trip.active .nav-short-trip-icon-wrapper .nav-tab-svg {
+  stroke: #FFFFFF !important;
+}
+
+

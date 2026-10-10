@@ -27,6 +27,19 @@ export default function BottomNavBar({ activeTab, setActiveTab }) {
         <span>My Rides</span>
       </button>
 
+      {/* CENTER TAB: Short Trip */}
+      <button 
+        className={`nav-tab-item nav-tab-center-short-trip ${activeTab === 'shortTrip' ? 'active' : ''}`} 
+        onClick={() => setActiveTab('shortTrip')}
+      >
+        <div className="nav-short-trip-icon-wrapper">
+          <svg className="nav-tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+        </div>
+        <span>Short Trip</span>
+      </button>
+
       <button 
         className={`nav-tab-item ${activeTab === 'wallet' ? 'active' : ''}`} 
         onClick={() => setActiveTab('wallet')}

@@ -33,6 +33,14 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <receiver
+            android:name=".TripNotificationReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.emperialcabs.booking.CHECK_TRIP_NOTIFICATION" />
+            </intent-filter>
+        </receiver>
     </application>
 
     <!-- Permissions for GPS Location, Network Map Tiles & Push Notifications -->
@@ -41,4 +49,6 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 </manifest>

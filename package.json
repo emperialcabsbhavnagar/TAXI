@@ -16,6 +16,7 @@
     "@capacitor/geolocation": "^7.0.0",
     "@capacitor/ios": "^7.0.0",
     "@capacitor/local-notifications": "^7.0.7",
+    "@capacitor/push-notifications": "^7.0.3",
     "@codetrix-studio/capacitor-google-auth": "^3.4.0-rc.4",
     "firebase": "^12.17.1",
     "leaflet": "^1.9.4",

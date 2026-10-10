@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import BottomNavBar from '../../components/BottomNavBar';
 import { INITIAL_VEHICLES } from '../AdminPortal';
 import { loadAllInquiriesFromMySQL, updateInquiryStatusInMySQL, saveInquiryToMySQL } from '../../services/mysqlService';
-import { notifyAdmin } from '../../services/notificationEngine';
+import { notifyAdmin, registerPushNotifications } from '../../services/notificationEngine';
 import db from '../../services/dbService';
 import { Calendar, Clock3, CheckCircle2, XCircle, Car, ArrowRight, X, Edit3, User, Phone } from 'lucide-react';
 
@@ -94,6 +94,7 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
   };
 
   useEffect(() => {
+    registerPushNotifications('customer').catch(() => {});
     loadInquiries();
 
     // Listen for live updates from Admin Portal or booking submissions
