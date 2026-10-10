@@ -613,6 +613,7 @@ switch ($action) {
         $vehicle = $data['vehicle'] ?? null;
         $driverPhone = $data['driverPhone'] ?? $data['driverNumber'] ?? null;
         $plate = $data['plate'] ?? $data['vehiclePlate'] ?? $data['carPlate'] ?? null;
+        $sender = strtolower(trim($data['sender'] ?? ($data['cancelledBy'] ?? '')));
         
         $updates = ["status = :status"];
         $params = [':status' => $status, ':id' => $id];
@@ -632,6 +633,103 @@ switch ($action) {
         $sql = "UPDATE inquiries SET " . implode(", ", $updates) . " WHERE id = :id";
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
+
+        // Automated dispatch notifications on status change
+        try {
+            $inqFetchStmt = $pdo->prepare("SELECT * FROM inquiries WHERE id = ?");
+            $inqFetchStmt->execute([$id]);
+            $inqRow = $inqFetchStmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($inqRow) {
+                $cPhone = trim($inqRow['customerPhone'] ?? '');
+                $cEmail = trim($inqRow['customerEmail'] ?? '');
+                $cName = trim($inqRow['customerName'] ?? 'Customer');
+                $pickup = trim($inqRow['pickup'] ?? 'Pickup');
+                $dropoff = trim($inqRow['dropoff'] ?? 'Dropoff');
+
+                if ($status === 'Confirmed') {
+                    $cDriver = $driver ?: ($inqRow['driver'] ?: 'Assigned Driver');
+                    $cDriverPhone = $driverPhone ?: ($inqRow['driverPhone'] ?? '+91 98250 99887');
+                    $cVehicle = $vehicle ?: ($inqRow['vehicle'] ?: 'SWIFT');
+                    $cPlate = $plate ?: ($inqRow['plate'] ?? 'GJ-04-AB-1234');
+
+                    $confTitle = "Booking Confirmed #{$id} - Driver Assigned!";
+                    $confBody = "Booking #{$id} Confirmed! Driver: {$cDriver} ({$cDriverPhone}) | Car: {$cVehicle} (Plate: {$cPlate})";
+
+                    try {
+                        $nStmt = $pdo->prepare("INSERT INTO customer_notifications (id, target_phone, target_email, title, body, type, extra_data, delivered)
+                                                VALUES (:id, :tp, :te, :title, :body, 'confirmed', :extra, 0)");
+                        $nStmt->execute([
+                            ':id' => 'notif_conf_' . $id . '_' . round(microtime(true) * 1000),
+                            ':tp' => $cPhone,
+                            ':te' => $cEmail,
+                            ':title' => $confTitle,
+                            ':body' => $confBody,
+                            ':extra' => json_encode(['inquiryId' => $id, 'driver' => $cDriver, 'driverPhone' => $cDriverPhone, 'vehicle' => $cVehicle, 'plate' => $cPlate, 'adminTriggered' => true])
+                        ]);
+                    } catch (Exception $e) {}
+
+                    dispatchNativeWebPush($pdo, $confTitle, $confBody, '/?tab=rides', 'disp-cust-' . $id, 'customer');
+                } else if ($status === 'Rejected') {
+                    $rejTitle = "Booking Request #{$id} Rejected";
+                    $rejBody = "Your booking request #{$id} could not be accepted at this time.";
+
+                    try {
+                        $nStmt = $pdo->prepare("INSERT INTO customer_notifications (id, target_phone, target_email, title, body, type, extra_data, delivered)
+                                                VALUES (:id, :tp, :te, :title, :body, 'rejected', :extra, 0)");
+                        $nStmt->execute([
+                            ':id' => 'notif_rej_' . $id . '_' . round(microtime(true) * 1000),
+                            ':tp' => $cPhone,
+                            ':te' => $cEmail,
+                            ':title' => $rejTitle,
+                            ':body' => $rejBody,
+                            ':extra' => json_encode(['inquiryId' => $id, 'status' => 'Rejected', 'adminTriggered' => true])
+                        ]);
+                    } catch (Exception $e) {}
+
+                    dispatchNativeWebPush($pdo, $rejTitle, $rejBody, '/?tab=rides', 'disp-cust-rej-' . $id, 'customer');
+                } else if ($status === 'Cancelled') {
+                    if ($sender === 'admin') {
+                        // Admin cancelled -> Notify Customer
+                        $cancTitle = "Booking #{$id} Cancelled";
+                        $cancBody = "Your booking #{$id} for {$pickup} → {$dropoff} was cancelled by EMPERIAL CABS dispatch.";
+
+                        try {
+                            $nStmt = $pdo->prepare("INSERT INTO customer_notifications (id, target_phone, target_email, title, body, type, extra_data, delivered)
+                                                    VALUES (:id, :tp, :te, :title, :body, 'cancelled', :extra, 0)");
+                            $nStmt->execute([
+                                ':id' => 'notif_canc_' . $id . '_' . round(microtime(true) * 1000),
+                                ':tp' => $cPhone,
+                                ':te' => $cEmail,
+                                ':title' => $cancTitle,
+                                ':body' => $cancBody,
+                                ':extra' => json_encode(['inquiryId' => $id, 'status' => 'Cancelled', 'adminTriggered' => true])
+                            ]);
+                        } catch (Exception $e) {}
+
+                        dispatchNativeWebPush($pdo, $cancTitle, $cancBody, '/?tab=rides', 'disp-cust-cancel-' . $id, 'customer');
+                    } else {
+                        // Customer cancelled -> Notify Admin
+                        $adminCancTitle = "Trip Cancelled by Customer #{$id}";
+                        $adminCancBody = "Customer {$cName} ({$cPhone}) cancelled booking #{$id}: {$pickup} → {$dropoff}";
+
+                        try {
+                            $nStmt = $pdo->prepare("INSERT INTO customer_notifications (id, target_phone, target_email, title, body, type, extra_data, delivered)
+                                                    VALUES (:id, 'ADMIN', 'emperialcabsbhavnagar@gmail.com', :title, :body, 'cancellation', :extra, 0)");
+                            $nStmt->execute([
+                                ':id' => 'admin_cancel_' . $id . '_' . round(microtime(true) * 1000),
+                                ':title' => $adminCancTitle,
+                                ':body' => $adminCancBody,
+                                ':extra' => json_encode(['inquiryId' => $id, 'status' => 'Cancelled', 'customerName' => $cName, 'customerPhone' => $cPhone])
+                            ]);
+                        } catch (Exception $e) {}
+
+                        dispatchNativeWebPush($pdo, $adminCancTitle, $adminCancBody, '/admin?tab=inquiries', 'disp-inq_cancel_' . $id, 'admin');
+                    }
+                }
+            }
+        } catch (Exception $e) {}
+
         echo json_encode(['success' => true]);
         break;
 
@@ -1185,6 +1283,15 @@ switch ($action) {
                 $body,
                 "/admin?tab=inquiries",
                 "disp-notif_" . $id
+            );
+        } else if (strtoupper($target_phone) !== 'ADMIN' && !$isInq) {
+            dispatchNativeWebPush(
+                $pdo,
+                $title,
+                $body,
+                "/?tab=rides",
+                "disp-cust-" . ($notifInqId ?: $id),
+                "customer"
             );
         }
 

@@ -139,7 +139,10 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
 
     try {
       const targetInq = inquiries.find(item => item.id === inqId || item.createdAt === inqId);
-      updateInquiryStatusInMySQL(inqId, 'Cancelled').catch(() => {});
+      updateInquiryStatusInMySQL(inqId, 'Cancelled', null, null, null, null, null, null, null, 'customer').catch(() => {});
+      try {
+        localStorage.setItem(`cabsy_inquiry_cancelled_notified_${inqId}`, 'true');
+      } catch (e) {}
       const updatedList = inquiries.map(item => {
         if (item.id === inqId || (item.createdAt && item.createdAt === inqId)) {
           return { ...item, status: 'Cancelled' };

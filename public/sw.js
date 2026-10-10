@@ -81,16 +81,25 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // 1. Check if an admin window is already open
+      // 1. Check if an app window is already open
       for (let i = 0; i < clientList.length; i++) {
         const client = clientList[i];
-        if (client.url && (client.url.includes('admin') || client.url.includes('/admin')) && 'focus' in client) {
-          client.postMessage({
-            type: 'NAVIGATE_ADMIN_TAB',
-            tab: targetTab,
-            url: targetUrl
-          });
-          return client.focus();
+        if ('focus' in client) {
+          if (client.url && (client.url.includes('admin') || client.url.includes('/admin'))) {
+            client.postMessage({
+              type: 'NAVIGATE_ADMIN_TAB',
+              tab: targetTab,
+              url: targetUrl
+            });
+            return client.focus();
+          } else {
+            client.postMessage({
+              type: 'NAVIGATE_CUSTOMER_TAB',
+              tab: targetTab,
+              url: targetUrl
+            });
+            return client.focus();
+          }
         }
       }
       // 2. Otherwise open fresh window directly to target tab

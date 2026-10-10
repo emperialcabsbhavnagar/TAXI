@@ -488,9 +488,9 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
   const targetTab = extraData?.tab || (type === 'custom' || type === 'custom-trip' ? 'custom_inquiries' : 'inquiries');
   const targetUrl = `/admin?tab=${targetTab}`;
 
-  // 1. Save to Remote MySQL ONLY for non-inquiry events (messages/system events)
+  // 1. Save to Remote MySQL ONLY for non-inquiry events (messages/system events) or cancellations
   // Inquiries are ALREADY saved to MySQL inquiries table; saving here creates duplicate alert polls
-  const isBookingInquiry = Boolean(inqId || type === 'inquiry' || type === 'custom' || type === 'custom_inquiry' || type === 'custom-trip');
+  const isBookingInquiry = !isCancel && Boolean(inqId || type === 'inquiry' || type === 'custom' || type === 'custom_inquiry' || type === 'custom-trip');
   if (!isBookingInquiry) {
     try {
       saveNotificationToMySQL({
@@ -604,7 +604,7 @@ export const notifyCustomer = ({ type = 'inquiry', title, body, customerPhone, c
     } catch (e) {}
   }
 
-  const isBookingInquiry = type === 'inquiry' || (title && title.toLowerCase().includes('booking request'));
+  const isBookingInquiry = type === 'inquiry' || (title && title.toLowerCase().includes('booking request received'));
   if (!isBookingInquiry) {
     try {
       saveNotificationToMySQL({
@@ -615,6 +615,16 @@ export const notifyCustomer = ({ type = 'inquiry', title, body, customerPhone, c
         body: body,
         type: type,
         extra_data: extraData
+      }).catch(() => {});
+    } catch (e) {}
+
+    try {
+      triggerRemoteServerPush({
+        title,
+        body,
+        url: '/?tab=rides',
+        userType: 'customer',
+        tag: 'disp-cust-' + (extraData?.inquiryId || notifObj.id)
       }).catch(() => {});
     } catch (e) {}
   }

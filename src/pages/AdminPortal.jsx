@@ -2395,7 +2395,8 @@ export default function AdminPortal() {
         0,
         0,
         driverPhone,
-        chosenPlate
+        chosenPlate,
+        'admin'
       ).catch(() => {});
     }
 
@@ -2412,12 +2413,10 @@ export default function AdminPortal() {
 
     autoSyncCustomer(resolveCustomerName(inq), inq.customerPhone || inq.phone, inq.fare);
     
-    // Direct notification to customer with car, driver, driver number, and car numberplate
+    // Direct notification to customer with confirmation number, driver, driver phone, car, plate
     const isCustomTrip = Boolean(inq.isCustom || inq.tripType === 'Custom Trip' || inq.tripType === 'custom-trip');
-    const notifTitle = isCustomTrip 
-      ? '✨ Custom Trip Confirmed - Chauffeur Assigned!' 
-      : 'Booking Confirmed - Driver Assigned!';
-    const notifBody = `Car: ${chosenVehicle} | Plate: ${chosenPlate} | Chauffeur: ${driverObj.name} (${driverPhone}) | Route: ${inq.pickupCity || inq.pickup} → ${inq.dropoffCity || inq.dropoff}`;
+    const notifTitle = `Booking Confirmed #${inq.id} - Driver Assigned!`;
+    const notifBody = `Booking #${inq.id} Confirmed! Driver: ${driverObj.name} (${driverPhone}) | Car: ${chosenVehicle} (Plate: ${chosenPlate})`;
 
     notifyCustomer({
       type: 'confirmed',
@@ -2431,7 +2430,8 @@ export default function AdminPortal() {
         driverPhone: driverPhone,
         vehicle: chosenVehicle,
         plate: chosenPlate,
-        isCustom: isCustomTrip
+        isCustom: isCustomTrip,
+        adminTriggered: true
       }
     });
 
@@ -2693,7 +2693,7 @@ export default function AdminPortal() {
     });
 
     if (targetInq) {
-      updateInquiryStatusInMySQL(inquiryId, 'Cancelled').catch(() => {});
+      updateInquiryStatusInMySQL(inquiryId, 'Cancelled', null, null, null, null, null, null, null, 'admin').catch(() => {});
       updateInquiryStatus(inquiryId, 'Cancelled').catch(() => {});
 
       if (Number(targetInq.walletDiscountUsed) > 0 && targetInq.customerPhone) {
@@ -2702,10 +2702,15 @@ export default function AdminPortal() {
 
       notifyCustomer({
         type: 'cancelled',
-        title: 'Booking Cancelled',
-        body: `Your booking request for ${targetInq.pickup} → ${targetInq.dropoff} was cancelled by EMPERIAL CABS dispatch.`,
-        customerPhone: targetInq.customerPhone,
-        customerEmail: targetInq.customerEmail
+        title: `Booking #${inquiryId} Cancelled`,
+        body: `Your booking #${inquiryId} for ${targetInq.pickup} → ${targetInq.dropoff} was cancelled by EMPERIAL CABS dispatch.`,
+        customerPhone: targetInq.customerPhone || targetInq.phone,
+        customerEmail: targetInq.customerEmail || targetInq.email,
+        extraData: {
+          inquiryId: inquiryId,
+          status: 'Cancelled',
+          adminTriggered: true
+        }
       });
     }
 
@@ -3088,46 +3093,6 @@ export default function AdminPortal() {
           <img src="/EMPERAL_CABS_Website_Logo_Sharp.svg" alt="EMPERIAL CABS" className="mobile-brand-logo" />
         </div>
         <div className="mobile-header-right flex align-center gap-2">
-          {(!isPushRegistered || notifPermissionState !== 'granted') ? (
-            <button 
-              className="btn flex align-center gap-1"
-              onClick={handleEnableNotifications}
-              style={{
-                background: '#10B981',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '10px',
-                padding: '6px 10px',
-                fontSize: '12px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)'
-              }}
-              title="Enable iPhone & Android Lock-Screen Push Alerts"
-            >
-              <Bell size={13} />
-              <span>Enable Alerts</span>
-            </button>
-          ) : (
-            <button 
-              className="btn flex align-center gap-1"
-              onClick={handleTestAlertSound}
-              style={{
-                background: 'rgba(16, 185, 129, 0.15)',
-                color: '#10B981',
-                border: '1px solid #10B981',
-                borderRadius: '10px',
-                padding: '6px 8px',
-                fontSize: '11px',
-                fontWeight: '700',
-                cursor: 'pointer'
-              }}
-              title="Alerts Active - Tap to test lock-screen push & chime"
-            >
-              <CheckCircle2 size={12} />
-              <span>Alerts Active</span>
-            </button>
-          )}
           <div style={{ position: 'relative' }}>
             <button 
               className="mobile-notif-pill-btn" 
@@ -4511,8 +4476,20 @@ export default function AdminPortal() {
                                     disabled={!!actionLoadingId}
                                     onClick={() => {
                                       setActionLoadingId('cancel_' + inq.id);
-                                      updateInquiryStatusInMySQL(inq.id, 'Rejected').catch(() => {});
+                                      updateInquiryStatusInMySQL(inq.id, 'Rejected', null, null, null, null, null, null, null, 'admin').catch(() => {});
                                       setInquiries(prev => prev.map(item => item.id === inq.id ? { ...item, status: 'Rejected' } : item));
+                                      notifyCustomer({
+                                        type: 'rejected',
+                                        title: `Booking Request #${inq.id} Rejected`,
+                                        body: `Your custom trip inquiry #${inq.id} (${inq.pickup} → ${inq.dropoff}) could not be accepted at this time.`,
+                                        customerPhone: inq.customerPhone || inq.phone,
+                                        customerEmail: inq.customerEmail || inq.email,
+                                        extraData: {
+                                          inquiryId: inq.id,
+                                          status: 'Rejected',
+                                          adminTriggered: true
+                                        }
+                                      });
                                       window.dispatchEvent(new Event('storage'));
                                       setTimeout(() => setActionLoadingId(null), 300);
                                     }}
@@ -4625,8 +4602,20 @@ export default function AdminPortal() {
                               disabled={!!actionLoadingId}
                               onClick={() => {
                                 setActionLoadingId('cancel_' + inq.id);
-                                updateInquiryStatusInMySQL(inq.id, 'Rejected').catch(() => {});
+                                updateInquiryStatusInMySQL(inq.id, 'Rejected', null, null, null, null, null, null, null, 'admin').catch(() => {});
                                 setInquiries(prev => prev.map(item => item.id === inq.id ? { ...item, status: 'Rejected' } : item));
+                                notifyCustomer({
+                                  type: 'rejected',
+                                  title: `Booking Request #${inq.id} Rejected`,
+                                  body: `Your custom trip inquiry #${inq.id} (${inq.pickup} → ${inq.dropoff}) could not be accepted at this time.`,
+                                  customerPhone: inq.customerPhone || inq.phone,
+                                  customerEmail: inq.customerEmail || inq.email,
+                                  extraData: {
+                                    inquiryId: inq.id,
+                                    status: 'Rejected',
+                                    adminTriggered: true
+                                  }
+                                });
                                 window.dispatchEvent(new Event('storage'));
                                 setTimeout(() => setActionLoadingId(null), 300);
                               }}
