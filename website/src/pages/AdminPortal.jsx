@@ -334,7 +334,6 @@ export default function AdminPortal() {
   // Notification & Live MySQL Data Sync Engine
   useEffect(() => {
     requestNotificationPermission();
-    initEcosystemScheduler();
 
     const fetchAllData = async () => {
       try {

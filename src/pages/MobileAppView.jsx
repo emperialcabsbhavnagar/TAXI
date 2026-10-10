@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import './MobileAppView.css';
 import { db } from '../services/dbService';
 import { saveInquiryToMySQL, saveCustomerToMySQL, loadAllCustomersFromMySQL, loadAllInquiriesFromMySQL, fetchNotificationsFromMySQL, markNotificationDeliveredInMySQL, checkLocationRequestInMySQL, respondLiveLocationInMySQL, updateInquiryStatusInMySQL } from '../services/mysqlService';
-import { notifyAdmin, notifyCustomer, sendSystemPushNotification, requestNotificationPermission } from '../services/notificationEngine';
+import { notifyAdmin, notifyCustomer, sendSystemPushNotification, requestNotificationPermission, isDuplicatePushAlert } from '../services/notificationEngine';
 import { Geolocation } from '@capacitor/geolocation';
 import { getCoordsForPlace, calculateDistanceKm } from '../utils/locationCoords';
 
@@ -396,12 +396,13 @@ export default function MobileAppView() {
             if (isActiveTrip && hasDriver && !isInitialRun) {
               const notifKey = `cabsy_driver_assigned_notified_${inq.id}_${inq.driver}_${inq.plate || ''}`;
               const generalKey = `cabsy_driver_assigned_notified_${inq.id}`;
+              const unifiedAlertKey = `cust_driver_${inq.id}`;
               if (!localStorage.getItem(notifKey) && !localStorage.getItem(generalKey)) {
                 localStorage.setItem(notifKey, 'true');
                 localStorage.setItem(generalKey, 'true');
                 
-                // Never push alert for past trips restored from database
-                if (!isHistoricalTrip) {
+                // Never push alert for past trips restored from database or already alerted
+                if (!isHistoricalTrip && !isDuplicatePushAlert(unifiedAlertKey, 120000)) {
                   const carName = inq.vehicle || inq.selectedCar || inq.carName || 'SWIFT';
                   const plateNo = inq.plate || inq.vehiclePlate || inq.carPlate || 'GJ-04-AB-1234';
                   const driverName = inq.driver;
@@ -414,6 +415,7 @@ export default function MobileAppView() {
                     customerPhone: inq.customerPhone,
                     customerEmail: inq.customerEmail,
                     extraData: {
+                      inquiryId: inq.id,
                       driver: driverName,
                       driverPhone: driverContact,
                       vehicle: carName,
@@ -427,13 +429,14 @@ export default function MobileAppView() {
             // Handle trip completed & receipt delivery when status is Completed in MySQL
             if (inqStatus.toLowerCase() === 'completed') {
               const compKey = `cabsy_trip_completed_handled_${inq.id}`;
+              const unifiedReceiptKey = `cust_receipt_${inq.id}`;
               if (!localStorage.getItem(compKey) && !isInitialRun) {
                 localStorage.setItem(compKey, 'true');
                 localStorage.setItem('EMPERIAL CABS_last_completed_trip', JSON.stringify(inq));
                 localStorage.removeItem('EMPERIAL CABS_active_trip');
 
-                // Never push receipt alert for past trips restored from database upon login
-                if (!isHistoricalTrip) {
+                // Never push receipt alert for past trips restored from database upon login or already alerted
+                if (!isHistoricalTrip && !isDuplicatePushAlert(unifiedReceiptKey, 120000)) {
                   notifyCustomer({
                     type: 'receipt',
                     title: `🧾 Official Trip E-Receipt #${inq.id}`,
@@ -510,6 +513,23 @@ export default function MobileAppView() {
               const cnSig = (cn.title || '').trim().toLowerCase() + '|' + (cn.body || '').trim().toLowerCase();
               const cnKey = `cabsy_cloud_notif_delivered_${cn.id}`;
 
+              let parsedExtra = {};
+              try {
+                parsedExtra = typeof cn.extra_data === 'string' ? JSON.parse(cn.extra_data) : (cn.extra_data || {});
+              } catch(e) {}
+              const cnInqId = parsedExtra.inquiryId || cn.inquiry_id;
+              const isDriverOrConfirm = cn.type === 'confirmed' || cn.type === 'driver_assigned';
+              const isReceipt = cn.type === 'receipt';
+              const unifiedKey = (cnInqId && isDriverOrConfirm) ? `cust_driver_${cnInqId}` : (
+                (cnInqId && isReceipt) ? `cust_receipt_${cnInqId}` : (cnInqId ? `cust_inq_${cnInqId}` : null)
+              );
+
+              if (unifiedKey && isDuplicatePushAlert(unifiedKey, 120000)) {
+                localStorage.setItem(cnKey, 'true');
+                markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+                continue;
+              }
+
               // D) Deduplication against local storage and signatures
               if (localStorage.getItem(cnKey) === 'true' || knownNotifIds.has(cn.id) || knownSignatures.has(cnSig)) {
                 localStorage.setItem(cnKey, 'true');
@@ -539,7 +559,7 @@ export default function MobileAppView() {
               } catch (e) {}
 
               markNotificationDeliveredInMySQL(cn.id).catch(() => {});
-              sendSystemPushNotification(cn.title, cn.body, 'cloud-' + cn.id);
+              sendSystemPushNotification(cn.title, cn.body, 'disp-cust-' + (cnInqId || cn.id), { inquiryId: cnInqId });
             }
           }
         }

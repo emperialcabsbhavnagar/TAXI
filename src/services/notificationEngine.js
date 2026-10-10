@@ -305,8 +305,8 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
   );
   const dedupKey = rawKey.trim().toLowerCase();
 
-  // Deduplicate: If an alert for this exact inquiry/message was triggered within the last 45s, suppress duplicate!
-  if (isDuplicatePushAlert(dedupKey, 45000)) {
+  // Deduplicate: If an alert for this exact inquiry/message was triggered within the last 60s, suppress duplicate!
+  if (isDuplicatePushAlert(dedupKey, 60000)) {
     return;
   }
 
@@ -319,7 +319,7 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
     }
   } catch (e) {}
 
-  const canonicalTag = 'emp_' + dedupKey.replace(/[^a-z0-9_]/g, '_').slice(0, 40);
+  const canonicalTag = (tag && tag.startsWith('disp-')) ? tag : ('disp-' + dedupKey.replace(/[^a-z0-9_]/g, '_').slice(0, 40));
 
   // 1. Mobile Phone Native System Notification Panel (Android APK via Capacitor LocalNotifications)
   try {
@@ -443,21 +443,22 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
   const inqId = extraData?.inquiryId;
   const isCancel = type === 'cancellation' || type === 'cancelled';
   const isRem30 = type === 'reminder_30m' || (title && title.includes('30-Minute'));
-  const isTodayTrip = type === 'scheduled_today' || (title && title.includes('Scheduled Trip Today'));
+  const isTodayTrip = type === 'scheduled_today' || (title && title.includes('Scheduled Trip Today')) || (title && title.includes('Upcoming'));
+
+  // Completely suppress upcoming trip alerts per user instruction
+  if (isTodayTrip || isRem30) {
+    return null;
+  }
 
   const canonicalKey = inqId 
     ? (isCancel 
         ? `inq_cancel_${inqId}` 
-        : (isRem30 
-            ? `inq_rem30_${inqId}` 
-            : (isTodayTrip 
-                ? `inq_today_${inqId}` 
-                : `inq_${inqId}`)))
+        : `inq_${inqId}`)
     : (extraData?.messageId ? `msg_${extraData.messageId}` : ('notif_' + (title + body).replace(/[^a-zA-Z0-9]/g, '').slice(0, 32)));
 
   const notifObj = {
     id: inqId 
-      ? (isCancel ? `admin_cancel_${inqId}` : (isRem30 ? `admin_rem30_${inqId}` : (isTodayTrip ? `admin_today_${inqId}` : `admin_inq_${inqId}`))) 
+      ? (isCancel ? `admin_cancel_${inqId}` : `admin_inq_${inqId}`) 
       : ('admin_notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4)),
     inquiryId: inqId,
     type,
@@ -476,9 +477,7 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
     // Filter out previous notification for the exact same inquiry or identical title+desc
     const filtered = existing.filter(n => {
       if (inqId && isCancel && n.id === `admin_cancel_${inqId}`) return false;
-      if (inqId && isRem30 && n.id === `admin_rem30_${inqId}`) return false;
-      if (inqId && isTodayTrip && n.id === `admin_today_${inqId}`) return false;
-      if (inqId && !isCancel && !isRem30 && !isTodayTrip && (n.inquiryId === inqId || n.id === `admin_inq_${inqId}`)) return false;
+      if (inqId && !isCancel && (n.inquiryId === inqId || n.id === `admin_inq_${inqId}`)) return false;
       if (n.title === title && n.desc === body) return false;
       return true;
     });
@@ -489,18 +488,22 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
   const targetTab = extraData?.tab || (type === 'custom' || type === 'custom-trip' ? 'custom_inquiries' : 'inquiries');
   const targetUrl = `/admin?tab=${targetTab}`;
 
-  // 1. Save to Remote MySQL so external admin devices/PWAs receive it via polling
-  try {
-    saveNotificationToMySQL({
-      id: notifObj.id,
-      target_phone: 'ADMIN',
-      target_email: 'emperialcabsbhavnagar@gmail.com',
-      title: title,
-      body: body,
-      type: type,
-      extra_data: JSON.stringify({ tab: targetTab, inquiryId: inqId, canonicalKey, ...extraData })
-    }).catch(() => {});
-  } catch (e) {}
+  // 1. Save to Remote MySQL ONLY for non-inquiry events (messages/system events)
+  // Inquiries are ALREADY saved to MySQL inquiries table; saving here creates duplicate alert polls
+  const isBookingInquiry = Boolean(inqId || type === 'inquiry' || type === 'custom' || type === 'custom_inquiry' || type === 'custom-trip');
+  if (!isBookingInquiry) {
+    try {
+      saveNotificationToMySQL({
+        id: notifObj.id,
+        target_phone: 'ADMIN',
+        target_email: 'emperialcabsbhavnagar@gmail.com',
+        title: title,
+        body: body,
+        type: type,
+        extra_data: JSON.stringify({ tab: targetTab, inquiryId: inqId, canonicalKey, ...extraData })
+      }).catch(() => {});
+    } catch (e) {}
+  }
 
   // 2. Broadcast across tabs/windows on the same device via BroadcastChannel
   try {
@@ -516,23 +519,25 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
     }
   } catch (e) {}
 
-  // 3. Trigger remote server push to Admin devices via WebPush / FCM
-  try {
-    triggerRemoteServerPush({
-      title,
-      body,
-      url: targetUrl,
-      userType: 'admin',
-      tag: 'disp-' + canonicalKey
-    }).catch(() => {});
-  } catch (e) {}
+  // 3. Trigger remote server push to Admin devices ONLY if not already dispatched by saveInquiry in MySQL
+  if (!isBookingInquiry) {
+    try {
+      triggerRemoteServerPush({
+        title,
+        body,
+        url: targetUrl,
+        userType: 'admin',
+        tag: 'disp-' + canonicalKey
+      }).catch(() => {});
+    } catch (e) {}
+  }
 
   // 4. Trigger local system push notification ONLY if running in an active Admin context!
   // Checks canonical dedup so the alert is NEVER duplicated across BroadcastChannel or polling!
   if (isAdminContext()) {
     if (!isUnifiedAlertSeen(canonicalKey)) {
       markUnifiedAlertSeen(canonicalKey);
-      sendSystemPushNotification(title, body, 'disp-' + canonicalKey, { tab: targetTab, inquiryId: inqId, ...extraData });
+      sendSystemPushNotification(title, body, 'disp-' + canonicalKey, { tab: targetTab, inquiryId: inqId, canonicalKey, ...extraData });
     }
   }
 
@@ -580,7 +585,11 @@ export const notifyCustomer = ({ type = 'inquiry', title, body, customerPhone, c
     }
   } catch (e) {}
 
-  sendSystemPushNotification(title, body, 'cust-' + notifObj.id);
+  // ONLY push locally if running on CUSTOMER device (Admin should NEVER receive customer push alerts)
+  if (!isAdminContext()) {
+    const custInqId = extraData?.inquiryId || notifObj.id;
+    sendSystemPushNotification(title, body, 'disp-cust-' + custInqId, { ...extraData, inquiryId: custInqId });
+  }
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('EMPERIAL CABS_customer_notif', { detail: notifObj }));
@@ -637,72 +646,14 @@ export const getCustomerNotifications = (userPhone = null, userEmail = null) => 
   }
 };
 
-// Automated Ecosystem Pre-Trip Scheduler (Scans for Today & 30-min Alerts)
+// Automated Ecosystem Pre-Trip Scheduler - Disabled per user instruction
 export const runEcosystemSchedulerCheck = () => {
-  try {
-    const inquiriesData = localStorage.getItem('cabsy_inquiries');
-    if (!inquiriesData) return;
-    const inquiries = JSON.parse(inquiriesData);
-    if (!Array.isArray(inquiries)) return;
-
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-
-    inquiries.forEach(inq => {
-      if (!inq || inq.status === 'Cancelled' || inq.status === 'Completed' || inq.status === 'Rejected') return;
-
-      const dateVal = String(inq.scheduledDate || inq.date || '');
-      const isTodayTrip = dateVal === 'Today' || dateVal.includes(todayStr);
-
-      const flagTodayKey = `notif_sent_today_${inq.id}_${todayStr}`;
-      if (isTodayTrip && !localStorage.getItem(flagTodayKey)) {
-        localStorage.setItem(flagTodayKey, '1');
-        notifyAdmin({
-          type: 'scheduled_today',
-          title: `Upcoming Scheduled Trip Today: #${inq.id}`,
-          body: `Customer ${inq.customerName}'s trip (${inq.pickup} to ${inq.dropoff}) is scheduled for today.`,
-          extraData: { inquiryId: inq.id, tab: 'inquiries' }
-        });
-      }
-
-      // 30-Minute Trip Alert: Must be CONFIRMED, scheduled for TODAY, and starting in 0-35 minutes!
-      const flag30mKey = `notif_sent_30m_${inq.id}`;
-      if (inq.status === 'Confirmed' && isTodayTrip && !localStorage.getItem(flag30mKey)) {
-        const timeStr = String(inq.scheduledTime || inq.time || '');
-        const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)?/i);
-        if (match) {
-          let hours = parseInt(match[1], 10);
-          const minutes = parseInt(match[2], 10);
-          const ampm = match[3] ? match[3].toUpperCase() : null;
-          if (ampm === 'PM' && hours < 12) hours += 12;
-          if (ampm === 'AM' && hours === 12) hours = 0;
-
-          const tripDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0);
-          const diffMinutes = (tripDate.getTime() - now.getTime()) / (1000 * 60);
-
-          if (diffMinutes >= -5 && diffMinutes <= 35) {
-            localStorage.setItem(flag30mKey, '1');
-            notifyAdmin({
-              type: 'reminder_30m',
-              title: `30-Minute Trip Alert: #${inq.id}`,
-              body: `Customer ${inq.customerName}'s ride to ${inq.dropoff} is starting soon (${inq.scheduledTime || 'within 30 mins'}).`,
-              extraData: { inquiryId: inq.id, tab: 'inquiries' }
-            });
-          }
-        }
-      }
-    });
-  } catch (e) {
-    console.warn('Ecosystem scheduler check error:', e);
-  }
+  // Disabled: no automated upcoming trip popup alerts on app open
 };
 
-// Initialize background scheduler timer
-let schedulerInterval = null;
+// Initialize background scheduler timer - Disabled per user instruction
 export const initEcosystemScheduler = () => {
-  runEcosystemSchedulerCheck();
-  if (schedulerInterval) clearInterval(schedulerInterval);
-  schedulerInterval = setInterval(runEcosystemSchedulerCheck, 60000);
+  // Disabled: no automated upcoming trip popup alerts on app open
 };
 
 export default {

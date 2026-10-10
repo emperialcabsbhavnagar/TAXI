@@ -144,58 +144,14 @@ export const getCustomerNotifications = (userPhone = null, userEmail = null) => 
   }
 };
 
-// Automated Ecosystem Pre-Trip Scheduler (Scans for Today & 30-min Alerts)
+// Automated Ecosystem Pre-Trip Scheduler - Disabled per user instruction
 export const runEcosystemSchedulerCheck = () => {
-  try {
-    const inquiriesData = localStorage.getItem('cabsy_inquiries');
-    if (!inquiriesData) return;
-    const inquiries = JSON.parse(inquiriesData);
-    if (!Array.isArray(inquiries)) return;
-
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-
-    inquiries.forEach(inq => {
-      if (inq.status === 'Cancelled' || inq.status === 'Completed') return;
-
-      // 1. Today's Trip Notification to Admin
-      const flagTodayKey = `notif_sent_today_${inq.id}_${todayStr}`;
-      const isTodayTrip = inq.date === 'Today' || (inq.date && inq.date.includes(todayStr));
-
-      if (isTodayTrip && !localStorage.getItem(flagTodayKey)) {
-        notifyAdmin({
-          type: 'scheduled_today',
-          title: `📅 Upcoming Scheduled Trip Today!`,
-          body: `Customer ${inq.customerName}'s trip (${inq.pickup} → ${inq.dropoff}) is scheduled for today!`,
-          extraData: { inquiryId: inq.id }
-        });
-        localStorage.setItem(flagTodayKey, '1');
-      }
-
-      // 2. 30-Minute Pre-Trip Alert Notification to Admin
-      const flag30mKey = `notif_sent_30m_${inq.id}`;
-      if (inq.status === 'Confirmed' && !localStorage.getItem(flag30mKey)) {
-        // If trip created/confirmed recently or scheduled within 30 mins
-        notifyAdmin({
-          type: 'reminder_30m',
-          title: `⏰ 30-Minute Trip Alert!`,
-          body: `Customer ${inq.customerName}'s ride to ${inq.dropoff} is starting soon (within 30 mins)!`,
-          extraData: { inquiryId: inq.id }
-        });
-        localStorage.setItem(flag30mKey, '1');
-      }
-    });
-  } catch (e) {
-    console.warn('Ecosystem scheduler check error:', e);
-  }
+  // Disabled: no automated upcoming trip popup alerts on app open
 };
 
-// Initialize background scheduler timer
-let schedulerInterval = null;
+// Initialize background scheduler timer - Disabled per user instruction
 export const initEcosystemScheduler = () => {
-  runEcosystemSchedulerCheck();
-  if (schedulerInterval) clearInterval(schedulerInterval);
-  schedulerInterval = setInterval(runEcosystemSchedulerCheck, 60000); // Check every 60s
+  // Disabled: no automated upcoming trip popup alerts on app open
 };
 
 export default {

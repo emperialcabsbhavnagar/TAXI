@@ -592,12 +592,13 @@ switch ($action) {
         $cName = $data['customerName'] ?? 'Customer';
         $cPick = $data['pickup'] ?? 'Location';
         $cDrop = $data['dropoff'] ?? 'Destination';
-        $cFareStr = !empty($fare) ? " (Rs. {$fare})" : "";
+        $isCust = !empty($data['isCustom']) || (isset($data['tripType']) && stripos($data['tripType'], 'custom') !== false);
+        $notifTitle = $isCust ? "New Custom Route Inquiry: {$cName}" : "New Booking: {$cName}";
         triggerServerPushNotification(
-            "New Booking: {$cName}",
+            $notifTitle,
             "{$cPick} to {$cDrop}{$cFareStr}",
             "/admin?tab=inquiries",
-            "inq-" . $id
+            "disp-inq_" . $id
         );
 
         echo json_encode(['success' => true, 'id' => $id]);
@@ -1170,12 +1171,20 @@ switch ($action) {
             ':extra_data' => $extra_data
         ]);
 
-        if (strtoupper($target_phone) === 'ADMIN' && $type !== 'inquiry' && $type !== 'custom_inquiry') {
+        $notifInqId = null;
+        if (!empty($extra_data)) {
+            $parsedExtra = is_array($extra_data) ? $extra_data : json_decode($extra_data, true);
+            $notifInqId = $parsedExtra['inquiryId'] ?? null;
+        }
+        $isCust = ($type === 'custom' || $type === 'custom_inquiry' || $type === 'custom-trip');
+        $isInq = ($type === 'inquiry' || !empty($notifInqId));
+
+        if (strtoupper($target_phone) === 'ADMIN' && !$isInq && !$isCust) {
             triggerServerPushNotification(
                 $title,
                 $body,
                 "/admin?tab=inquiries",
-                "notif-" . $id
+                "disp-notif_" . $id
             );
         }
 

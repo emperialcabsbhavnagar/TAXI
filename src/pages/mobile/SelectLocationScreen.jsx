@@ -395,43 +395,24 @@ export default function SelectLocationScreen({
       timestamp: new Date().toISOString()
     };
 
-    const newMsg = {
-      id: 'MSG-' + inqId,
-      name: customerName,
-      phone: cleanPhone,
-      email: 'emperialcabsbhavnagar@gmail.com',
-      subject: `Custom Route: ${pickupLoc.trim()} → ${dropoffLoc.trim()}`,
-      message: `Customer requested unlisted route from ${pickupLoc.trim()} to ${dropoffLoc.trim()} on ${dateStr}. Please provide quote.`,
-      category: 'Custom Route Inquiry',
-      date: dateStr,
-      status: 'Unread'
-    };
-
     try {
       await saveInquiryToMySQL(inquiryPayload).catch(err => console.warn('Save custom inquiry MySQL notice:', err));
-      await saveContactMessageToMySQL(newMsg).catch(err => console.warn('Save contact message MySQL notice:', err));
 
       try {
         const existingInqs = JSON.parse(localStorage.getItem('cabsy_inquiries') || '[]');
         localStorage.setItem('cabsy_inquiries', JSON.stringify([inquiryPayload, ...existingInqs]));
-      } catch (e) {}
-
-      try {
-        const existingMsgs = JSON.parse(localStorage.getItem('cabsy_contact_messages') || localStorage.getItem('cabsy_messages') || '[]');
-        localStorage.setItem('cabsy_contact_messages', JSON.stringify([newMsg, ...existingMsgs]));
-        localStorage.setItem('cabsy_messages', JSON.stringify([newMsg, ...existingMsgs]));
         localStorage.setItem('cabsy_user_profile', JSON.stringify({ name: customerName, phone: cleanPhone, email: 'emperialcabsbhavnagar@gmail.com' }));
       } catch (e) {}
 
-      // Dispatch Admin Notification so dispatch immediately receives push alert and dashboard update
+      // Dispatch single unified Admin Notification for real-time dashboard sync
       notifyAdmin({
-        type: 'custom',
+        type: 'custom_inquiry',
         title: `New Custom Route Inquiry #${inqId}`,
         body: `Customer ${customerName} (${cleanPhone}) requested custom route: ${pickupLoc.trim()} → ${dropoffLoc.trim()}`,
         extraData: { 
-          tab: 'custom_inquiries', 
+          tab: 'inquiries', 
           inquiryId: inqId,
-          messageId: newMsg.id,
+          canonicalKey: `inq_${inqId}`,
           customerName: customerName,
           customerPhone: cleanPhone,
           pickup: pickupLoc.trim(),
@@ -441,7 +422,6 @@ export default function SelectLocationScreen({
 
       window.dispatchEvent(new Event('storage'));
       window.dispatchEvent(new CustomEvent('EMPERIAL CABS_ride_booked', { detail: inquiryPayload }));
-      window.dispatchEvent(new Event('EMPERIAL CABS_messages_updated'));
 
       setCustomInquiryState(prev => ({
         ...prev,

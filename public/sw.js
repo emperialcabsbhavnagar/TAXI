@@ -32,6 +32,11 @@ self.addEventListener('push', (event) => {
     } catch (e2) {}
   }
 
+  // Suppress upcoming trip alerts per user instruction
+  if (title.includes('Upcoming') || title.includes('Scheduled Trip Today') || tag.includes('today') || tag.includes('rem30')) {
+    return;
+  }
+
   if (tag === 'disp-general') {
     tag = 'disp-' + (title + body).replace(/[^a-zA-Z0-9]/g, '').slice(0, 32);
   }
@@ -41,7 +46,7 @@ self.addEventListener('push', (event) => {
     icon: '/official-app-icon.png',
     badge: '/favicon.png',
     tag: tag,
-    renotify: true,
+    renotify: false,
     requireInteraction: true,
     silent: false,
     data: url

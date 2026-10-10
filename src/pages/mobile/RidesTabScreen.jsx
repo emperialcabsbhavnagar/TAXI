@@ -326,14 +326,14 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
                 style={{
                   padding: '12px 6px',
                   borderRadius: '14px',
-                  border: isSelected ? '2px solid #34D399' : '1.5px solid #E2E8F0',
-                  background: isSelected ? '#F0FDF4' : '#FFFFFF',
-                  color: isSelected ? '#0F172A' : '#64748B',
+                  border: isSelected ? '2px solid #0F172A' : '1.5px solid #E2E8F0',
+                  background: isSelected ? '#0F172A' : '#FFFFFF',
+                  color: isSelected ? '#FFFFFF' : '#64748B',
                   fontFamily: 'League Spartan, sans-serif',
                   fontSize: '14px',
                   fontWeight: '800',
                   cursor: 'pointer',
-                  boxShadow: isSelected ? '0 4px 12px rgba(52, 211, 153, 0.2)' : 'none',
+                  boxShadow: isSelected ? '0 4px 12px rgba(15, 23, 42, 0.15)' : 'none',
                   transition: 'all 0.2s ease',
                   display: 'flex',
                   flexDirection: 'column',
@@ -342,7 +342,7 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
                 }}
               >
                 <span>{tab.label}</span>
-                <span style={{ fontSize: '11px', fontWeight: '700', color: isSelected ? '#059669' : '#94A3B8' }}>
+                <span style={{ fontSize: '11px', fontWeight: '700', color: isSelected ? '#94A3B8' : '#94A3B8' }}>
                   ({tab.count})
                 </span>
               </button>
@@ -487,8 +487,8 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
                       );
                     } else {
                       return (
-                        <div style={{ margin: '6px 0 10px 0', padding: '6px 10px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '10px', fontSize: '12px', color: '#B45309', fontWeight: '700' }}>
-                          ⏳ Assigning Dedicated Chauffeur...
+                        <div style={{ margin: '6px 0 10px 0', padding: '8px 12px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '10px', fontSize: '12px', color: '#0F172A', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>Assigning Dedicated Chauffeur...</span>
                         </div>
                       );
                     }

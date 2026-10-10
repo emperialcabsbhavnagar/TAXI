@@ -1009,8 +1009,6 @@ export default function AdminPortal() {
 
   // Notification & Live MySQL Real-Time Polling Engine
   useEffect(() => {
-    initEcosystemScheduler();
-
     // Auto-sync WebPush subscription if permission is already granted
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
       registerWebPushSubscription('admin').then(res => {
@@ -1104,6 +1102,9 @@ export default function AdminPortal() {
             }
           });
           validMessages.forEach(m => m?.id && knownMessageIdsRef.current.add(String(m.id)));
+          if (Array.isArray(adminRemoteNotifs)) {
+            adminRemoteNotifs.forEach(rn => rn?.id && knownRemoteNotifIdsRef.current.add(String(rn.id)));
+          }
           isInitialLoadRef.current = false;
         } else {
           // Detect brand-new customer inquiries!
@@ -1128,7 +1129,7 @@ export default function AdminPortal() {
               const notifTitle = isCust ? 'New Custom Route Inquiry' : 'New Customer Ride Booking';
               const notifBody = `${newInq.customerName || 'Customer'} (${newInq.customerPhone || 'Direct'}): ${newInq.pickup} ➔ ${newInq.dropoff}`;
               
-              sendSystemPushNotification(notifTitle, notifBody, 'inq-' + newInq.id, { tab: isCust ? 'custom_inquiries' : 'inquiries', inquiryId: inqIdStr });
+              sendSystemPushNotification(notifTitle, notifBody, 'disp-' + alertKey, { tab: isCust ? 'custom_inquiries' : 'inquiries', inquiryId: inqIdStr, canonicalKey: alertKey });
               
               const newNotifItem = {
                 id: 'inq_notif_' + newInq.id,
@@ -1157,24 +1158,28 @@ export default function AdminPortal() {
                 const notifTitle = isCancelled ? 'Ride Cancelled by Customer' : `Trip Status Updated: ${currentStatus}`;
                 const notifBody = `Booking #${inq.id} (${inq.pickup} ➔ ${inq.dropoff}) is now ${currentStatus}`;
 
-                playChimeSound();
-                if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-                  navigator.vibrate([200, 100, 200, 100, 200]);
-                }
-                sendSystemPushNotification(notifTitle, notifBody, 'status-' + inq.id, { tab: 'inquiries' });
+                const statusAlertKey = isCancelled ? `inq_cancel_${inq.id}` : `inq_status_${inq.id}_${currentStatus}`;
+                if (!isUnifiedAlertSeen(statusAlertKey)) {
+                  markUnifiedAlertSeen(statusAlertKey);
+                  playChimeSound();
+                  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                    navigator.vibrate([200, 100, 200, 100, 200]);
+                  }
+                  sendSystemPushNotification(notifTitle, notifBody, 'disp-' + statusAlertKey, { tab: 'inquiries', inquiryId: inq.id, canonicalKey: statusAlertKey });
 
-                const updateNotifItem = {
-                  id: 'status_notif_' + inq.id + '_' + Date.now(),
-                  type: 'inquiry',
-                  title: notifTitle,
-                  desc: notifBody,
-                  body: notifBody,
-                  time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                  date: new Date().toISOString(),
-                  read: false,
-                  tab: 'inquiries'
-                };
-                setNotifications(prev => dedupeNotificationList([updateNotifItem, ...prev]));
+                  const updateNotifItem = {
+                    id: 'status_notif_' + inq.id + '_' + Date.now(),
+                    type: 'inquiry',
+                    title: notifTitle,
+                    desc: notifBody,
+                    body: notifBody,
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    date: new Date().toISOString(),
+                    read: false,
+                    tab: 'inquiries'
+                  };
+                  setNotifications(prev => dedupeNotificationList([updateNotifItem, ...prev]));
+                }
               }
             }
           });
@@ -1184,6 +1189,12 @@ export default function AdminPortal() {
           if (newMessages.length > 0) {
             newMessages.forEach(newMsg => {
               knownMessageIdsRef.current.add(String(newMsg.id));
+              const msgAlertKey = `msg_${newMsg.id}`;
+              if (isUnifiedAlertSeen(msgAlertKey)) {
+                return;
+              }
+              markUnifiedAlertSeen(msgAlertKey);
+
               const notifTitle = 'New Customer Contact Message';
               const notifBody = `${newMsg.name || 'Customer'} (${newMsg.phone || ''}): ${newMsg.subject || newMsg.message || 'New Inquiry'}`;
               
@@ -1191,7 +1202,7 @@ export default function AdminPortal() {
               if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
                 navigator.vibrate([200, 100, 200, 100, 200]);
               }
-              sendSystemPushNotification(notifTitle, notifBody, 'msg-' + newMsg.id, { tab: 'messages' });
+              sendSystemPushNotification(notifTitle, notifBody, 'disp-' + msgAlertKey, { tab: 'messages', messageId: String(newMsg.id), canonicalKey: msgAlertKey });
               
               const newNotifItem = {
                 id: 'msg_notif_' + newMsg.id,
@@ -1218,12 +1229,22 @@ export default function AdminPortal() {
                 parsedExtra = typeof notifRow.extra_data === 'string' ? JSON.parse(notifRow.extra_data) : (notifRow.extra_data || {});
               } catch(e) {}
               const rowInqId = parsedExtra.inquiryId || notifRow.inquiry_id;
-              const isCancelNotif = notifRow.type === 'cancellation' || notifRow.type === 'cancelled' || (notifRow.title && notifRow.title.toLowerCase().includes('cancel'));
+              const rowMsgId = parsedExtra.messageId || notifRow.message_id;
               const isRem30 = notifRow.type === 'reminder_30m' || (notifRow.title && notifRow.title.includes('30-Minute'));
-              const isToday = notifRow.type === 'scheduled_today' || (notifRow.title && notifRow.title.includes('Today'));
-              const alertKey = parsedExtra.canonicalKey || (rowInqId 
-                ? (isCancelNotif ? `inq_cancel_${rowInqId}` : (isRem30 ? `inq_rem30_${rowInqId}` : (isToday ? `inq_today_${rowInqId}` : `inq_${rowInqId}`))) 
-                : (rowMsgId ? `msg_${rowMsgId}` : (notifIdStr || `${notifRow.title}|${notifRow.body}`)));
+              const isToday = notifRow.type === 'scheduled_today' || (notifRow.title && notifRow.title.includes('Today')) || (notifRow.title && notifRow.title.includes('Upcoming'));
+
+              // Completely suppress upcoming trip alerts
+              if (isToday || isRem30) {
+                return;
+              }
+
+              // Inquiries are handled exclusively by newInquiries diffing to guarantee zero duplicate alerts
+              const isInqAlert = Boolean(rowInqId || notifRow.type === 'inquiry' || notifRow.type === 'custom' || notifRow.type === 'custom_inquiry' || notifRow.type === 'custom-trip');
+              if (isInqAlert) {
+                return;
+              }
+
+              const alertKey = parsedExtra.canonicalKey || (rowMsgId ? `msg_${rowMsgId}` : (notifIdStr || `${notifRow.title}|${notifRow.body}`));
 
               if (notifIdStr && !knownRemoteNotifIdsRef.current.has(notifIdStr)) {
                 knownRemoteNotifIdsRef.current.add(notifIdStr);
@@ -1232,7 +1253,7 @@ export default function AdminPortal() {
                   localStorage.setItem('cabsy_seen_admin_notif_ids', JSON.stringify([notifIdStr, ...existing].slice(0, 200)));
                 } catch (e) {}
 
-                // If this inquiry/message was ALREADY alerted by notifyAdmin or BroadcastChannel, do NOT duplicate alert!
+                // If this message was ALREADY alerted by notifyAdmin or BroadcastChannel, do NOT duplicate alert!
                 if (isUnifiedAlertSeen(alertKey)) {
                   return;
                 }
@@ -1240,20 +1261,19 @@ export default function AdminPortal() {
 
                 const nTitle = notifRow.title || 'Dispatch Update';
                 const nBody = notifRow.body || 'You have an update from a customer.';
-                sendSystemPushNotification(nTitle, nBody, 'disp-' + alertKey, { tab: 'inquiries', inquiryId: rowInqId });
+                sendSystemPushNotification(nTitle, nBody, 'disp-' + alertKey, { tab: 'messages', messageId: rowMsgId, canonicalKey: alertKey });
 
                 const item = {
                   id: notifRow.id,
-                  inquiryId: rowInqId,
                   messageId: rowMsgId,
-                  type: notifRow.type || 'inquiry',
+                  type: notifRow.type || 'message',
                   title: nTitle,
                   desc: nBody,
                   body: nBody,
                   time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                   date: new Date().toISOString(),
                   read: false,
-                  tab: 'inquiries'
+                  tab: 'messages'
                 };
                 setNotifications(prev => dedupeNotificationList([item, ...prev]));
               }
@@ -1314,9 +1334,15 @@ export default function AdminPortal() {
             const msgId = notif.messageId || notif.extraData?.messageId;
             const isCancel = notif.type === 'cancellation' || notif.type === 'cancelled' || (notif.title && notif.title.toLowerCase().includes('cancel'));
             const isRem30 = notif.type === 'reminder_30m' || (notif.title && notif.title.includes('30-Minute'));
-            const isToday = notif.type === 'scheduled_today' || (notif.title && notif.title.includes('Today'));
+            const isToday = notif.type === 'scheduled_today' || (notif.title && notif.title.includes('Today')) || (notif.title && notif.title.includes('Upcoming'));
+
+            // Suppress upcoming trip alerts completely per user instruction
+            if (isToday || isRem30) {
+              return;
+            }
+
             const alertKey = notif.extraData?.canonicalKey || (inqId 
-              ? (isCancel ? `inq_cancel_${inqId}` : (isRem30 ? `inq_rem30_${inqId}` : (isToday ? `inq_today_${inqId}` : `inq_${inqId}`))) 
+              ? (isCancel ? `inq_cancel_${inqId}` : `inq_${inqId}`) 
               : (msgId ? `msg_${msgId}` : (notif.id || `${notif.title}|${notif.body}`)));
             if (isUnifiedAlertSeen(alertKey)) {
               return; // Already alerted on this device!
@@ -1331,7 +1357,7 @@ export default function AdminPortal() {
               }
             }
 
-            sendSystemPushNotification(notif.title, notif.body || notif.desc, 'disp-' + alertKey, notif.extraData);
+            sendSystemPushNotification(notif.title, notif.body || notif.desc, 'disp-' + alertKey, { ...notif.extraData, canonicalKey: alertKey });
             setNotifications(prev => dedupeNotificationList([notif, ...prev]));
             fetchAllData(false);
           }
