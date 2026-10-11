@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { signInWithGoogle, setupRecaptcha, sendPhoneOTP, sendEmailOTP } from '../../services/firebaseService';
 import logoPng from '../../assets/images/let-you-screen/logo.png';
+import bgImg from '../../assets/images/let-you-screen/bg-img.svg';
 import { Smartphone, Mail, ArrowLeft, AlertCircle } from 'lucide-react';
 
 export default function LetsYouInScreen({
@@ -106,7 +107,16 @@ export default function LetsYouInScreen({
     <div className="real-mobile-app">
       <div className="let-you-in-page-wrapper">
         {/* Red Brand Header Banner */}
-        <div className="let-you-red-header">
+        <div 
+          className="let-you-red-header"
+          style={{
+            backgroundImage: `url(${bgImg})`,
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'center top',
+            backgroundSize: 'cover',
+            backgroundColor: '#FB4945'
+          }}
+        >
           <button className="let-you-white-back-btn" onClick={onBack} aria-label="Go Back">
             <ArrowLeft size={22} color="#FFFFFF" />
           </button>
@@ -157,7 +167,7 @@ export default function LetsYouInScreen({
                 gap: '8px'
               }}
             >
-              <Smartphone size={18} color={loginMode === 'phone' ? '#10B981' : '#64748B'} />
+              <Smartphone size={18} color={loginMode === 'phone' ? '#F4C542' : '#64748B'} />
               Phone OTP
             </button>
 
@@ -183,7 +193,7 @@ export default function LetsYouInScreen({
                 gap: '8px'
               }}
             >
-              <Mail size={18} color={loginMode === 'email' ? '#10B981' : '#64748B'} />
+              <Mail size={18} color={loginMode === 'email' ? '#F4C542' : '#64748B'} />
               Email OTP
             </button>
           </div>
@@ -349,7 +359,7 @@ export default function LetsYouInScreen({
           </button>
 
           <p className="let-you-footer-txt" style={{ textAlign: 'center', marginTop: '24px', fontSize: '14px', color: '#64748B', fontWeight: '600' }}>
-            Don't have an account? <span style={{ color: '#10B981', fontWeight: '800', cursor: 'pointer' }} onClick={goToCreateAccount}>Sign up</span>
+            Don't have an account? <span style={{ color: '#252B34', fontWeight: '800', cursor: 'pointer' }} onClick={goToCreateAccount}>Sign up</span>
           </p>
         </div>
       </div>

@@ -446,6 +446,72 @@ export const broadcastVehicleUpdate = (vehiclesList) => {
   } catch (e) {}
 };
 
+export const DEFAULT_DIRECT_ROUTES = [
+  {
+    id: 'R-BHV-AMD-AIRPORT',
+    name: 'Bhavnagar, Gujarat → Ahmedabad Airport (AMD)',
+    pickup: 'Bhavnagar, Gujarat',
+    dropoff: 'Ahmedabad Airport (AMD)',
+    price: 2200,
+    duration: '2.5 - 3 hrs',
+    car_prices: { 'SEDAN': 2200, 'ERTIGA': 3200, 'INNOVA': 4200, 'CRYSTA': 5000 }
+  },
+  {
+    id: 'R-BHV-AMD-CITY',
+    name: 'Bhavnagar, Gujarat → Ahmedabad',
+    pickup: 'Bhavnagar, Gujarat',
+    dropoff: 'Ahmedabad',
+    price: 2200,
+    duration: '2.5 - 3 hrs',
+    car_prices: { 'SEDAN': 2200, 'ERTIGA': 3200, 'INNOVA': 4200, 'CRYSTA': 5000 }
+  },
+  {
+    id: 'R-BHV-BDQ',
+    name: 'Bhavnagar, Gujarat → Vadodara',
+    pickup: 'Bhavnagar, Gujarat',
+    dropoff: 'Vadodara',
+    price: 2800,
+    duration: '3.5 - 4 hrs',
+    car_prices: { 'SEDAN': 2800, 'ERTIGA': 4000, 'INNOVA': 5000, 'CRYSTA': 6000 }
+  },
+  {
+    id: 'R-BHV-ST',
+    name: 'Bhavnagar, Gujarat → Surat',
+    pickup: 'Bhavnagar, Gujarat',
+    dropoff: 'Surat',
+    price: 3800,
+    duration: '5 - 6 hrs',
+    car_prices: { 'SEDAN': 3800, 'ERTIGA': 5200, 'INNOVA': 6500, 'CRYSTA': 7800 }
+  },
+  {
+    id: 'R-BHV-RAJ',
+    name: 'Bhavnagar, Gujarat → Rajkot',
+    pickup: 'Bhavnagar, Gujarat',
+    dropoff: 'Rajkot',
+    price: 2200,
+    duration: '3 - 3.5 hrs',
+    car_prices: { 'SEDAN': 2200, 'ERTIGA': 3200, 'INNOVA': 4200, 'CRYSTA': 5000 }
+  },
+  {
+    id: 'R-BHV-GNR',
+    name: 'Bhavnagar, Gujarat → Gandhinagar',
+    pickup: 'Bhavnagar, Gujarat',
+    dropoff: 'Gandhinagar',
+    price: 2400,
+    duration: '3 - 3.5 hrs',
+    car_prices: { 'SEDAN': 2400, 'ERTIGA': 3500, 'INNOVA': 4500, 'CRYSTA': 5500 }
+  },
+  {
+    id: 'R-BHV-BOM',
+    name: 'Bhavnagar, Gujarat → Mumbai',
+    pickup: 'Bhavnagar, Gujarat',
+    dropoff: 'Mumbai',
+    price: 11000,
+    duration: '11 - 12 hrs',
+    car_prices: { 'SEDAN': 11000, 'ERTIGA': 14500, 'INNOVA': 17500, 'CRYSTA': 21000 }
+  }
+];
+
 /**
  * Expand route list bidirectionally: If Bhavnagar -> Ahmedabad exists,
  * Ahmedabad -> Bhavnagar is automatically generated with identical pricing.
@@ -640,6 +706,11 @@ export const fetchNotificationsFromMySQL = async (phone = '', email = '') => {
 export const markNotificationDeliveredInMySQL = async (id) => {
   if (!id) return false;
   const res = await sendRequest('markNotificationDelivered', { id });
+  return res && res.success;
+};
+
+export const clearCustomerNotificationsInMySQL = async (phone = '', email = '') => {
+  const res = await sendRequest('clearCustomerNotifications', { phone, email });
   return res && res.success;
 };
 

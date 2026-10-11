@@ -101,7 +101,8 @@ import {
   ScanFace,
   Fingerprint,
   Smartphone,
-  Share2
+  Share2,
+  Copy
 } from 'lucide-react';
 import './AdminPortal.css';
 
@@ -226,6 +227,84 @@ const INITIAL_CUSTOMERS = [
   { id: 'CUST-304', name: 'Priya Desai', phone: '+91 97234 56789', email: 'priya.desai@gmail.com', totalRides: 1, totalSpent: 1450, joined: '2026-04-20' },
   { id: 'CUST-305', name: 'empire rider', phone: '+91 98765 06393', email: 'batman063939@gmail.com', totalRides: 5, totalSpent: 9200, joined: '2026-05-01' }
 ];
+
+export const consolidateCustomers = (rawCustomers = [], rawInquiries = []) => {
+  const map = new Map();
+
+  const getNormKey = (phone, email, id) => {
+    const cleanPhone = String(phone || '').replace(/\D/g, '');
+    const cleanPhone10 = cleanPhone.length >= 10 ? cleanPhone.slice(-10) : cleanPhone;
+    if (cleanPhone10) return `p_${cleanPhone10}`;
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    if (cleanEmail) return `e_${cleanEmail}`;
+    return id ? `id_${String(id).trim().toLowerCase()}` : '';
+  };
+
+  // 1. Process known customer records from MySQL customers table
+  (rawCustomers || []).forEach(row => {
+    if (!row) return;
+    const key = getNormKey(row.phone, row.email, row.id);
+    if (!key) return;
+    const joinedDate = row.joined || row.registeredAt || (row.created_at ? String(row.created_at).split('T')[0].split(' ')[0] : '2026-01-15');
+    map.set(key, {
+      id: row.id || ('CUST-' + Math.floor(100 + Math.random() * 899)),
+      name: row.name || 'Customer',
+      phone: row.phone || '',
+      email: row.email || '',
+      totalRides: Number(row.totalRides || 0),
+      totalSpent: Number(row.totalSpent || 0),
+      joined: joinedDate,
+      registeredAt: row.registeredAt || joinedDate,
+      status: row.status || 'Active'
+    });
+  });
+
+  // 2. Discover & Aggregate customers from ALL inquiries (MySQL + local)
+  (rawInquiries || []).forEach(inq => {
+    if (!inq) return;
+    const key = getNormKey(inq.customerPhone || inq.phone, inq.customerEmail || inq.email, null);
+    if (!key) return;
+
+    const inqName = (inq.customerName || inq.name || '').trim();
+    const inqPhone = (inq.customerPhone || inq.phone || '').trim();
+    const inqEmail = (inq.customerEmail || inq.email || '').trim();
+    const inqFare = Number(inq.fare || 0);
+    const inqDate = (inq.date || inq.scheduledDate || (inq.created_at ? String(inq.created_at).split('T')[0].split(' ')[0] : null) || '2026-01-15');
+    const isConfirmedOrDone = ['confirmed', 'completed', 'in progress', 'on ride', 'assigned'].includes(String(inq.status || '').toLowerCase());
+
+    if (!map.has(key)) {
+      const cleanPhoneDigits = String(inqPhone).replace(/\D/g, '');
+      const custSuffix = cleanPhoneDigits.length >= 4 ? cleanPhoneDigits.slice(-4) : Math.floor(100 + Math.random() * 899);
+      map.set(key, {
+        id: `CUST-${custSuffix}`,
+        name: (inqName && !['rider', 'customer'].includes(inqName.toLowerCase())) ? inqName : (inqName || 'Customer'),
+        phone: inqPhone,
+        email: inqEmail,
+        totalRides: 1,
+        totalSpent: isConfirmedOrDone ? inqFare : 0,
+        joined: inqDate,
+        registeredAt: inqDate,
+        status: 'Active'
+      });
+    } else {
+      const existing = map.get(key);
+      existing.totalRides = (existing.totalRides || 0) + 1;
+      if (isConfirmedOrDone) {
+        existing.totalSpent = (existing.totalSpent || 0) + inqFare;
+      }
+      if (!existing.phone && inqPhone) existing.phone = inqPhone;
+      if (!existing.email && inqEmail) existing.email = inqEmail;
+      if ((!existing.name || ['rider', 'customer'].includes(existing.name.toLowerCase())) && inqName) {
+        existing.name = inqName;
+      }
+      if (!existing.joined || existing.joined > inqDate) {
+        existing.joined = inqDate;
+      }
+    }
+  });
+
+  return Array.from(map.values()).sort((a, b) => (b.totalRides || 0) - (a.totalRides || 0));
+};
 
 export const INITIAL_DESTINATIONS = [];
 
@@ -780,6 +859,7 @@ export default function AdminPortal() {
     arrivalTime: '10 Mins'
   });
   const [pricingSaving, setPricingSaving] = useState(false);
+  const [shortTripSettingsModal, setShortTripSettingsModal] = useState(false);
 
   // Load Short Trip pricing from MySQL settings on mount
   useEffect(() => {
@@ -992,6 +1072,16 @@ export default function AdminPortal() {
   });
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
   const [notifPermissionState, setNotifPermissionState] = useState(() => (typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'));
+  const [liveAlertBanner, setLiveAlertBanner] = useState(null);
+  const liveAlertTimerRef = React.useRef(null);
+
+  const triggerLiveAlertBanner = ({ title, body, tab = 'short_trips', inquiryId = null }) => {
+    if (liveAlertTimerRef.current) clearTimeout(liveAlertTimerRef.current);
+    setLiveAlertBanner({ title, body, tab, inquiryId, id: Date.now() });
+    liveAlertTimerRef.current = setTimeout(() => {
+      setLiveAlertBanner(null);
+    }, 14000);
+  };
 
   // Device-persistent memory trackers to prevent repeat sound/push on every sync poll
   const knownInquiryStatusRef = React.useRef(new Map()); // id -> status
@@ -1051,15 +1141,15 @@ export default function AdminPortal() {
     const result = [];
     for (const item of list) {
       if (!item) continue;
-      const inqKey = item.inquiryId ? `inq_${String(item.inquiryId).toLowerCase()}` : null;
+      const typeStr = (item.type || 'inq').toLowerCase();
+      const inqKey = item.inquiryId ? `${typeStr}_inq_${String(item.inquiryId).toLowerCase()}` : null;
       const msgKey = item.messageId ? `msg_${String(item.messageId).toLowerCase()}` : null;
       const idKey = item.id ? String(item.id).toLowerCase() : null;
       const titleBodyKey = `${(item.title || '').trim()}|${(item.desc || item.body || '').trim()}`.toLowerCase();
       
-      const checkKeys = [inqKey, msgKey, idKey, titleBodyKey].filter(Boolean);
-      const alreadySeen = checkKeys.some(k => seen.has(k));
-      if (!alreadySeen) {
-        checkKeys.forEach(k => seen.add(k));
+      const primaryKey = idKey || inqKey || msgKey || titleBodyKey;
+      if (!seen.has(primaryKey)) {
+        seen.add(primaryKey);
         result.push(item);
       }
     }
@@ -1210,19 +1300,28 @@ export default function AdminPortal() {
                 } catch (e) {}
 
                 const isCust = Boolean(i.isCustom || i.tripType === 'Custom Trip' || i.tripType === 'custom-trip');
-                const notifTitle = isCust ? 'New Custom Route Inquiry' : 'New Customer Ride Booking';
-                const notifBody = `${i.customerName || 'Customer'} (${i.customerPhone || 'Direct'}): ${i.pickup} ➔ ${i.dropoff}`;
+                const isShort = Boolean(i.isShortTrip || i.tripType === 'Short Trip' || i.tripType === 'short-trip');
+                const notifTitle = isShort ? `New Short Trip Booking #${i.id}` : (isCust ? 'New Custom Route Inquiry' : 'New Customer Ride Booking');
+                const notifTab = isShort ? 'short_trips' : (isCust ? 'custom_inquiries' : 'inquiries');
+                const notifBody = `${i.customerName || 'Customer'} (${i.customerPhone || 'Direct'}): ${i.pickup} ➔ ${i.dropoff}${i.fare ? ` · ₹${i.fare}` : ''}`;
+
+                playChimeSound();
+                if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                  navigator.vibrate([200, 100, 200, 100, 200]);
+                }
+                sendSystemPushNotification(notifTitle, notifBody, 'disp-inq_' + inqIdStr, { tab: notifTab, inquiryId: inqIdStr, canonicalKey: 'inq_' + inqIdStr });
+                triggerLiveAlertBanner({ title: notifTitle, body: notifBody, tab: notifTab, inquiryId: inqIdStr });
 
                 const newNotifItem = {
                   id: 'inq_notif_' + i.id,
-                  type: isCust ? 'custom' : 'inquiry',
+                  type: isShort ? 'short_trip' : (isCust ? 'custom' : 'inquiry'),
                   title: notifTitle,
                   desc: notifBody,
                   body: notifBody,
                   time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                   date: new Date().toISOString(),
                   read: false,
-                  tab: isCust ? 'custom_inquiries' : 'inquiries'
+                  tab: notifTab
                 };
                 setNotifications(prev => [newNotifItem, ...prev.filter(n => n.id !== newNotifItem.id)].slice(0, 50));
               } else {
@@ -1231,8 +1330,33 @@ export default function AdminPortal() {
             }
           });
           validMessages.forEach(m => m?.id && knownMessageIdsRef.current.add(String(m.id)));
-          if (Array.isArray(adminRemoteNotifs)) {
-            adminRemoteNotifs.forEach(rn => rn?.id && knownRemoteNotifIdsRef.current.add(String(rn.id)));
+          if (Array.isArray(adminRemoteNotifs) && adminRemoteNotifs.length > 0) {
+            const formattedRemote = [];
+            adminRemoteNotifs.forEach(rn => {
+              if (rn?.id) knownRemoteNotifIdsRef.current.add(String(rn.id));
+              let pExtra = {};
+              try {
+                pExtra = typeof rn.extra_data === 'string' ? JSON.parse(rn.extra_data) : (rn.extra_data || {});
+              } catch(e) {}
+              const isShort = rn.type === 'short_trip' || (rn.title && rn.title.toLowerCase().includes('short trip'));
+              const targetTab = isShort ? 'short_trips' : (pExtra.tab || 'inquiries');
+              formattedRemote.push({
+                id: rn.id,
+                inquiryId: pExtra.inquiryId || rn.inquiry_id,
+                messageId: pExtra.messageId || rn.message_id,
+                type: rn.type || 'inquiry',
+                title: rn.title,
+                desc: rn.body,
+                body: rn.body,
+                time: rn.created_at ? new Date(rn.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recent',
+                date: rn.created_at || new Date().toISOString(),
+                read: false,
+                tab: targetTab
+              });
+            });
+            if (formattedRemote.length > 0) {
+              setNotifications(prev => dedupeNotificationList([...formattedRemote, ...prev]));
+            }
           }
           isInitialLoadRef.current = false;
         } else {
@@ -1248,68 +1372,43 @@ export default function AdminPortal() {
                 localStorage.setItem('cabsy_seen_inq_alert_ids', JSON.stringify([inqIdStr, ...existing].slice(0, 200)));
               } catch (e) {}
 
-              const alertKey = `inq_${inqIdStr}`;
-              if (isUnifiedAlertSeen(alertKey)) {
-                return; // Suppress duplicate: already alerted via BroadcastChannel or notifyAdmin!
-              }
-              markUnifiedAlertSeen(alertKey);
-
               const isCust = Boolean(newInq.isCustom || newInq.tripType === 'Custom Trip' || newInq.tripType === 'custom-trip');
-              const notifTitle = isCust ? 'New Custom Route Inquiry' : 'New Customer Ride Booking';
-              const notifBody = `${newInq.customerName || 'Customer'} (${newInq.customerPhone || 'Direct'}): ${newInq.pickup} ➔ ${newInq.dropoff}`;
-              
-              sendSystemPushNotification(notifTitle, notifBody, 'disp-' + alertKey, { tab: isCust ? 'custom_inquiries' : 'inquiries', inquiryId: inqIdStr, canonicalKey: alertKey });
+              const isShort = Boolean(newInq.isShortTrip || newInq.tripType === 'Short Trip' || newInq.tripType === 'short-trip');
+              const notifTitle = isShort ? `New Short Trip Booking #${inqIdStr}` : (isCust ? 'New Custom Route Inquiry' : 'New Customer Ride Booking');
+              const notifTab = isShort ? 'short_trips' : (isCust ? 'custom_inquiries' : 'inquiries');
+              const notifBody = `${newInq.customerName || 'Customer'} (${newInq.customerPhone || 'Direct'}): ${newInq.pickup} ➔ ${newInq.dropoff}${newInq.fare ? ` · ₹${newInq.fare}` : ''}`;
+              const alertKey = `inq_${inqIdStr}`;
+
+              // Trigger audio & popup alert if not alerted within 15 seconds
+              if (!isDuplicatePushAlert('adm_chime_' + alertKey, 15000)) {
+                playChimeSound();
+                if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                  navigator.vibrate([200, 100, 200, 100, 200]);
+                }
+                sendSystemPushNotification(notifTitle, notifBody, 'disp-' + alertKey, { tab: notifTab, inquiryId: inqIdStr, canonicalKey: alertKey });
+                triggerLiveAlertBanner({ title: notifTitle, body: notifBody, tab: notifTab, inquiryId: inqIdStr });
+              }
               
               const newNotifItem = {
                 id: 'inq_notif_' + newInq.id,
                 inquiryId: inqIdStr,
-                type: isCust ? 'custom' : 'inquiry',
+                type: isShort ? 'short_trip' : (isCust ? 'custom' : 'inquiry'),
                 title: notifTitle,
                 desc: notifBody,
                 body: notifBody,
                 time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 date: new Date().toISOString(),
                 read: false,
-                tab: isCust ? 'custom_inquiries' : 'inquiries'
+                tab: notifTab
               };
               setNotifications(prev => dedupeNotificationList([newNotifItem, ...prev]));
             });
           }
 
-          // Detect status changes on existing inquiries (e.g. customer cancelled the ride!)
+          // Silently sync latest status of existing inquiries without alerting Admin (Admin actions should never self-notify)
           mergedInquiries.forEach(inq => {
-            if (inq && inq.id && knownInquiryStatusRef.current.has(String(inq.id))) {
-              const prevStatus = knownInquiryStatusRef.current.get(String(inq.id));
-              const currentStatus = String(inq.status || 'Pending');
-              if (prevStatus !== currentStatus) {
-                knownInquiryStatusRef.current.set(String(inq.id), currentStatus);
-                const isCancelled = currentStatus.toLowerCase() === 'cancelled';
-                const notifTitle = isCancelled ? 'Ride Cancelled by Customer' : `Trip Status Updated: ${currentStatus}`;
-                const notifBody = `Booking #${inq.id} (${inq.pickup} ➔ ${inq.dropoff}) is now ${currentStatus}`;
-
-                const statusAlertKey = isCancelled ? `inq_cancel_${inq.id}` : `inq_status_${inq.id}_${currentStatus}`;
-                if (!isUnifiedAlertSeen(statusAlertKey)) {
-                  markUnifiedAlertSeen(statusAlertKey);
-                  playChimeSound();
-                  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-                    navigator.vibrate([200, 100, 200, 100, 200]);
-                  }
-                  sendSystemPushNotification(notifTitle, notifBody, 'disp-' + statusAlertKey, { tab: 'inquiries', inquiryId: inq.id, canonicalKey: statusAlertKey });
-
-                  const updateNotifItem = {
-                    id: 'status_notif_' + inq.id + '_' + Date.now(),
-                    type: 'inquiry',
-                    title: notifTitle,
-                    desc: notifBody,
-                    body: notifBody,
-                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    date: new Date().toISOString(),
-                    read: false,
-                    tab: 'inquiries'
-                  };
-                  setNotifications(prev => dedupeNotificationList([updateNotifItem, ...prev]));
-                }
-              }
+            if (inq && inq.id) {
+              knownInquiryStatusRef.current.set(String(inq.id), String(inq.status || 'Pending'));
             }
           });
 
@@ -1319,19 +1418,18 @@ export default function AdminPortal() {
             newMessages.forEach(newMsg => {
               knownMessageIdsRef.current.add(String(newMsg.id));
               const msgAlertKey = `msg_${newMsg.id}`;
-              if (isUnifiedAlertSeen(msgAlertKey)) {
-                return;
-              }
-              markUnifiedAlertSeen(msgAlertKey);
 
               const notifTitle = 'New Customer Contact Message';
               const notifBody = `${newMsg.name || 'Customer'} (${newMsg.phone || ''}): ${newMsg.subject || newMsg.message || 'New Inquiry'}`;
               
-              playChimeSound();
-              if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-                navigator.vibrate([200, 100, 200, 100, 200]);
+              if (!isDuplicatePushAlert('adm_chime_' + msgAlertKey, 15000)) {
+                playChimeSound();
+                if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                  navigator.vibrate([200, 100, 200, 100, 200]);
+                }
+                sendSystemPushNotification(notifTitle, notifBody, 'disp-' + msgAlertKey, { tab: 'messages', messageId: String(newMsg.id), canonicalKey: msgAlertKey });
+                triggerLiveAlertBanner({ title: notifTitle, body: notifBody, tab: 'messages', messageId: String(newMsg.id) });
               }
-              sendSystemPushNotification(notifTitle, notifBody, 'disp-' + msgAlertKey, { tab: 'messages', messageId: String(newMsg.id), canonicalKey: msgAlertKey });
               
               const newNotifItem = {
                 id: 'msg_notif_' + newMsg.id,
@@ -1367,13 +1465,9 @@ export default function AdminPortal() {
                 return;
               }
 
-              // Inquiries are handled exclusively by newInquiries diffing to guarantee zero duplicate alerts
-              const isInqAlert = Boolean(rowInqId || notifRow.type === 'inquiry' || notifRow.type === 'custom' || notifRow.type === 'custom_inquiry' || notifRow.type === 'custom-trip');
-              if (isInqAlert) {
-                return;
-              }
-
-              const alertKey = parsedExtra.canonicalKey || (rowMsgId ? `msg_${rowMsgId}` : (notifIdStr || `${notifRow.title}|${notifRow.body}`));
+              const isShortTrip = notifRow.type === 'short_trip' || (notifRow.title && notifRow.title.toLowerCase().includes('short trip'));
+              const targetTab = isShortTrip ? 'short_trips' : (parsedExtra.tab || (rowMsgId ? 'messages' : 'inquiries'));
+              const alertKey = parsedExtra.canonicalKey || (rowInqId ? `inq_${rowInqId}` : (rowMsgId ? `msg_${rowMsgId}` : (notifIdStr || `${notifRow.title}|${notifRow.body}`)));
 
               if (notifIdStr && !knownRemoteNotifIdsRef.current.has(notifIdStr)) {
                 knownRemoteNotifIdsRef.current.add(notifIdStr);
@@ -1382,27 +1476,30 @@ export default function AdminPortal() {
                   localStorage.setItem('cabsy_seen_admin_notif_ids', JSON.stringify([notifIdStr, ...existing].slice(0, 200)));
                 } catch (e) {}
 
-                // If this message was ALREADY alerted by notifyAdmin or BroadcastChannel, do NOT duplicate alert!
-                if (isUnifiedAlertSeen(alertKey)) {
-                  return;
-                }
-                markUnifiedAlertSeen(alertKey);
-
-                const nTitle = notifRow.title || 'Dispatch Update';
+                const nTitle = notifRow.title || (isShortTrip ? 'New Short Trip Booking' : 'Dispatch Update');
                 const nBody = notifRow.body || 'You have an update from a customer.';
-                sendSystemPushNotification(nTitle, nBody, 'disp-' + alertKey, { tab: 'messages', messageId: rowMsgId, canonicalKey: alertKey });
+                
+                if (!isDuplicatePushAlert('adm_chime_' + alertKey, 15000)) {
+                  playChimeSound();
+                  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                    navigator.vibrate([200, 100, 200, 100, 200]);
+                  }
+                  sendSystemPushNotification(nTitle, nBody, 'disp-' + alertKey, { tab: targetTab, inquiryId: rowInqId, messageId: rowMsgId, canonicalKey: alertKey });
+                  triggerLiveAlertBanner({ title: nTitle, body: nBody, tab: targetTab, inquiryId: rowInqId });
+                }
 
                 const item = {
                   id: notifRow.id,
+                  inquiryId: rowInqId,
                   messageId: rowMsgId,
                   type: notifRow.type || 'message',
                   title: nTitle,
                   desc: nBody,
                   body: nBody,
-                  time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                  date: new Date().toISOString(),
+                  time: notifRow.created_at ? new Date(notifRow.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  date: notifRow.created_at || new Date().toISOString(),
                   read: false,
-                  tab: 'messages'
+                  tab: targetTab
                 };
                 setNotifications(prev => dedupeNotificationList([item, ...prev]));
               }
@@ -1419,16 +1516,11 @@ export default function AdminPortal() {
         // 3. Fetch Customers only periodically / on initial load
         if (isInitial || Math.random() < 0.25) {
           const mysqlCustomers = await loadAllCustomersFromMySQL();
-          const localCustomers = db.getCustomers() || [];
-          const custMap = new Map();
-          [...localCustomers, ...mysqlCustomers].forEach(c => {
-            const key = (c.email || c.phone || c.id || '').toLowerCase().trim();
-            if (key) custMap.set(key, { ...custMap.get(key), ...c });
-          });
-          const mergedCustomers = Array.from(custMap.values());
+          const currentInqs = inquiries || [];
+          const consolidated = consolidateCustomers(mysqlCustomers, currentInqs);
           setCustomers(prev => {
-            if (JSON.stringify(prev) === JSON.stringify(mergedCustomers)) return prev;
-            return mergedCustomers;
+            if (JSON.stringify(prev) === JSON.stringify(consolidated)) return prev;
+            return consolidated;
           });
         }
       } catch (e) {
@@ -1444,7 +1536,7 @@ export default function AdminPortal() {
     const syncAdminNotifs = () => {
       const fresh = getAdminNotifications();
       if (fresh && fresh.length > 0) {
-        setNotifications(dedupeNotificationList(fresh));
+        setNotifications(prev => dedupeNotificationList([...fresh, ...prev]));
       }
     };
 
@@ -1473,10 +1565,7 @@ export default function AdminPortal() {
             const alertKey = notif.extraData?.canonicalKey || (inqId 
               ? (isCancel ? `inq_cancel_${inqId}` : `inq_${inqId}`) 
               : (msgId ? `msg_${msgId}` : (notif.id || `${notif.title}|${notif.body}`)));
-            if (isUnifiedAlertSeen(alertKey)) {
-              return; // Already alerted on this device!
-            }
-            markUnifiedAlertSeen(alertKey);
+
             if (inqId) {
               if (isCancel) {
                 knownInquiryStatusRef.current.set(String(inqId), 'Cancelled');
@@ -1486,7 +1575,15 @@ export default function AdminPortal() {
               }
             }
 
-            sendSystemPushNotification(notif.title, notif.body || notif.desc, 'disp-' + alertKey, { ...notif.extraData, canonicalKey: alertKey });
+            if (!isDuplicatePushAlert('adm_chime_' + alertKey, 15000)) {
+              playChimeSound();
+              if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                navigator.vibrate([200, 100, 200, 100, 200]);
+              }
+              sendSystemPushNotification(notif.title, notif.body || notif.desc, 'disp-' + alertKey, { ...notif.extraData, canonicalKey: alertKey });
+              triggerLiveAlertBanner({ title: notif.title, body: notif.body || notif.desc, tab: notif.extraData?.tab || 'short_trips', inquiryId: inqId });
+            }
+
             setNotifications(prev => dedupeNotificationList([notif, ...prev]));
             fetchAllData(false);
           }
@@ -1494,8 +1591,8 @@ export default function AdminPortal() {
       }
     } catch(e) {}
     
-    // Poll Hostinger MySQL safely (every 12 seconds) for real-time customer alerts!
-    const interval = setInterval(() => fetchAllData(false), 12000);
+    // Poll Hostinger MySQL safely (every 3.5 seconds) for real-time customer alerts!
+    const interval = setInterval(() => fetchAllData(false), 3500);
 
     // Instant sync when Admin switches back to tab or unlocks phone
     const handleVisibilityOrFocus = () => {
@@ -1823,21 +1920,8 @@ export default function AdminPortal() {
         }
 
         setInquiries(Array.isArray(mysqlInquiries) ? mysqlInquiries : []);
-        const map = new Map();
-        (mysqlCustomers || []).forEach(row => {
-          const key = (row.email || row.phone || row.id || '').toLowerCase().trim();
-          if (!key) return;
-          if (!map.has(key)) {
-            map.set(key, { ...row });
-          } else {
-            const existing = map.get(key);
-            existing.totalRides = Math.max(Number(existing.totalRides || 0), Number(row.totalRides || 0));
-            existing.totalSpent = Math.max(Number(existing.totalSpent || 0), Number(row.totalSpent || 0));
-            if (!existing.phone && row.phone) existing.phone = row.phone;
-            if (!existing.email && row.email) existing.email = row.email;
-          }
-        });
-        setCustomers(Array.from(map.values()));
+        const consolidated = consolidateCustomers(mysqlCustomers, mysqlInquiries);
+        setCustomers(consolidated);
       } catch (e) {
         console.warn('Hostinger MySQL load error:', e);
       } finally {
@@ -2393,20 +2477,12 @@ export default function AdminPortal() {
     return () => window.removeEventListener('cabsy-new-inquiry', handleNewInquiry);
   }, []);
 
-  // ✅ On first mount: backfill customers from localStorage inquiries
+  // ✅ On first mount & inquiries update: consolidate customer profiles from inquiries
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('cabsy_inquiries');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        parsed.forEach(inq => {
-          if (inq.customerName) {
-            autoSyncCustomer(inq.customerName, inq.customerPhone, inq.status === 'Confirmed' ? inq.fare : 0);
-          }
-        });
-      }
-    } catch (e) {}
-  }, []);
+    if (inquiries && inquiries.length > 0) {
+      setCustomers(prev => consolidateCustomers(prev, inquiries));
+    }
+  }, [inquiries]);
 
   // Handle PIN submit
   const handlePinSubmit = (e) => {
@@ -3203,6 +3279,82 @@ export default function AdminPortal() {
   // AUTHENTICATED: RENDER MAIN ADMIN DASHBOARD
   return (
     <div className="admin-portal-wrapper">
+      {/* FLOATING REAL-TIME BOOKING ALERT BANNER */}
+      {liveAlertBanner && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: '16px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 99999,
+            width: '92%',
+            maxWidth: '540px',
+            backgroundColor: '#0F172A',
+            color: '#FFFFFF',
+            border: '2px solid #EF4444',
+            borderRadius: '16px',
+            padding: '14px 18px',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.5), 0 0 24px rgba(239,68,68,0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
+            <div style={{ width: '38px', height: '38px', borderRadius: '12px', backgroundColor: '#EF4444', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Bell size={20} color="#FFFFFF" />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '13px', fontWeight: 800, color: '#FCA5A5', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {liveAlertBanner.title}
+              </div>
+              <div style={{ fontSize: '12px', fontWeight: 500, color: '#E2E8F0', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {liveAlertBanner.body}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={() => {
+                if (liveAlertBanner.tab) setActiveTab(liveAlertBanner.tab);
+                setLiveAlertBanner(null);
+              }}
+              style={{
+                backgroundColor: '#EF4444',
+                color: '#FFFFFF',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '7px 13px',
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              View
+            </button>
+            <button
+              type="button"
+              onClick={() => setLiveAlertBanner(null)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#94A3B8',
+                padding: '4px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center'
+              }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* MOBILE BACKDROP OVERLAY */}
       <div 
         className={`mobile-sidebar-backdrop ${isMobileMenuOpen ? 'show' : ''}`} 
@@ -4918,205 +5070,66 @@ export default function AdminPortal() {
 
         {/* TAB: SHORT TRIPS COMMAND CENTER */}
         {activeTab === 'short_trips' && (
-          <div className="tab-pane">
-            <div className="pane-header flex justify-between align-center" style={{ marginBottom: '20px' }}>
-              <div>
-                <h2>Short Trips Command Center</h2>
-                <p>Manage Bhavnagar local short trips (10 KM, 20 KM, and extended tiers), configure pricing, and dispatch drivers with live arrival times.</p>
+          <div className="tab-pane" style={{ width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
+            {/* Header: Title & Setting Button for Bhavnagar Pricing Configurations */}
+            <div className="pane-header flex justify-between align-center" style={{ marginBottom: '16px', flexWrap: 'wrap', gap: '12px', width: '100%', boxSizing: 'border-box' }}>
+              <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                <h2 style={{ fontSize: '1.45rem', fontWeight: 800, margin: '0 0 4px', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Zap size={22} style={{ color: '#E11D48' }} />
+                  <span>Short Trips Command Center</span>
+                </h2>
+                <p style={{ margin: 0, fontSize: '0.86rem', color: '#64748B' }}>
+                  Manage Bhavnagar local city short trips, live bookings, driver dispatches, and package pricing.
+                </p>
               </div>
+
+              {/* Setting button to open Bhavnagar Short Trip Pricing Configurations in dedicated modal */}
+              <button
+                type="button"
+                onClick={() => setShortTripSettingsModal(true)}
+                className="btn btn-dark"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  padding: '10px 18px',
+                  borderRadius: '12px',
+                  fontWeight: 800,
+                  fontSize: '13px',
+                  backgroundColor: '#0F172A',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(15, 23, 42, 0.15)',
+                  transition: 'all 0.15s ease',
+                  flexShrink: 0
+                }}
+              >
+                <Settings size={16} />
+                <span>Bhavnagar Short Trip Pricing Configurations</span>
+              </button>
             </div>
 
-            {/* 1. SHORT TRIP PRICING MANAGEMENT CARD */}
-            <div className="card" style={{ padding: '24px', marginBottom: '28px', borderRadius: '18px', background: '#FFFFFF', border: '1px solid #E2E8F0', boxShadow: '0 4px 18px rgba(0,0,0,0.04)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
-                <div>
-                  <h3 style={{ margin: '0 0 4px', fontSize: '18px', fontWeight: 800, color: '#0F172A' }}>Bhavnagar Short Trip Pricing Configuration</h3>
-                  <p style={{ margin: 0, fontSize: '13px', color: '#64748B' }}>
-                    Set fixed rates for 10 KM and 20 KM. Enter rates for 30 KM or 40 KM to offer them to customers (leave 0 to hide them).
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleSaveShortTripPricing}
-                  disabled={pricingSaving}
-                  className="btn btn-primary"
-                  style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 22px', borderRadius: '10px', fontWeight: 700 }}
-                >
-                  <Save size={16} />
-                  <span>{pricingSaving ? 'Saving...' : 'Save Pricing Settings'}</span>
-                </button>
-              </div>
-
-              {/* PRICING INPUTS GRID */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
-                {/* SEDAN COLUMN */}
-                <div style={{ background: '#F8FAFC', padding: '18px', borderRadius: '14px', border: '1.5px solid #E2E8F0' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#DC2626' }} />
-                      <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#0F172A' }}>Sedan (Dzire / Aura AC)</h4>
-                    </div>
-                    <span style={{ fontSize: '11px', fontWeight: 700, backgroundColor: '#FEE2E2', color: '#B91C1C', padding: '3px 8px', borderRadius: '6px' }}>4 Seater</span>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>10 KM Price (₹)</label>
-                      <input 
-                        type="number"
-                        className="form-control"
-                        value={shortTripPricing.sedan.km10}
-                        onChange={(e) => setShortTripPricing(prev => ({
-                          ...prev,
-                          sedan: { ...prev.sedan, km10: Number(e.target.value) }
-                        }))}
-                      />
-                    </div>
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>20 KM Price (₹)</label>
-                      <input 
-                        type="number"
-                        className="form-control"
-                        value={shortTripPricing.sedan.km20}
-                        onChange={(e) => setShortTripPricing(prev => ({
-                          ...prev,
-                          sedan: { ...prev.sedan, km20: Number(e.target.value) }
-                        }))}
-                      />
-                    </div>
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>30 KM Price (₹ - 0 to hide)</label>
-                      <input 
-                        type="number"
-                        className="form-control"
-                        value={shortTripPricing.sedan.km30}
-                        onChange={(e) => setShortTripPricing(prev => ({
-                          ...prev,
-                          sedan: { ...prev.sedan, km30: Number(e.target.value) }
-                        }))}
-                      />
-                    </div>
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>40 KM Price (₹ - 0 to hide)</label>
-                      <input 
-                        type="number"
-                        className="form-control"
-                        value={shortTripPricing.sedan.km40}
-                        onChange={(e) => setShortTripPricing(prev => ({
-                          ...prev,
-                          sedan: { ...prev.sedan, km40: Number(e.target.value) }
-                        }))}
-                      />
-                    </div>
-                    <div className="form-group" style={{ gridColumn: 'span 2', margin: 0 }}>
-                      <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>Extra KM Rate Beyond Chosen Distance (₹/km)</label>
-                      <input 
-                        type="number"
-                        className="form-control"
-                        value={shortTripPricing.sedan.extraKmRate}
-                        onChange={(e) => setShortTripPricing(prev => ({
-                          ...prev,
-                          sedan: { ...prev.sedan, extraKmRate: Number(e.target.value) }
-                        }))}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* SUV COLUMN */}
-                <div style={{ background: '#F8FAFC', padding: '18px', borderRadius: '14px', border: '1.5px solid #E2E8F0' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#2563EB' }} />
-                      <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#0F172A' }}>SUV (Ertiga / Innova AC)</h4>
-                    </div>
-                    <span style={{ fontSize: '11px', fontWeight: 700, backgroundColor: '#DBEAFE', color: '#1D4ED8', padding: '3px 8px', borderRadius: '6px' }}>6-7 Seater</span>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>10 KM Price (₹)</label>
-                      <input 
-                        type="number"
-                        className="form-control"
-                        value={shortTripPricing.suv.km10}
-                        onChange={(e) => setShortTripPricing(prev => ({
-                          ...prev,
-                          suv: { ...prev.suv, km10: Number(e.target.value) }
-                        }))}
-                      />
-                    </div>
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>20 KM Price (₹)</label>
-                      <input 
-                        type="number"
-                        className="form-control"
-                        value={shortTripPricing.suv.km20}
-                        onChange={(e) => setShortTripPricing(prev => ({
-                          ...prev,
-                          suv: { ...prev.suv, km20: Number(e.target.value) }
-                        }))}
-                      />
-                    </div>
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>30 KM Price (₹ - 0 to hide)</label>
-                      <input 
-                        type="number"
-                        className="form-control"
-                        value={shortTripPricing.suv.km30}
-                        onChange={(e) => setShortTripPricing(prev => ({
-                          ...prev,
-                          suv: { ...prev.suv, km30: Number(e.target.value) }
-                        }))}
-                      />
-                    </div>
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>40 KM Price (₹ - 0 to hide)</label>
-                      <input 
-                        type="number"
-                        className="form-control"
-                        value={shortTripPricing.suv.km40}
-                        onChange={(e) => setShortTripPricing(prev => ({
-                          ...prev,
-                          suv: { ...prev.suv, km40: Number(e.target.value) }
-                        }))}
-                      />
-                    </div>
-                    <div className="form-group" style={{ gridColumn: 'span 2', margin: 0 }}>
-                      <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>Extra KM Rate Beyond Chosen Distance (₹/km)</label>
-                      <input 
-                        type="number"
-                        className="form-control"
-                        value={shortTripPricing.suv.extraKmRate}
-                        onChange={(e) => setShortTripPricing(prev => ({
-                          ...prev,
-                          suv: { ...prev.suv, extraKmRate: Number(e.target.value) }
-                        }))}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 2. SHORT TRIPS INQUIRIES & BOOKINGS LIST */}
-            <div className="card" style={{ padding: '24px', borderRadius: '18px', background: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
-                <div>
-                  <h3 style={{ margin: '0 0 4px', fontSize: '18px', fontWeight: 800, color: '#0F172A' }}>
-                    Short Trip Bookings ({inquiries.filter(i => i.isShortTrip || i.tripType === 'Short Trip' || i.tripType === 'short-trip').length})
+            {/* TOP: SHORT TRIPS INQUIRIES & BOOKINGS SECTION (AT THE TOP) */}
+            <div className="card admin-table-card" style={{ width: '100%', maxWidth: '100%', boxSizing: 'border-box', padding: '16px', borderRadius: '16px', background: '#FFFFFF', border: '1px solid #E2E8F0', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px', width: '100%', boxSizing: 'border-box' }}>
+                <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                  <h3 style={{ margin: '0 0 4px', fontSize: '1.15rem', fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Zap size={18} style={{ color: '#E11D48' }} />
+                    <span>Short Trip Bookings ({inquiries.filter(i => i.isShortTrip || i.tripType === 'Short Trip' || i.tripType === 'short-trip').length})</span>
                   </h3>
-                  <p style={{ margin: 0, fontSize: '13px', color: '#64748B' }}>
-                    Real-time local cab bookings from Bhavnagar riders.
+                  <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748B' }}>
+                    Pending and active local trips are prioritized for rapid driver dispatch.
                   </p>
                 </div>
 
-                {/* Filter Pills */}
-                <div style={{ display: 'flex', gap: '6px' }}>
+                {/* Filter Pills with touch-friendly wrap */}
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                   {[
                     { id: 'all', label: 'All' },
                     { id: 'pending', label: 'Pending' },
-                    { id: 'confirmed', label: 'On Ride / Confirmed' },
+                    { id: 'confirmed', label: 'On Ride' },
                     { id: 'completed', label: 'Completed' }
                   ].map(f => {
                     const count = inquiries.filter(i => {
@@ -5134,7 +5147,7 @@ export default function AdminPortal() {
                         type="button"
                         onClick={() => setShortTripFilter(f.id)}
                         className={`btn btn-sm ${shortTripFilter === f.id ? 'btn-primary' : 'btn-secondary'}`}
-                        style={{ borderRadius: '8px', padding: '6px 12px', fontSize: '12px', fontWeight: 700 }}
+                        style={{ borderRadius: '8px', padding: '6px 12px', fontSize: '12px', fontWeight: 700, whiteSpace: 'nowrap' }}
                       >
                         {f.label} ({count})
                       </button>
@@ -5155,215 +5168,312 @@ export default function AdminPortal() {
 
                 if (shortTripList.length === 0) {
                   return (
-                    <div style={{ textAlign: 'center', padding: '48px 20px', color: '#94A3B8' }}>
-                      <Car size={40} style={{ opacity: 0.35, marginBottom: '12px' }} />
-                      <div style={{ fontSize: '16px', fontWeight: 700, color: '#475569' }}>No short trip inquiries in this view</div>
-                      <div style={{ fontSize: '13px', marginTop: '4px' }}>Short trips booked by Bhavnagar customers will appear here in real time.</div>
+                    <div style={{ textAlign: 'center', padding: '40px 16px', color: '#94A3B8' }}>
+                      <Car size={38} style={{ opacity: 0.35, marginBottom: '10px' }} />
+                      <div style={{ fontSize: '15px', fontWeight: 700, color: '#475569' }}>No short trip inquiries in this view</div>
+                      <div style={{ fontSize: '12px', marginTop: '4px' }}>Short trips booked by Bhavnagar customers will appear here in real time.</div>
                     </div>
                   );
                 }
 
                 return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 360px), 1fr))',
+                    gap: '14px',
+                    width: '100%',
+                    maxWidth: '100%',
+                    boxSizing: 'border-box'
+                  }}>
                     {shortTripList.map(inq => {
                       const isPending = inq.status === 'Pending';
                       const isConfirmed = ['Confirmed', 'In Progress', 'On Ride'].includes(inq.status);
                       const isCompleted = inq.status === 'Completed';
+                      const mapsLink = inq.googleMapsLink || inq.pickupGoogleMapsLink || (inq.pickupLat && inq.pickupLng ? `https://www.google.com/maps/search/?api=1&query=${inq.pickupLat},${inq.pickupLng}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(inq.pickup || 'Bhavnagar')}`);
 
                       return (
                         <div 
                           key={inq.id}
                           style={{
-                            padding: '16px 20px',
-                            borderRadius: '14px',
+                            width: '100%',
+                            maxWidth: '100%',
+                            boxSizing: 'border-box',
+                            padding: '14px',
+                            borderRadius: '16px',
                             border: isPending ? '1.5px solid #F59E0B' : (isConfirmed ? '1.5px solid #10B981' : '1px solid #E2E8F0'),
-                            background: isPending ? '#FFFDF5' : (isConfirmed ? '#F0FDF4' : '#FFFFFF'),
+                            background: '#FFFFFF',
                             display: 'flex',
                             flexDirection: 'column',
                             gap: '12px',
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+                            boxShadow: isPending ? '0 4px 16px rgba(245, 158, 11, 0.1)' : (isConfirmed ? '0 4px 16px rgba(16, 185, 129, 0.1)' : '0 2px 8px rgba(0,0,0,0.04)'),
+                            position: 'relative',
+                            overflow: 'hidden'
                           }}
                         >
                           {/* Top Row: ID, Badges, Date */}
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <span style={{ fontSize: '16px', fontWeight: 800, color: '#0F172A' }}>#{inq.id}</span>
-                              <span style={{ fontSize: '11px', fontWeight: 800, backgroundColor: '#FEE2E2', color: '#B91C1C', padding: '3px 8px', borderRadius: '6px' }}>
-                                {inq.selectedKm || 20} KM Short Trip
+                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', paddingBottom: '10px', borderBottom: '1px solid #F1F5F9' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: 0 }}>
+                              <span style={{ fontSize: '14px', fontWeight: 900, color: '#0F172A', fontFamily: 'monospace' }}>#{inq.id}</span>
+                              <span style={{ fontSize: '11px', fontWeight: 800, backgroundColor: '#FEE2E2', color: '#B91C1C', padding: '3px 8px', borderRadius: '6px', whiteSpace: 'nowrap' }}>
+                                {inq.selectedKm || 20} KM Package
                               </span>
-                              <span style={{ fontSize: '11px', fontWeight: 700, backgroundColor: '#E2E8F0', color: '#334155', padding: '3px 8px', borderRadius: '6px' }}>
+                              <span style={{ fontSize: '11px', fontWeight: 700, backgroundColor: '#F1F5F9', color: '#475569', padding: '3px 8px', borderRadius: '6px', whiteSpace: 'nowrap' }}>
                                 {inq.vehicle || 'Sedan'}
                               </span>
                             </div>
 
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px', flexShrink: 0 }}>
                               <span style={{
-                                fontSize: '12px',
+                                fontSize: '11px',
                                 fontWeight: 800,
-                                padding: '3px 10px',
+                                padding: '3px 9px',
                                 borderRadius: '999px',
                                 backgroundColor: isPending ? '#FEF3C7' : (isConfirmed ? '#D1FAE5' : '#E2E8F0'),
-                                color: isPending ? '#B45309' : (isConfirmed ? '#065F46' : '#334155')
+                                color: isPending ? '#B45309' : (isConfirmed ? '#065F46' : '#334155'),
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                whiteSpace: 'nowrap'
                               }}>
-                                {inq.status}
+                                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isPending ? '#F59E0B' : (isConfirmed ? '#10B981' : '#64748B') }}></span>
+                                {isPending ? 'Pending Approval' : (isConfirmed ? 'On Ride' : inq.status)}
                               </span>
-                              <span style={{ fontSize: '12px', color: '#64748B' }}>
+                              <span style={{ fontSize: '11px', color: '#94A3B8', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                 {inq.date || inq.scheduledDate || 'Today'}
                               </span>
                             </div>
                           </div>
 
-                          {/* Middle Row: Customer, Pickup/Dropoff, Fare */}
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', alignItems: 'center' }}>
-                            <div>
-                              <div style={{ fontSize: '11px', color: '#64748B', fontWeight: 700 }}>CUSTOMER</div>
-                              <div style={{ fontSize: '15px', fontWeight: 800, color: '#0F172A' }}>
+                          {/* Customer / Rider Row */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', background: '#F8FAFC', padding: '10px 12px', borderRadius: '12px', border: '1px solid #F1F5F9' }}>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ fontSize: '10px', color: '#64748B', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>RIDER / CUSTOMER</div>
+                              <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#0F172A', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 {resolveCustomerName(inq)}
                               </div>
-                              <a href={`tel:${inq.customerPhone || inq.phone}`} style={{ fontSize: '13px', fontWeight: 700, color: '#2563EB', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                            </div>
+                            {(inq.customerPhone || inq.phone) && (
+                              <a
+                                href={`tel:${inq.customerPhone || inq.phone}`}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  fontSize: '11.5px',
+                                  fontWeight: 800,
+                                  color: '#2563EB',
+                                  backgroundColor: '#EFF6FF',
+                                  border: '1px solid #BFDBFE',
+                                  padding: '6px 10px',
+                                  borderRadius: '8px',
+                                  textDecoration: 'none',
+                                  flexShrink: 0
+                                }}
+                              >
                                 <Phone size={12} />
                                 <span>{inq.customerPhone || inq.phone}</span>
                               </a>
+                            )}
+                          </div>
+
+                          {/* Pickup & Destination Timeline */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                              <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10B981', marginTop: '5px', flexShrink: 0 }}></span>
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div style={{ fontSize: '10px', color: '#64748B', fontWeight: 800, textTransform: 'uppercase' }}>PICKUP LOCATION</div>
+                                <div style={{ fontSize: '12.5px', fontWeight: 700, color: '#0F172A', wordBreak: 'break-word', marginTop: '1px', lineHeight: 1.35 }}>
+                                  {inq.pickup || 'Bhavnagar'}
+                                </div>
+                              </div>
                             </div>
 
-                            <div>
-                              <div style={{ fontSize: '11px', color: '#64748B', fontWeight: 700 }}>PICKUP & DESTINATION</div>
-                              <div style={{ fontSize: '13px', fontWeight: 700, color: '#0F172A' }}>{inq.pickup || 'Bhavnagar'}</div>
-                              <div style={{ fontSize: '12px', color: '#64748B', marginTop: '2px' }}>{inq.dropoff || inq.notes}</div>
-                              {Boolean(inq.pickup) && (
-                                <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                                  <a
-                                    href={inq.googleMapsLink || inq.pickupGoogleMapsLink || (inq.pickupLat && inq.pickupLng ? `https://www.google.com/maps/search/?api=1&query=${inq.pickupLat},${inq.pickupLng}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(inq.pickup)}`)}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '4px',
-                                      fontSize: '11px',
-                                      fontWeight: 800,
-                                      color: '#2563EB',
-                                      backgroundColor: '#EFF6FF',
-                                      border: '1px solid #BFDBFE',
-                                      padding: '3px 8px',
-                                      borderRadius: '6px',
-                                      textDecoration: 'none'
-                                    }}
-                                  >
-                                    <MapPin size={11} /> Open Google Maps
-                                  </a>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const link = inq.googleMapsLink || inq.pickupGoogleMapsLink || (inq.pickupLat && inq.pickupLng ? `https://www.google.com/maps/search/?api=1&query=${inq.pickupLat},${inq.pickupLng}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(inq.pickup)}`);
-                                      navigator.clipboard?.writeText(link);
-                                      alert('Google Maps link copied to clipboard!');
-                                    }}
-                                    style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '4px',
-                                      fontSize: '11px',
-                                      fontWeight: 700,
-                                      color: '#475569',
-                                      backgroundColor: '#F1F5F9',
-                                      border: '1px solid #CBD5E1',
-                                      padding: '3px 8px',
-                                      borderRadius: '6px',
-                                      cursor: 'pointer'
-                                    }}
-                                  >
-                                    Copy Maps Link
-                                  </button>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                              <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#EF4444', marginTop: '5px', flexShrink: 0 }}></span>
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div style={{ fontSize: '10px', color: '#64748B', fontWeight: 800, textTransform: 'uppercase' }}>DESTINATION / TRIP NOTE</div>
+                                <div style={{ fontSize: '12.5px', fontWeight: 600, color: '#334155', wordBreak: 'break-word', marginTop: '1px', lineHeight: 1.35 }}>
+                                  {inq.dropoff || inq.notes || 'Local travel in Bhavnagar'}
                                 </div>
-                              )}
+                              </div>
                             </div>
 
-                            <div>
-                              <div style={{ fontSize: '11px', color: '#64748B', fontWeight: 700 }}>TOTAL FARE</div>
-                              <div style={{ fontSize: '20px', fontWeight: 800, color: '#C53030' }}>₹{inq.fare}</div>
-                              <div style={{ fontSize: '11px', color: '#64748B' }}>Extra km: ₹{inq.extraKmRate || 14}/km</div>
-                            </div>
-
-                            {/* Driver & Arrival Time info if confirmed */}
-                            {isConfirmed && (
-                              <div style={{ background: '#FFFFFF', padding: '10px 12px', borderRadius: '10px', border: '1.5px solid #10B981' }}>
-                                <div style={{ fontSize: '12px', color: '#065F46', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <Clock size={14} />
-                                  <span>REACHING IN: {inq.arrivalTime || '10 Mins'}</span>
-                                </div>
-                                <div style={{ fontSize: '14px', fontWeight: 800, color: '#0F172A', marginTop: '2px' }}>
-                                  {inq.driver || 'Assigned Driver'} ({inq.driverPhone})
-                                </div>
-                                <div style={{ fontSize: '12px', color: '#64748B' }}>
-                                  Car: {inq.plate || 'GJ-04-AB-1234'}
-                                </div>
+                            {/* Location Map Buttons Grid */}
+                            {Boolean(inq.pickup) && (
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '2px', paddingLeft: '16px' }}>
+                                <a
+                                  href={mapsLink}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '4px',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    color: '#2563EB',
+                                    backgroundColor: '#EFF6FF',
+                                    border: '1px solid #BFDBFE',
+                                    padding: '6px 8px',
+                                    borderRadius: '8px',
+                                    textDecoration: 'none',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  <MapPin size={12} />
+                                  <span>Open Maps</span>
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard?.writeText(mapsLink);
+                                    alert('Location link copied to clipboard!');
+                                  }}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '4px',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    color: '#475569',
+                                    backgroundColor: '#F1F5F9',
+                                    border: '1px solid #CBD5E1',
+                                    padding: '6px 8px',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  <Copy size={12} />
+                                  <span>Copy Link</span>
+                                </button>
                               </div>
                             )}
                           </div>
 
-                          {/* Action Buttons */}
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', paddingTop: '8px', borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+                          {/* Fare & Rate Box */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: '#FFF1F2', borderRadius: '12px', border: '1px solid #FECDD3' }}>
+                            <div>
+                              <div style={{ fontSize: '10px', color: '#9F1239', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>TOTAL PACKAGE FARE</div>
+                              <div style={{ fontSize: '11px', color: '#BE123C', fontWeight: 600, marginTop: '1px' }}>
+                                Extra: ₹{inq.extraKmRate || 14}/km beyond {inq.selectedKm || 20} KM
+                              </div>
+                            </div>
+                            <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#BE123C' }}>
+                              ₹{Number(inq.fare || 0).toLocaleString('en-IN')}
+                            </div>
+                          </div>
+
+                          {/* Assigned Driver Box (if confirmed) */}
+                          {isConfirmed && (
+                            <div style={{ background: '#F0FDF4', padding: '10px 12px', borderRadius: '12px', border: '1px solid #86EFAC' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px', gap: '4px' }}>
+                                <span style={{ fontSize: '11px', color: '#166534', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                  <Clock size={12} />
+                                  <span>ETA: {inq.arrivalTime || '10 Mins'}</span>
+                                </span>
+                                <span style={{ fontSize: '11px', fontWeight: 800, color: '#15803D', backgroundColor: '#DCFCE7', padding: '2px 8px', borderRadius: '6px' }}>
+                                  {inq.plate || 'Cab Assigned'}
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                <div style={{ fontSize: '13px', fontWeight: 800, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {inq.driver || 'Assigned Driver'}
+                                </div>
+                                {inq.driverPhone && (
+                                  <a href={`tel:${inq.driverPhone}`} style={{ fontSize: '11.5px', color: '#2563EB', fontWeight: 700, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                                    <Phone size={11} /> {inq.driverPhone}
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Action Buttons Grid (Perfect Screen Fit & Layout) */}
+                          <div style={{ marginTop: 'auto', paddingTop: '10px', borderTop: '1px solid #F1F5F9', width: '100%' }}>
                             {isPending && (
-                              <>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '8px', width: '100%' }}>
                                 <button
                                   type="button"
                                   className="btn btn-sm btn-danger"
-                                  style={{ padding: '6px 14px', borderRadius: '8px', fontWeight: 700 }}
+                                  style={{ padding: '9px 12px', borderRadius: '10px', fontWeight: 700, fontSize: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                                   onClick={() => updateInquiryStatusInMySQL(inq.id, 'Rejected', null, null, null, null, null, null, null, 'admin')}
                                 >
-                                  Reject
+                                  <XCircle size={14} />
+                                  <span>Reject</span>
                                 </button>
                                 <button
                                   type="button"
                                   className="btn btn-sm btn-success"
-                                  style={{ padding: '7px 18px', borderRadius: '8px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}
+                                  style={{ padding: '9px 14px', borderRadius: '10px', fontWeight: 800, fontSize: '12.5px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: 'linear-gradient(135deg, #10B981, #059669)', color: '#FFFFFF', boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)' }}
                                   onClick={() => handleOpenShortTripApproval(inq)}
                                 >
                                   <CheckCircle2 size={15} />
-                                  <span>Approve & Assign Driver</span>
+                                  <span>Approve &amp; Assign</span>
                                 </button>
-                              </>
+                              </div>
                             )}
 
                             {isConfirmed && (
-                              <>
-                                <button
-                                  type="button"
-                                  className="btn btn-sm btn-secondary"
-                                  style={{ padding: '6px 12px', borderRadius: '8px', fontWeight: 700 }}
-                                  onClick={() => handleOpenShortTripApproval(inq)}
-                                >
-                                  Update Arrival Time
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn-sm btn-danger"
-                                  style={{ padding: '6px 12px', borderRadius: '8px', fontWeight: 700 }}
-                                  onClick={() => updateInquiryStatusInMySQL(inq.id, 'Cancelled', null, null, null, null, null, null, null, 'admin')}
-                                >
-                                  Cancel
-                                </button>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', width: '100%' }}>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-secondary"
+                                    style={{ padding: '8px 10px', borderRadius: '10px', fontWeight: 700, fontSize: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}
+                                    onClick={() => handleOpenShortTripApproval(inq)}
+                                  >
+                                    <Clock size={13} />
+                                    <span>Update Arrival</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-danger"
+                                    style={{ padding: '8px 10px', borderRadius: '10px', fontWeight: 700, fontSize: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}
+                                    onClick={() => updateInquiryStatusInMySQL(inq.id, 'Cancelled', null, null, null, null, null, null, null, 'admin')}
+                                  >
+                                    <XCircle size={13} />
+                                    <span>Cancel</span>
+                                  </button>
+                                </div>
                                 <button
                                   type="button"
                                   className="btn btn-sm btn-primary"
-                                  style={{ padding: '7px 16px', borderRadius: '8px', fontWeight: 800 }}
+                                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', fontWeight: 800, fontSize: '13px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: 'linear-gradient(135deg, #00B87C, #059669)', color: '#FFFFFF', boxShadow: '0 2px 10px rgba(0, 184, 124, 0.25)' }}
                                   onClick={() => updateInquiryStatusInMySQL(inq.id, 'Completed', inq.driver, inq.vehicle, inq.fare, 0, 0, inq.driverPhone, inq.plate, 'admin')}
                                 >
-                                  Mark Completed
+                                  <CheckCircle size={15} />
+                                  <span>Mark Trip Completed</span>
                                 </button>
-                              </>
+                              </div>
                             )}
 
                             {isCompleted && (
                               <button
                                 type="button"
                                 className="btn btn-sm btn-secondary"
-                                style={{ padding: '6px 12px', borderRadius: '8px', fontWeight: 700 }}
+                                style={{ width: '100%', padding: '9px 14px', borderRadius: '10px', fontWeight: 700, fontSize: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
                                 onClick={() => setReceiptModal({ open: true, inquiry: inq })}
                               >
-                                View Receipt
+                                <Eye size={14} />
+                                <span>View Trip Details &amp; Receipt</span>
                               </button>
+                            )}
+
+                            {!isPending && !isConfirmed && !isCompleted && (
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                <span style={{ fontSize: '12px', color: '#64748B', fontWeight: 600 }}>Trip {inq.status}</span>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline"
+                                  style={{ padding: '5px 12px', borderRadius: '8px', fontSize: '11.5px', fontWeight: 700 }}
+                                  onClick={() => setReceiptModal({ open: true, inquiry: inq })}
+                                >
+                                  View Details
+                                </button>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -5914,11 +6024,11 @@ export default function AdminPortal() {
                       <tr key={cust.id}>
                         <td><strong>{cust.id}</strong></td>
                         <td><strong>{cust.name}</strong></td>
-                        <td><Phone size={12} className="inline-icon text-muted" /> {cust.phone}</td>
-                        <td><Mail size={12} className="inline-icon text-muted" /> {cust.email}</td>
-                        <td><span className="pill-badge-sm">{cust.totalRides} Rides</span></td>
-                        <td><strong className="text-green">₹{Number(cust.totalSpent).toFixed(2)}</strong></td>
-                        <td><small className="text-muted">{cust.joined}</small></td>
+                        <td><Phone size={12} className="inline-icon text-muted" /> {cust.phone || '-'}</td>
+                        <td><Mail size={12} className="inline-icon text-muted" /> {cust.email || '-'}</td>
+                        <td><span className="pill-badge-sm">{cust.totalRides || 1} Rides</span></td>
+                        <td><strong className="text-green">₹{Number(cust.totalSpent || 0).toFixed(2)}</strong></td>
+                        <td><small className="text-muted">{cust.joined || cust.registeredAt || '-'}</small></td>
                         <td>
                           <div className="flex gap-2 align-center" style={{ whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', flexWrap: 'nowrap' }}>
                             <button 
@@ -5968,19 +6078,19 @@ export default function AdminPortal() {
                     <div className="hostinger-card-top">
                       <div className="hostinger-card-id-group">
                         <span className="hostinger-card-id">{cust.id}</span>
-                        <span className="hostinger-card-date">• {cust.joined}</span>
+                        <span className="hostinger-card-date">• {cust.joined || cust.registeredAt || '-'}</span>
                       </div>
                       <span className="pill-badge-sm" style={{ background: '#ECFDF5', color: '#059669', fontWeight: '800' }}>
-                        {cust.totalRides} Rides
+                        {cust.totalRides || 1} Rides
                       </span>
                     </div>
                     <div className="hostinger-card-customer">
                       <span className="hostinger-cust-name">{cust.name}</span>
-                      <span className="hostinger-cust-phone">📞 {cust.phone}</span>
+                      <span className="hostinger-cust-phone">📞 {cust.phone || '-'}</span>
                     </div>
                     <div style={{ fontSize: '0.82rem', color: '#475569', background: '#F8FAFC', padding: '8px 12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span>✉️ {cust.email}</span>
-                      <strong style={{ color: '#059669', fontSize: '0.95rem' }}>₹{Number(cust.totalSpent).toFixed(2)}</strong>
+                      <span>✉️ {cust.email || '-'}</span>
+                      <strong style={{ color: '#059669', fontSize: '0.95rem' }}>₹{Number(cust.totalSpent || 0).toFixed(2)}</strong>
                     </div>
                     <div className="hostinger-card-actions">
                       <button 
@@ -8699,6 +8809,235 @@ export default function AdminPortal() {
               >
                 <CheckCircle2 size={16} />
                 <span>Approve & Notify Customer</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dedicated Short Trip Pricing & Rate Settings Modal */}
+      {shortTripSettingsModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(4px)',
+          zIndex: 99999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '16px'
+        }}>
+          <div style={{
+            backgroundColor: '#FFFFFF',
+            borderRadius: '20px',
+            maxWidth: '650px',
+            width: '100%',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            padding: '24px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
+          }}>
+            {/* Modal Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', borderBottom: '1px solid #E2E8F0', paddingBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563EB' }}>
+                  <Settings size={22} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#0F172A' }}>Bhavnagar Short Trip Pricing Configurations</h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748B' }}>Configure fixed package rates (10-40 KM) and extra KM rates for Bhavnagar city trips.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShortTripSettingsModal(false)}
+                style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748B' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Pricing Settings Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+              {/* Sedan Column */}
+              <div style={{ background: '#F8FAFC', padding: '16px', borderRadius: '14px', border: '1.5px solid #E2E8F0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#10B981' }} />
+                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: '#0F172A' }}>Sedan (Dzire / Etios AC)</h4>
+                  </div>
+                  <span style={{ fontSize: '11px', fontWeight: 700, backgroundColor: '#D1FAE5', color: '#065F46', padding: '3px 8px', borderRadius: '6px' }}>4 Seater</span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>10 KM Price (₹)</label>
+                    <input 
+                      type="number"
+                      className="form-control"
+                      value={shortTripPricing.sedan.km10}
+                      onChange={(e) => setShortTripPricing(prev => ({
+                        ...prev,
+                        sedan: { ...prev.sedan, km10: Number(e.target.value) }
+                      }))}
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>20 KM Price (₹)</label>
+                    <input 
+                      type="number"
+                      className="form-control"
+                      value={shortTripPricing.sedan.km20}
+                      onChange={(e) => setShortTripPricing(prev => ({
+                        ...prev,
+                        sedan: { ...prev.sedan, km20: Number(e.target.value) }
+                      }))}
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>30 KM Price (₹ - 0 to hide)</label>
+                    <input 
+                      type="number"
+                      className="form-control"
+                      value={shortTripPricing.sedan.km30}
+                      onChange={(e) => setShortTripPricing(prev => ({
+                        ...prev,
+                        sedan: { ...prev.sedan, km30: Number(e.target.value) }
+                      }))}
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>40 KM Price (₹ - 0 to hide)</label>
+                    <input 
+                      type="number"
+                      className="form-control"
+                      value={shortTripPricing.sedan.km40}
+                      onChange={(e) => setShortTripPricing(prev => ({
+                        ...prev,
+                        sedan: { ...prev.sedan, km40: Number(e.target.value) }
+                      }))}
+                    />
+                  </div>
+                  <div className="form-group" style={{ gridColumn: 'span 2', margin: 0 }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>Extra KM Rate Beyond Limit (₹/km)</label>
+                    <input 
+                      type="number"
+                      className="form-control"
+                      value={shortTripPricing.sedan.extraKmRate}
+                      onChange={(e) => setShortTripPricing(prev => ({
+                        ...prev,
+                        sedan: { ...prev.sedan, extraKmRate: Number(e.target.value) }
+                      }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SUV Column */}
+              <div style={{ background: '#F8FAFC', padding: '16px', borderRadius: '14px', border: '1.5px solid #E2E8F0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#2563EB' }} />
+                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: '#0F172A' }}>SUV (Ertiga / Innova AC)</h4>
+                  </div>
+                  <span style={{ fontSize: '11px', fontWeight: 700, backgroundColor: '#DBEAFE', color: '#1D4ED8', padding: '3px 8px', borderRadius: '6px' }}>6-7 Seater</span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>10 KM Price (₹)</label>
+                    <input 
+                      type="number"
+                      className="form-control"
+                      value={shortTripPricing.suv.km10}
+                      onChange={(e) => setShortTripPricing(prev => ({
+                        ...prev,
+                        suv: { ...prev.suv, km10: Number(e.target.value) }
+                      }))}
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>20 KM Price (₹)</label>
+                    <input 
+                      type="number"
+                      className="form-control"
+                      value={shortTripPricing.suv.km20}
+                      onChange={(e) => setShortTripPricing(prev => ({
+                        ...prev,
+                        suv: { ...prev.suv, km20: Number(e.target.value) }
+                      }))}
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>30 KM Price (₹ - 0 to hide)</label>
+                    <input 
+                      type="number"
+                      className="form-control"
+                      value={shortTripPricing.suv.km30}
+                      onChange={(e) => setShortTripPricing(prev => ({
+                        ...prev,
+                        suv: { ...prev.suv, km30: Number(e.target.value) }
+                      }))}
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>40 KM Price (₹ - 0 to hide)</label>
+                    <input 
+                      type="number"
+                      className="form-control"
+                      value={shortTripPricing.suv.km40}
+                      onChange={(e) => setShortTripPricing(prev => ({
+                        ...prev,
+                        suv: { ...prev.suv, km40: Number(e.target.value) }
+                      }))}
+                    />
+                  </div>
+                  <div className="form-group" style={{ gridColumn: 'span 2', margin: 0 }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>Extra KM Rate Beyond Limit (₹/km)</label>
+                    <input 
+                      type="number"
+                      className="form-control"
+                      value={shortTripPricing.suv.extraKmRate}
+                      onChange={(e) => setShortTripPricing(prev => ({
+                        ...prev,
+                        suv: { ...prev.suv, extraKmRate: Number(e.target.value) }
+                      }))}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setShortTripSettingsModal(false)}
+                style={{ borderRadius: '10px', padding: '9px 18px', fontWeight: 700 }}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await handleSaveShortTripPricing();
+                  setShortTripSettingsModal(false);
+                }}
+                disabled={pricingSaving}
+                className="btn btn-primary"
+                style={{
+                  borderRadius: '10px',
+                  padding: '9px 20px',
+                  fontWeight: 800,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <Save size={16} />
+                <span>{pricingSaving ? 'Saving Changes...' : 'Save Settings'}</span>
               </button>
             </div>
           </div>

@@ -614,16 +614,38 @@ switch ($action) {
         $cDrop = $data['dropoff'] ?? 'Destination';
         $isCust = !empty($data['isCustom']) || (isset($data['tripType']) && stripos($data['tripType'], 'custom') !== false);
         $isShort = !empty($data['isShortTrip']) || (isset($data['tripType']) && stripos($data['tripType'], 'short') !== false);
+        $cFareStr = $fare > 0 ? " (₹" . number_format($fare, 0) . ")" : "";
         
         $notifTitle = $isShort ? "New Short Trip Booking: {$cName}" : ($isCust ? "New Custom Route Inquiry: {$cName}" : "New Booking: {$cName}");
-        $notifUrl = $isShort ? "/admin?tab=short_trips" : ($isCust ? "/admin?tab=custom_inquiries" : "/admin?tab=inquiries");
-        
-        triggerServerPushNotification(
-            $notifTitle,
-            "{$cPick} to {$cDrop}{$cFareStr}",
-            $notifUrl,
-            "disp-inq_" . $id
-        );
+        try {
+            triggerServerPushNotification(
+                $notifTitle,
+                "{$cPick} to {$cDrop}{$cFareStr}",
+                $notifUrl,
+                "disp-inq_" . $id
+            );
+        } catch (Exception $e) {}
+
+        // Also record in customer_notifications for ADMIN so live sync and polling catch it instantly
+        try {
+            $notifId = 'notif_inq_' . $id;
+            $notifType = $isShort ? 'short_trip' : ($isCust ? 'custom' : 'inquiry');
+            $notifExtra = json_encode([
+                'tab' => $isShort ? 'short_trips' : ($isCust ? 'custom_inquiries' : 'inquiries'),
+                'inquiryId' => $id,
+                'isShortTrip' => $isShort
+            ]);
+            $notifStmt = $pdo->prepare("INSERT INTO customer_notifications (id, target_phone, target_email, title, body, type, extra_data, delivered)
+                                        VALUES (:id, 'ADMIN', 'emperialcabsbhavnagar@gmail.com', :title, :body, :type, :extra_data, 0)
+                                        ON DUPLICATE KEY UPDATE title = VALUES(title), body = VALUES(body), extra_data = VALUES(extra_data), delivered = 0, created_at = NOW()");
+            $notifStmt->execute([
+                ':id' => $notifId,
+                ':title' => $notifTitle,
+                ':body' => "{$cPick} to {$cDrop}{$cFareStr}",
+                ':type' => $notifType,
+                ':extra_data' => $notifExtra
+            ]);
+        } catch (Exception $e) {}
 
         echo json_encode(['success' => true, 'id' => $id]);
         break;
@@ -775,8 +797,61 @@ switch ($action) {
 
     case 'getCustomers':
         $stmt = $pdo->query("SELECT * FROM customers ORDER BY created_at DESC");
-        $rows = $stmt->fetchAll();
-        echo json_encode(['success' => true, 'customers' => $rows]);
+        $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $custMap = [];
+        foreach ($customers as $c) {
+            $rPhone = preg_replace('/\D/', '', $c['phone'] ?? '');
+            $rPhone10 = strlen($rPhone) >= 10 ? substr($rPhone, -10) : $rPhone;
+            $rEmail = strtolower(trim($c['email'] ?? ''));
+            $key = $rPhone10 ? ('p_' . $rPhone10) : ($rEmail ? ('e_' . $rEmail) : ('id_' . ($c['id'] ?? uniqid())));
+            $c['joined'] = $c['registeredAt'] ?? (substr($c['created_at'] ?? '', 0, 10) ?: date('Y-m-d'));
+            $custMap[$key] = $c;
+        }
+
+        // Auto-discover any customers who made bookings in inquiries
+        try {
+            $inqStmt = $pdo->query("SELECT customerName, customerPhone, customerEmail, fare, status, created_at, date FROM inquiries ORDER BY created_at DESC");
+            $inqs = $inqStmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($inqs as $inq) {
+                $iPhone = preg_replace('/\D/', '', $inq['customerPhone'] ?? '');
+                $iPhone10 = strlen($iPhone) >= 10 ? substr($iPhone, -10) : $iPhone;
+                $iEmail = strtolower(trim($inq['customerEmail'] ?? ''));
+                $key = $iPhone10 ? ('p_' . $iPhone10) : ($iEmail ? ('e_' . $iEmail) : '');
+                if (empty($key)) continue;
+
+                $fare = floatval($inq['fare'] ?? 0);
+                $isConfirmed = in_array(strtolower($inq['status'] ?? ''), ['confirmed', 'completed', 'in progress', 'on ride', 'assigned']);
+                $date = substr($inq['created_at'] ?? '', 0, 10) ?: ($inq['date'] ?? date('Y-m-d'));
+                $name = trim($inq['customerName'] ?? '');
+
+                if (isset($custMap[$key])) {
+                    $custMap[$key]['totalRides'] = intval($custMap[$key]['totalRides'] ?? 0) + 1;
+                    if ($isConfirmed) {
+                        $custMap[$key]['totalSpent'] = floatval($custMap[$key]['totalSpent'] ?? 0) + $fare;
+                    }
+                    if (empty($custMap[$key]['phone']) && !empty($inq['customerPhone'])) $custMap[$key]['phone'] = $inq['customerPhone'];
+                    if (empty($custMap[$key]['email']) && !empty($inq['customerEmail'])) $custMap[$key]['email'] = $inq['customerEmail'];
+                    if ((empty($custMap[$key]['name']) || in_array(strtolower($custMap[$key]['name']), ['rider', 'customer'])) && !empty($name)) {
+                        $custMap[$key]['name'] = $name;
+                    }
+                } else {
+                    $id = 'CUST-' . ($iPhone10 && strlen($iPhone10) >= 4 ? substr($iPhone10, -4) : rand(100, 999));
+                    $custMap[$key] = [
+                        'id' => $id,
+                        'name' => $name ?: 'Customer',
+                        'phone' => $inq['customerPhone'] ?? '',
+                        'email' => $inq['customerEmail'] ?? '',
+                        'totalRides' => 1,
+                        'totalSpent' => $isConfirmed ? $fare : 0,
+                        'joined' => $date,
+                        'registeredAt' => $date,
+                        'status' => 'Active'
+                    ];
+                }
+            }
+        } catch (Exception $e) {}
+
+        echo json_encode(['success' => true, 'customers' => array_values($custMap)]);
         break;
 
     case 'saveCustomer':
@@ -1290,7 +1365,8 @@ switch ($action) {
         $extra_data = isset($data['extra_data']) ? (is_array($data['extra_data']) ? json_encode($data['extra_data']) : $data['extra_data']) : null;
 
         $stmt = $pdo->prepare("INSERT INTO customer_notifications (id, target_phone, target_email, title, body, type, extra_data, delivered)
-                               VALUES (:id, :target_phone, :target_email, :title, :body, :type, :extra_data, 0)");
+                               VALUES (:id, :target_phone, :target_email, :title, :body, :type, :extra_data, 0)
+                               ON DUPLICATE KEY UPDATE title = VALUES(title), body = VALUES(body), type = VALUES(type), extra_data = VALUES(extra_data), delivered = 0, created_at = NOW()");
         $stmt->execute([
             ':id' => $id,
             ':target_phone' => $target_phone,
@@ -1309,25 +1385,68 @@ switch ($action) {
         $isCust = ($type === 'custom' || $type === 'custom_inquiry' || $type === 'custom-trip');
         $isInq = ($type === 'inquiry' || !empty($notifInqId));
 
-        if (strtoupper($target_phone) === 'ADMIN' && !$isInq && !$isCust) {
-            triggerServerPushNotification(
-                $title,
-                $body,
-                "/admin?tab=inquiries",
-                "disp-notif_" . $id
-            );
-        } else if (strtoupper($target_phone) !== 'ADMIN' && !$isInq) {
-            dispatchNativeWebPush(
-                $pdo,
-                $title,
-                $body,
-                "/?tab=rides",
-                "disp-cust-" . ($notifInqId ?: $id),
-                "customer"
-            );
-        }
+        try {
+            if (strtoupper($target_phone) === 'ADMIN') {
+                $adminTab = ($type === 'short_trip') ? '/admin?tab=short_trips' : ($isCust ? '/admin?tab=custom_inquiries' : '/admin?tab=inquiries');
+                triggerServerPushNotification(
+                    $title,
+                    $body,
+                    $adminTab,
+                    "disp-notif_" . $id
+                );
+            } else if (strtoupper($target_phone) !== 'ADMIN' && $type !== 'inquiry') {
+                dispatchNativeWebPush(
+                    $pdo,
+                    $title,
+                    $body,
+                    "/?tab=rides",
+                    "disp-cust-" . ($notifInqId ?: $id),
+                    "customer"
+                );
+            }
+        } catch (Exception $e) {}
 
         echo json_encode(['success' => true, 'id' => $id]);
+        break;
+
+    case 'clearCustomerNotifications':
+        $phone = trim($data['phone'] ?? '');
+        $email = trim($data['email'] ?? '');
+        $cleanPhone = preg_replace('/\D/', '', $phone);
+        $cleanPhone10 = strlen($cleanPhone) >= 10 ? substr($cleanPhone, -10) : $cleanPhone;
+
+        try {
+            $stmt = $pdo->prepare("SELECT id, target_phone, target_email FROM customer_notifications WHERE UPPER(TRIM(target_phone)) != 'ADMIN' AND (delivered = 0 OR delivered IS NULL)");
+            $stmt->execute();
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $idsToUpdate = [];
+            foreach ($rows as $r) {
+                $rPhone = preg_replace('/\D/', '', $r['target_phone'] ?? '');
+                $rPhone10 = strlen($rPhone) >= 10 ? substr($rPhone, -10) : $rPhone;
+                $rEmail = strtolower(trim($r['target_email'] ?? ''));
+                if ((!empty($cleanPhone10) && !empty($rPhone10) && $cleanPhone10 === $rPhone10) ||
+                    (!empty($email) && !empty($rEmail) && strtolower($email) === $rEmail) ||
+                    (empty($cleanPhone10) && empty($email) && empty($rPhone) && empty($rEmail))) {
+                    $idsToUpdate[] = $r['id'];
+                }
+            }
+            if (!empty($idsToUpdate)) {
+                $inClause = implode(',', array_fill(0, count($idsToUpdate), '?'));
+                $upd = $pdo->prepare("UPDATE customer_notifications SET delivered = 1 WHERE id IN ($inClause)");
+                $upd->execute($idsToUpdate);
+            }
+        } catch (Exception $e) {}
+        echo json_encode(['success' => true]);
+        break;
+
+    case 'sendPushNotification':
+        $pTitle = trim($data['title'] ?? 'EMPERIAL CABS Dispatch Alert');
+        $pBody = trim($data['body'] ?? ($data['message'] ?? 'New booking dispatch alert'));
+        $pUrl = trim($data['url'] ?? '/admin?tab=inquiries');
+        $pTag = trim($data['tag'] ?? ('disp-' . round(microtime(true) * 1000)));
+        $pUserType = trim($data['userType'] ?? ($data['user_type'] ?? 'admin'));
+        $res = dispatchNativeWebPush($pdo, $pTitle, $pBody, $pUrl, $pTag, $pUserType);
+        echo json_encode($res);
         break;
 
     case 'getAdminLiveSync':

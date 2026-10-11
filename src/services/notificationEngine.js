@@ -79,6 +79,14 @@ if (typeof window !== 'undefined' && Capacitor.isNativePlatform()) {
 
     PushNotifications.addListener('pushNotificationReceived', (notification) => {
       console.log('[Push] Foreground notification received:', notification);
+      if (notification?.title || notification?.body) {
+        sendSystemPushNotification(
+          notification.title || 'EMPERIAL CABS Alert',
+          notification.body || '',
+          'fcm_' + (notification.id || Date.now()),
+          notification.data || {}
+        );
+      }
     });
 
     PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
@@ -344,9 +352,11 @@ export const isAdminContext = () => {
   try {
     const path = (window.location.pathname || '').toLowerCase();
     const search = (window.location.search || '').toLowerCase();
-    const isAdminPath = path.startsWith('/admin') || search.includes('tab=');
+    const isAdminPath = path.startsWith('/admin') || (path.includes('admin') && search.includes('tab='));
     const isAdminPWA = localStorage.getItem('emperial_pwa_is_admin') === 'true';
-    const isAdminAuth = sessionStorage.getItem('emperial_admin_logged_in') === 'true' || localStorage.getItem('cabsy_admin_auth') === 'true';
+    const isAdminAuth = sessionStorage.getItem('emperial_admin_logged_in') === 'true' || 
+                        sessionStorage.getItem('cabsy_admin_authed') === 'true' || 
+                        localStorage.getItem('cabsy_admin_auth') === 'true';
     return Boolean(isAdminPath || isAdminPWA || isAdminAuth);
   } catch (e) {
     return false;
@@ -370,24 +380,19 @@ export const isDuplicatePushAlert = (key, windowMs = 45000) => {
     const dedupObj = raw ? JSON.parse(raw) : {};
     const lastStorage = dedupObj[cleanKey] || 0;
     if (now - lastStorage < windowMs) {
-      pushDebounceMap.set(cleanKey, lastStorage);
+      pushDebounceMap.set(cleanKey, now);
       return true;
     }
     dedupObj[cleanKey] = now;
-    // Clean up entries older than 5 minutes
+    // Cleanup keys older than 5 minutes to prevent storage bloat
+    const cutoff = now - 300000;
     for (const k in dedupObj) {
-      if (now - dedupObj[k] > 300000) delete dedupObj[k];
+      if (dedupObj[k] < cutoff) delete dedupObj[k];
     }
     localStorage.setItem('cabsy_global_push_dedup', JSON.stringify(dedupObj));
   } catch (e) {}
 
   pushDebounceMap.set(cleanKey, now);
-  // Auto-cleanup stale memory entries
-  if (pushDebounceMap.size > 200) {
-    for (const [k, time] of pushDebounceMap.entries()) {
-      if (now - time > 60000) pushDebounceMap.delete(k);
-    }
-  }
   return false;
 };
 
@@ -422,6 +427,13 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
   try {
     if (typeof window !== 'undefined' && Capacitor.isNativePlatform()) {
       try {
+        const check = await LocalNotifications.checkPermissions();
+        if (check && check.display !== 'granted') {
+          await LocalNotifications.requestPermissions();
+        }
+      } catch (pe) {}
+
+      try {
         await LocalNotifications.createChannel({
           id: 'emperial_cabs_channel',
           name: 'EMPERIAL CABS Alerts',
@@ -432,11 +444,8 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
         });
       } catch (ce) {}
 
-      try {
-        await LocalNotifications.removeAllDeliveredNotifications();
-      } catch (ce) {}
-
-      const notifId = 1001;
+      // Unique 32-bit positive integer ID so multiple notifications can stack in tray without collision
+      const notifId = Math.floor(Date.now() % 2147483000) + Math.floor(Math.random() * 1000) + 1;
       await LocalNotifications.schedule({
         notifications: [
           {
@@ -582,25 +591,21 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
     localStorage.setItem('cabsy_admin_notifications', JSON.stringify(updated));
   } catch (e) {}
 
-  const targetTab = extraData?.tab || (type === 'custom' || type === 'custom-trip' ? 'custom_inquiries' : 'inquiries');
+  const targetTab = extraData?.tab || (type === 'short_trip' ? 'short_trips' : (type === 'custom' || type === 'custom-trip' ? 'custom_inquiries' : 'inquiries'));
   const targetUrl = `/admin?tab=${targetTab}`;
 
-  // 1. Save to Remote MySQL ONLY for non-inquiry events (messages/system events) or cancellations
-  // Inquiries are ALREADY saved to MySQL inquiries table; saving here creates duplicate alert polls
-  const isBookingInquiry = !isCancel && Boolean(inqId || type === 'inquiry' || type === 'custom' || type === 'custom_inquiry' || type === 'custom-trip');
-  if (!isBookingInquiry) {
-    try {
-      saveNotificationToMySQL({
-        id: notifObj.id,
-        target_phone: 'ADMIN',
-        target_email: 'emperialcabsbhavnagar@gmail.com',
-        title: title,
-        body: body,
-        type: type,
-        extra_data: JSON.stringify({ tab: targetTab, inquiryId: inqId, canonicalKey, ...extraData })
-      }).catch(() => {});
-    } catch (e) {}
-  }
+  // 1. Save to Remote MySQL for Admin alerts so remote and local Admin live sync always receives it
+  try {
+    saveNotificationToMySQL({
+      id: notifObj.id,
+      target_phone: 'ADMIN',
+      target_email: 'emperialcabsbhavnagar@gmail.com',
+      title: title,
+      body: body,
+      type: type,
+      extra_data: JSON.stringify({ tab: targetTab, inquiryId: inqId, canonicalKey, ...extraData })
+    }).catch(() => {});
+  } catch (e) {}
 
   // 2. Broadcast across tabs/windows on the same device via BroadcastChannel
   try {
@@ -613,27 +618,25 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
         body,
         extraData: { tab: targetTab, inquiryId: inqId, canonicalKey, ...extraData }
       });
+      // Close channel after brief moment to avoid dangling port
+      setTimeout(() => { try { bc.close(); } catch(e) {} }, 1000);
     }
   } catch (e) {}
 
-  // 3. Trigger remote server push to Admin devices ONLY if not already dispatched by saveInquiry in MySQL
-  if (!isBookingInquiry) {
-    try {
-      triggerRemoteServerPush({
-        title,
-        body,
-        url: targetUrl,
-        userType: 'admin',
-        tag: 'disp-' + canonicalKey
-      }).catch(() => {});
-    } catch (e) {}
-  }
+  // 3. Trigger immediate remote server push to all Admin devices
+  try {
+    triggerRemoteServerPush({
+      title,
+      body,
+      url: targetUrl,
+      userType: 'admin',
+      tag: 'disp-' + canonicalKey
+    }).catch(() => {});
+  } catch (e) {}
 
-  // 4. Trigger local system push notification ONLY if running in an active Admin context!
-  // Checks canonical dedup so the alert is NEVER duplicated across BroadcastChannel or polling!
+  // 4. If called directly from an active Admin session, dispatch local push if not duplicate
   if (isAdminContext()) {
-    if (!isUnifiedAlertSeen(canonicalKey)) {
-      markUnifiedAlertSeen(canonicalKey);
+    if (!isDuplicatePushAlert('admin_disp_' + canonicalKey, 20000)) {
       sendSystemPushNotification(title, body, 'disp-' + canonicalKey, { tab: targetTab, inquiryId: inqId, canonicalKey, ...extraData });
     }
   }

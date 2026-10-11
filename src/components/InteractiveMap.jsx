@@ -88,17 +88,28 @@ function MapRecenter({ center, destination, routePolyline, zoom }) {
     const t2 = setTimeout(refreshMapSize, 350);
 
     try {
+      if (Array.isArray(routePolyline) && routePolyline.length >= 2) {
+        const validPts = routePolyline
+          .filter(p => p && typeof p.lat === 'number' && typeof p.lng === 'number')
+          .map(p => [p.lat, p.lng]);
+        if (validPts.length >= 2) {
+          const bounds = L.latLngBounds(validPts);
+          map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15, animate: true, duration: 0.8, easeLinearity: 0.25 });
+          return;
+        }
+      }
+
       if (destination && typeof destination.lat === 'number' && typeof destination.lng === 'number' && center && typeof center.lat === 'number') {
         const bounds = L.latLngBounds([
           [center.lat, center.lng],
           [destination.lat, destination.lng]
         ]);
-        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15, animate: true, duration: 1.0, easeLinearity: 0.2 });
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15, animate: true, duration: 0.8, easeLinearity: 0.25 });
       } else if (center && typeof center.lat === 'number' && typeof center.lng === 'number') {
         map.flyTo([center.lat, center.lng], zoom || 15, {
           animate: true,
-          duration: 1.0,
-          easeLinearity: 0.15
+          duration: 0.8,
+          easeLinearity: 0.2
         });
         prevCenterRef.current = center;
       }
@@ -210,25 +221,40 @@ export default function InteractiveMap({
     Math.abs(activeDriverPos.lat - safeLat) < 0.0002 && Math.abs(activeDriverPos.lng - safeLng) < 0.0002;
 
   return (
-    <div className="interactive-google-map-container" style={{ ...style, position: 'relative', width: '100%', height: '100%', overflow: 'hidden', touchAction: 'none' }}>
-
+    <div 
+      className="interactive-google-map-container" 
+      style={{ 
+        ...style, 
+        position: 'relative', 
+        width: '100%', 
+        height: '100%', 
+        overflow: 'hidden', 
+        touchAction: 'pan-x pan-y',
+        WebkitOverflowScrolling: 'touch'
+      }}
+    >
       <MapErrorBoundary center={{ lat: safeLat, lng: safeLng }}>
         <MapContainer
           center={mapCenter}
           zoom={zoom || 15}
+          preferCanvas={true}
           zoomControl={false}
           dragging={true}
           touchZoom={true}
           scrollWheelZoom={true}
           doubleClickZoom={true}
+          bounceAtZoomLimits={false}
+          zoomSnap={0.25}
+          zoomDelta={0.5}
           zoomAnimation={true}
           fadeAnimation={true}
           markerZoomAnimation={true}
-          easeLinearity={0.25}
+          easeLinearity={0.2}
           wheelDebounceTime={40}
-          wheelPxPerZoomLevel={120}
+          wheelPxPerZoomLevel={80}
           inertia={true}
-          inertiaDeceleration={3000}
+          inertiaDeceleration={2400}
+          inertiaMaxSpeed={1800}
           style={{ width: '100%', height: '100%', background: '#E2E8F0', willChange: 'transform' }}
         >
           <MapRecenter center={{ lat: safeLat, lng: safeLng }} destination={destination} routePolyline={routePolyline} zoom={zoom} />
@@ -284,22 +310,22 @@ export default function InteractiveMap({
             <>
               <Polyline 
                 positions={safePositions} 
-                pathOptions={{ color: '#1E40AF', weight: 9, opacity: 0.7, lineCap: 'round', lineJoin: 'round' }} 
+                pathOptions={{ color: '#1E3A8A', weight: 8, opacity: 0.85, lineCap: 'round', lineJoin: 'round' }} 
               />
               <Polyline 
                 positions={safePositions} 
-                pathOptions={{ color: '#2563EB', weight: 6, opacity: 1.0, lineCap: 'round', lineJoin: 'round' }} 
+                pathOptions={{ color: '#3B82F6', weight: 5, opacity: 1.0, lineCap: 'round', lineJoin: 'round' }} 
               />
             </>
           ) : (destination && typeof destination.lat === 'number' && typeof destination.lng === 'number' ? (
             <>
               <Polyline
                 positions={[[safeLat, safeLng], [destination.lat, destination.lng]]}
-                pathOptions={{ color: '#1E40AF', weight: 9, opacity: 0.7, lineCap: 'round', lineJoin: 'round' }}
+                pathOptions={{ color: '#1E3A8A', weight: 8, opacity: 0.85, lineCap: 'round', lineJoin: 'round' }}
               />
               <Polyline
                 positions={[[safeLat, safeLng], [destination.lat, destination.lng]]}
-                pathOptions={{ color: '#2563EB', weight: 6, opacity: 1.0, lineCap: 'round', lineJoin: 'round' }}
+                pathOptions={{ color: '#3B82F6', weight: 5, opacity: 1.0, lineCap: 'round', lineJoin: 'round' }}
               />
             </>
           ) : null)}

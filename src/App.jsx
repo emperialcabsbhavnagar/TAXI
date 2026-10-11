@@ -63,9 +63,16 @@ function MainLayout({ handleOpenBooking, isBookingOpen, handleCloseBooking, book
   const location = useLocation();
   const hostname = typeof window !== 'undefined' ? window.location.hostname.toLowerCase() : '';
 
-  // Standalone PWA Routing: if launched as installed Admin PWA from Home Screen, ensure direct routing to /admin
+  // Standalone PWA Routing: if launched as installed Admin PWA on web, ensure direct routing to /admin
   React.useEffect(() => {
     try {
+      const isNative = typeof window !== 'undefined' && (
+        window.location.protocol === 'file:' ||
+        window.location.protocol === 'capacitor:' ||
+        Boolean(window.Capacitor?.isNativePlatform?.())
+      );
+      if (isNative) return; // Never auto-redirect to web /admin inside native Android APK!
+
       const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
       const isAdminPWA = localStorage.getItem('emperial_pwa_is_admin') === 'true';
       const searchParams = new URLSearchParams(location.search);

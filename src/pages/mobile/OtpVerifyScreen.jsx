@@ -259,14 +259,14 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
                 style={{
                   width: '46px', height: '54px', textAlign: 'center',
                   fontSize: '22px', fontWeight: '800', fontFamily: 'League Spartan',
-                  borderRadius: '14px', border: `2px solid ${val ? '#10B981' : '#CBD5E1'}`,
-                  background: val ? '#F0FDF4' : '#F8FAFC',
+                  borderRadius: '14px', border: `2px solid ${val ? '#F4C542' : '#CBD5E1'}`,
+                  background: val ? '#FEF9E7' : '#FFFFFF',
                   outline: 'none', color: '#0F172A',
                   transition: 'all 0.2s ease',
-                  boxShadow: val ? '0 2px 8px rgba(16, 185, 129, 0.15)' : 'none'
+                  boxShadow: val ? '0 2px 8px rgba(244, 197, 66, 0.2)' : 'none'
                 }}
-                onFocus={(e) => { e.target.style.borderColor = '#10B981'; e.target.style.boxShadow = '0 0 0 3px rgba(16, 185, 129, 0.15)'; }}
-                onBlur={(e) => { e.target.style.borderColor = val ? '#10B981' : '#CBD5E1'; e.target.style.boxShadow = val ? '0 2px 8px rgba(16, 185, 129, 0.15)' : 'none'; }}
+                onFocus={(e) => { e.target.style.borderColor = '#F4C542'; e.target.style.boxShadow = '0 0 0 3px rgba(244, 197, 66, 0.2)'; }}
+                onBlur={(e) => { e.target.style.borderColor = val ? '#F4C542' : '#CBD5E1'; e.target.style.boxShadow = val ? '0 2px 8px rgba(244, 197, 66, 0.2)' : 'none'; }}
               />
             ))}
           </div>
@@ -288,11 +288,11 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
           {resendSuccess && (
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-              background: '#ECFDF5', border: '1px solid #6EE7B7', color: '#047857',
+              background: '#FEF9E7', border: '1px solid #F4C542', color: '#252B34',
               padding: '10px 16px', borderRadius: '12px', fontSize: '13px',
               fontWeight: '600', fontFamily: 'Space Grotesk', width: '100%', boxSizing: 'border-box'
             }}>
-              <CheckCircle2 size={16} color="#047857" />
+              <CheckCircle2 size={16} color="#F4C542" />
               <span>{resendSuccess}</span>
             </div>
           )}
@@ -302,7 +302,7 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
             {countdown > 0 ? (
               <>Didn't receive code? <span style={{ color: '#64748B', fontWeight: '700' }}>Resend in 00:{String(countdown).padStart(2, '0')}</span></>
             ) : (
-              <>Didn't receive code? <span style={{ color: resending ? '#94A3B8' : '#10B981', fontWeight: '800', cursor: resending ? 'default' : 'pointer' }} onClick={handleResendOTP}>
+              <>Didn't receive code? <span style={{ color: resending ? '#94A3B8' : '#252B34', fontWeight: '800', cursor: resending ? 'default' : 'pointer' }} onClick={handleResendOTP}>
                 {resending ? 'Resending...' : 'Resend Code'}
               </span></>
             )}

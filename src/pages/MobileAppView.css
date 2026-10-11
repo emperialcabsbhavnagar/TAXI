@@ -2,20 +2,24 @@
 @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 :root {
-  --emperial-yellow: #6EE7B7;
-  --emperial-orange: #34D399;
-  --emperial-dark: #1E293B;
-  --emperial-navy: #0F172A;
-  --emperial-gray: #64748B;
-  --emperial-light-bg: #F8FAFC;
+  --emperial-charcoal: #252B34;
+  --emperial-primary: #252B34;
+  --emperial-bg: #F5F5F2;
+  --emperial-light-bg: #F5F5F2;
   --emperial-card-bg: #FFFFFF;
+  --emperial-yellow: #F4C542;
+  --emperial-yellow-tint: #FEF9E7;
+  --emperial-yellow-glow: rgba(244, 197, 66, 0.35);
+  --emperial-dark: #252B34;
+  --emperial-navy: #1C2128;
+  --emperial-gray: #5A626F;
   --emperial-red: #EF4444;
-  --emperial-green: #4ADE80;
-  --emperial-border: #E2E8F0;
-  --emperial-shadow-sm: 0 2px 8px rgba(0,0,0,0.03);
-  --emperial-shadow-md: 0 6px 20px rgba(0,0,0,0.06);
-  --emperial-shadow-lg: 0 12px 32px rgba(0,0,0,0.1);
-  --emperial-glow-yellow: 0 6px 20px rgba(110, 231, 183, 0.4);
+  --emperial-green: #22C55E;
+  --emperial-border: #E8E8E3;
+  --emperial-shadow-sm: 0 2px 8px rgba(37, 43, 52, 0.04);
+  --emperial-shadow-md: 0 6px 20px rgba(37, 43, 52, 0.08);
+  --emperial-shadow-lg: 0 12px 32px rgba(37, 43, 52, 0.12);
+  --emperial-glow-yellow: 0 6px 20px rgba(244, 197, 66, 0.35);
 }
 
 
@@ -29,7 +33,7 @@
   max-height: 100vh;
   max-height: 100dvh;
   margin: 0;
-  background: #FFFFFF !important;
+  background: #F5F5F2 !important;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -156,8 +160,8 @@
 .emperial-cabs-spinner-dots, .EMPERIAL.CABS-spinner-dots {
   width: 54px;
   height: 54px;
-  border: 5px solid rgba(52, 211, 153, 0.2);
-  border-top-color: #10B981;
+  border: 5px solid rgba(244, 197, 66, 0.2);
+  border-top-color: #F4C542;
   border-radius: 50%;
   animation: spinDots 0.8s linear infinite;
 }
@@ -283,12 +287,12 @@
 .onboarding-desc { font-size: 15px; color: #64748B; line-height: 1.5; margin: 0; }
 .onboarding-dots { display: flex; justify-content: center; gap: 8px; margin-top: 20px; }
 .dot-item { width: 8px; height: 8px; border-radius: 50%; background: #E2E8F0; transition: all 0.3s ease; }
-.dot-item.active { width: 24px; border-radius: 12px; background: #6EE7B7; }
+.dot-item.active { width: 24px; border-radius: 12px; background: #F4C542; }
 
 .onboarding-action-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; margin-top: 20px; }
-.btn-skip { background: none; border: none; font-size: 16px; font-weight: 700; color: #64748B; cursor: pointer; }
+.btn-skip { background: none; border: none; font-size: 16px; font-weight: 700; color: #5A626F; cursor: pointer; }
 .btn-next-finish {
-  background: linear-gradient(135deg, #6EE7B7 0%, #34D399 100%);
+  background: #252B34;
   color: #FFFFFF;
   border: none;
   font-family: 'League Spartan', sans-serif;
@@ -297,10 +301,11 @@
   padding: 14px 32px;
   border-radius: 16px;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(110, 231, 183, 0.4);
-  transition: transform 0.15s ease;
+  box-shadow: 0 4px 14px rgba(37, 43, 52, 0.22);
+  transition: transform 0.15s ease, background 0.15s ease;
 }
-.btn-next-finish:active { transform: scale(0.96); }
+.btn-next-finish:hover { background: #1C2128; }
+.btn-next-finish:active { transform: scale(0.96); background: #1C2128; }
 
 /* 2. LETS YOU IN SCREEN STYLING */
 .let-you-in-page-wrapper {
@@ -308,14 +313,14 @@
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #F8FAFC;
+  background: #F5F5F2;
   overflow: hidden;
 }
 
 .let-you-red-header {
   width: 100%;
   height: 240px;
-  background: url('../assets/images/let-you-screen/bg-img.svg') no-repeat center top / cover;
+  background: #FB4945 url('../assets/images/let-you-screen/bg-img.svg') no-repeat center top / cover;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -401,13 +406,13 @@
   transition: border-color 0.2s ease;
 }
 
-.phone-input-wrapper:focus-within { border-color: #34D399; background: #FFFFFF; box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.15); }
-.flag-icon-span { font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 700; color: #1E293B; margin-right: 12px; }
-.phone-input-field { width: 100%; border: none; background: transparent; outline: none; padding: 14px 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 600; color: #1E293B; }
+.phone-input-wrapper:focus-within { border-color: #F4C542; background: #FFFFFF; box-shadow: 0 0 0 3px rgba(244, 197, 66, 0.2); }
+.flag-icon-span { font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 700; color: #252B34; margin-right: 12px; }
+.phone-input-field { width: 100%; border: none; background: transparent; outline: none; padding: 14px 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 600; color: #252B34; }
 
 .let-you-signin-btn, .EMPERIAL.CABS-btn-primary, .emperial-cabs-btn-primary {
   width: 100%;
-  background: linear-gradient(135deg, #34D399 0%, #10B981 100%);
+  background: #252B34;
   color: #FFFFFF;
   border: none;
   font-family: 'League Spartan', sans-serif;
@@ -416,13 +421,17 @@
   padding: 16px;
   border-radius: 16px;
   cursor: pointer;
-  box-shadow: 0 6px 20px rgba(52, 211, 153, 0.35);
+  box-shadow: 0 6px 20px rgba(37, 43, 52, 0.22);
   text-align: center;
   box-sizing: border-box;
-  transition: transform 0.15s ease, opacity 0.2s ease;
+  transition: transform 0.15s ease, opacity 0.2s ease, background 0.15s ease;
 }
 
-.let-you-signin-btn:active, .EMPERIAL.CABS-btn-primary:active, .emperial-cabs-btn-primary:active { transform: scale(0.97); }
+.let-you-signin-btn:hover, .EMPERIAL.CABS-btn-primary:hover, .emperial-cabs-btn-primary:hover {
+  background: #1C2128;
+}
+
+.let-you-signin-btn:active, .EMPERIAL.CABS-btn-primary:active, .emperial-cabs-btn-primary:active { transform: scale(0.97); background: #1C2128; }
 
 .let-you-footer-txt { text-align: center; color: #64748B; font-size: 15px; margin-top: auto; }
 .let-you-footer-txt span { color: #1E293B; font-weight: 800; cursor: pointer; text-decoration: underline; }
@@ -526,11 +535,11 @@
   box-sizing: border-box;
 }
 
-.otp-circle-input:focus { border-color: #34D399; background: #FFFFFF; box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.2); }
+.otp-circle-input:focus { border-color: #F4C542; background: #FFFFFF; box-shadow: 0 0 0 3px rgba(244, 197, 66, 0.2); }
 
 .notification-allow-btn {
   width: 100%;
-  background: linear-gradient(135deg, #FFAA01 0%, #FF8C00 100%);
+  background: #252B34;
   color: #FFFFFF;
   border: none;
   font-family: 'League Spartan', sans-serif;
@@ -539,22 +548,23 @@
   padding: 16px;
   border-radius: 16px;
   cursor: pointer;
-  box-shadow: 0 6px 20px rgba(255, 170, 1, 0.35);
+  box-shadow: 0 6px 20px rgba(37, 43, 52, 0.22);
   text-align: center;
   box-sizing: border-box;
-  transition: transform 0.15s ease;
+  transition: transform 0.15s ease, background 0.15s ease;
 }
 
-.notification-allow-btn:active { transform: scale(0.97); }
+.notification-allow-btn:hover { background: #1C2128; }
+.notification-allow-btn:active { transform: scale(0.97); background: #1C2128; }
 
 /* LANGUAGE SELECTION */
 .language-pills-grid { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
 .lang-pill-item {
   padding: 14px 24px;
   border-radius: 16px;
-  border: 1.5px solid #E2E8F0;
+  border: 1.5px solid #E8E8E3;
   background: #FFFFFF;
-  color: #1E293B;
+  color: #252B34;
   font-family: 'League Spartan', sans-serif;
   font-size: 17px;
   font-weight: 700;
@@ -563,10 +573,10 @@
 }
 
 .lang-pill-item.selected {
-  background: linear-gradient(135deg, #34D399 0%, #10B981 100%);
+  background: #252B34;
   color: #FFFFFF;
-  border-color: #34D399;
-  box-shadow: 0 4px 14px rgba(52, 211, 153, 0.35);
+  border-color: #F4C542;
+  box-shadow: 0 4px 14px rgba(37, 43, 52, 0.22);
 }
 
 /* 4. MAP & HOMESCREEN INTERFACE */
@@ -717,9 +727,9 @@
   min-width: 0;
   height: 50px;
   border-radius: 14px;
-  border: 1.5px solid #E2E8F0;
-  background: #F8FAFC;
-  color: #1E293B;
+  border: 1.5px solid #E8E8E3;
+  background: #FFFFFF;
+  color: #252B34;
   font-family: 'League Spartan', sans-serif;
   font-size: clamp(16px, 4.5vw, 19px);
   font-weight: 800;
@@ -732,10 +742,11 @@
 }
 
 .seat-box-btn.active {
-  background: linear-gradient(135deg, #34D399 0%, #10B981 100%);
-  color: #FFFFFF;
-  border-color: #34D399;
-  box-shadow: 0 4px 14px rgba(52, 211, 153, 0.35);
+  background: #FEF9E7;
+  color: #252B34;
+  border-color: #F4C542;
+  box-shadow: 0 4px 14px rgba(244, 197, 66, 0.25);
+  font-weight: 800;
 }
 
 /* SCHEDULE INPUTS */
@@ -765,8 +776,9 @@
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 .schedule-input-box:focus-within {
-  border-color: #FFAE00;
+  border-color: #F4C542;
   background: #FFFFFF;
+  box-shadow: 0 0 0 3px rgba(244, 197, 66, 0.2);
 }
 
 /* 5. BOTTOM NAVIGATION TABS */
@@ -777,12 +789,12 @@
   right: 0;
   width: 100%;
   background: #FFFFFF;
-  border-top: 1px solid #E2E8F0;
+  border-top: 1px solid #E8E8E3;
   display: flex;
   justify-content: space-around;
   padding: 10px 0 calc(env(safe-area-inset-bottom, 14px) + 6px) 0; /* iOS notch safety */
   z-index: 9999;
-  box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
+  box-shadow: 0 -4px 20px rgba(37, 43, 52, 0.06);
   flex-shrink: 0;
 }
 
@@ -833,7 +845,7 @@
   gap: 4px;
   background: none;
   border: none;
-  color: #64748B;
+  color: #5A626F;
   font-family: 'Space Grotesk', sans-serif;
   font-size: 12px;
   font-weight: 700;
@@ -851,16 +863,16 @@
 .nav-tab-svg {
   width: 22px;
   height: 22px;
-  stroke: #64748B;
+  stroke: #5A626F;
   transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), stroke 0.22s ease;
 }
 
 .nav-tab-item.active { 
-  color: #0F172A; 
-  background: #F0FDF4;
+  color: #252B34; 
+  background: #FEF9E7;
 }
 .nav-tab-item.active .nav-tab-svg { 
-  stroke: #10B981; 
+  stroke: #F4C542 !important; 
   transform: translateY(-1px) scale(1.08); 
 }
 .nav-tab-icon { font-size: 20px; transition: transform 0.2s ease; }
@@ -977,7 +989,7 @@
   .nav-tab-item span { font-size: 10px; }
 }
 
-/* Center Instant Tab Button Styling (Monochrome Black & White) */
+/* Center Instant Tab Button Styling (Warm Charcoal + Muted Yellow Accent) */
 .nav-tab-center-short-trip {
   position: relative;
 }
@@ -989,29 +1001,31 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: #F1F5F9;
+  background: #FEF9E7;
+  border: 1.5px solid #F4C542;
   transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .nav-tab-center-short-trip .nav-short-trip-icon-wrapper .nav-tab-svg {
-  stroke: #0F172A;
+  stroke: #252B34;
   width: 17px;
   height: 17px;
 }
 
 .nav-tab-center-short-trip.active {
-  color: #0F172A !important;
-  background: #F8FAFC !important;
+  color: #252B34 !important;
+  background: #FEF9E7 !important;
 }
 
 .nav-tab-center-short-trip.active .nav-short-trip-icon-wrapper {
-  background: #0F172A;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.35);
+  background: #252B34;
+  border-color: #252B34;
+  box-shadow: 0 4px 12px rgba(37, 43, 52, 0.35);
   transform: translateY(-2px);
 }
 
 .nav-tab-center-short-trip.active .nav-short-trip-icon-wrapper .nav-tab-svg {
-  stroke: #FFFFFF !important;
+  stroke: #F4C542 !important;
 }
 
 

@@ -101,14 +101,92 @@ export default function SelectLocationScreen({
     return DEFAULT_PLACES;
   });
 
+  const parseCarPrices = (cp) => {
+    if (!cp) return {};
+    if (typeof cp === 'object') return cp;
+    if (typeof cp === 'string') {
+      try {
+        const parsed = JSON.parse(cp);
+        return typeof parsed === 'object' && parsed !== null ? parsed : {};
+      } catch (e) {
+        return {};
+      }
+    }
+    return {};
+  };
+
+  const DEFAULT_DIRECT_ROUTES = [
+    {
+      id: 'R-BHV-AMD-AIRPORT',
+      name: 'Bhavnagar, Gujarat → Ahmedabad Airport (AMD)',
+      pickup: 'Bhavnagar, Gujarat',
+      dropoff: 'Ahmedabad Airport (AMD)',
+      price: 2200,
+      duration: '2.5 - 3 hrs',
+      car_prices: { 'SEDAN': 2200, 'ERTIGA': 3200, 'INNOVA': 4200, 'CRYSTA': 5000 }
+    },
+    {
+      id: 'R-BHV-AMD-CITY',
+      name: 'Bhavnagar, Gujarat → Ahmedabad',
+      pickup: 'Bhavnagar, Gujarat',
+      dropoff: 'Ahmedabad',
+      price: 2200,
+      duration: '2.5 - 3 hrs',
+      car_prices: { 'SEDAN': 2200, 'ERTIGA': 3200, 'INNOVA': 4200, 'CRYSTA': 5000 }
+    },
+    {
+      id: 'R-BHV-BDQ',
+      name: 'Bhavnagar, Gujarat → Vadodara',
+      pickup: 'Bhavnagar, Gujarat',
+      dropoff: 'Vadodara',
+      price: 2800,
+      duration: '3.5 - 4 hrs',
+      car_prices: { 'SEDAN': 2800, 'ERTIGA': 4000, 'INNOVA': 5000, 'CRYSTA': 6000 }
+    },
+    {
+      id: 'R-BHV-ST',
+      name: 'Bhavnagar, Gujarat → Surat',
+      pickup: 'Bhavnagar, Gujarat',
+      dropoff: 'Surat',
+      price: 3800,
+      duration: '5 - 6 hrs',
+      car_prices: { 'SEDAN': 3800, 'ERTIGA': 5200, 'INNOVA': 6500, 'CRYSTA': 7800 }
+    },
+    {
+      id: 'R-BHV-RAJ',
+      name: 'Bhavnagar, Gujarat → Rajkot',
+      pickup: 'Bhavnagar, Gujarat',
+      dropoff: 'Rajkot',
+      price: 2200,
+      duration: '3 - 3.5 hrs',
+      car_prices: { 'SEDAN': 2200, 'ERTIGA': 3200, 'INNOVA': 4200, 'CRYSTA': 5000 }
+    },
+    {
+      id: 'R-BHV-GNR',
+      name: 'Bhavnagar, Gujarat → Gandhinagar',
+      pickup: 'Bhavnagar, Gujarat',
+      dropoff: 'Gandhinagar',
+      price: 2400,
+      duration: '3 - 3.5 hrs',
+      car_prices: { 'SEDAN': 2400, 'ERTIGA': 3500, 'INNOVA': 4500, 'CRYSTA': 5500 }
+    },
+    {
+      id: 'R-BHV-BOM',
+      name: 'Bhavnagar, Gujarat → Mumbai',
+      pickup: 'Bhavnagar, Gujarat',
+      dropoff: 'Mumbai',
+      price: 11000,
+      duration: '11 - 12 hrs',
+      car_prices: { 'SEDAN': 11000, 'ERTIGA': 14500, 'INNOVA': 17500, 'CRYSTA': 21000 }
+    }
+  ];
+
   const isRoutePriced = (r) => {
     if (!r || !r.pickup || !r.dropoff) return false;
     const baseP = Number(r.price) || 0;
     if (baseP > 0) return true;
-    if (r.car_prices && typeof r.car_prices === 'object') {
-      return Object.values(r.car_prices).some(v => Number(v) > 0);
-    }
-    return false;
+    const cp = parseCarPrices(r.car_prices);
+    return Object.values(cp).some(v => Number(v) > 0);
   };
 
   const [routes, setRoutes] = useState(() => {
@@ -116,12 +194,13 @@ export default function SelectLocationScreen({
       const savedDestinations = safeStorageGetItem('cabsy_destinations') || localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
       if (savedDestinations) {
         const parsed = typeof savedDestinations === 'string' ? JSON.parse(savedDestinations) : savedDestinations;
-        if (Array.isArray(parsed)) {
-          return parsed.filter(isRoutePriced);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const valid = parsed.map(r => ({ ...r, car_prices: parseCarPrices(r.car_prices) })).filter(isRoutePriced);
+          if (valid.length > 0) return expandBidirectionalRoutes(valid);
         }
       }
     } catch (e) {}
-    return [];
+    return expandBidirectionalRoutes(DEFAULT_DIRECT_ROUTES);
   });
 
   const [activeDropdown, setActiveDropdown] = useState(null); // 'pickup' | 'dropoff' | 'pickupCity' | 'dropoffCity' | null
@@ -156,8 +235,11 @@ export default function SelectLocationScreen({
       const savedDestinations = safeStorageGetItem('cabsy_destinations') || localStorage.getItem('cabsy_destinations') || localStorage.getItem('cabsy_routes');
       if (savedDestinations) {
         const parsedD = typeof savedDestinations === 'string' ? JSON.parse(savedDestinations) : savedDestinations;
-        if (Array.isArray(parsedD)) {
-          setRoutes(expandBidirectionalRoutes(parsedD.filter(isRoutePriced)));
+        if (Array.isArray(parsedD) && parsedD.length > 0) {
+          const valid = parsedD.map(r => ({ ...r, car_prices: parseCarPrices(r.car_prices) })).filter(isRoutePriced);
+          if (valid.length > 0) {
+            setRoutes(expandBidirectionalRoutes(valid));
+          }
         }
       }
     } catch (e) {
@@ -173,7 +255,7 @@ export default function SelectLocationScreen({
     }).catch(() => {});
 
     loadAllRoutesFromMySQL().then(mysqlRoutes => {
-      if (mysqlRoutes !== null && Array.isArray(mysqlRoutes)) {
+      if (Array.isArray(mysqlRoutes) && mysqlRoutes.length > 0) {
         const formattedRoutes = mysqlRoutes
           .map(r => ({
             id: r.id,
@@ -182,15 +264,17 @@ export default function SelectLocationScreen({
             dropoff: r.dropoff,
             price: Number(r.price) || 0,
             duration: r.duration || '',
-            car_prices: r.car_prices || {}
+            car_prices: parseCarPrices(r.car_prices)
           }))
           .filter(isRoutePriced);
-        const expanded = expandBidirectionalRoutes(formattedRoutes);
-        setRoutes(expanded);
-        try {
-          localStorage.setItem('cabsy_destinations', JSON.stringify(expanded));
-          localStorage.setItem('cabsy_routes', JSON.stringify(expanded));
-        } catch (e) {}
+        if (formattedRoutes.length > 0) {
+          const expanded = expandBidirectionalRoutes(formattedRoutes);
+          setRoutes(expanded);
+          try {
+            localStorage.setItem('cabsy_destinations', JSON.stringify(expanded));
+            localStorage.setItem('cabsy_routes', JSON.stringify(expanded));
+          } catch (e) {}
+        }
       }
     }).catch(() => {});
   };
@@ -475,7 +559,7 @@ export default function SelectLocationScreen({
   };
 
   return (
-    <div className="real-mobile-app" style={{ background: '#F8FAFC', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="real-mobile-app" style={{ background: '#F5F5F2', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Header Bar */}
       <div 
         style={{ 
@@ -562,7 +646,7 @@ export default function SelectLocationScreen({
               gap: '6px'
             }}
           >
-            <Car size={16} color={mode === 'standard' ? '#10B981' : '#64748B'} />
+            <Car size={16} color={mode === 'standard' ? '#F4C542' : '#64748B'} />
             <span>One Way Trip</span>
           </button>
 
@@ -575,14 +659,14 @@ export default function SelectLocationScreen({
             style={{
               padding: '10px 12px',
               borderRadius: '12px',
-              border: mode === 'custom' ? '1.5px solid #10B981' : 'none',
+              border: mode === 'custom' ? '1.5px solid #F4C542' : 'none',
               background: mode === 'custom' ? '#FFFFFF' : 'transparent',
               color: mode === 'custom' ? '#0F172A' : '#64748B',
               fontFamily: 'League Spartan, sans-serif',
               fontSize: '14px',
               fontWeight: '800',
               cursor: 'pointer',
-              boxShadow: mode === 'custom' ? '0 2px 8px rgba(16,185,129,0.15)' : 'none',
+              boxShadow: mode === 'custom' ? '0 2px 8px rgba(244,197,66,0.2)' : 'none',
               transition: 'all 0.2s ease',
               display: 'flex',
               alignItems: 'center',
@@ -590,7 +674,7 @@ export default function SelectLocationScreen({
               gap: '6px'
             }}
           >
-            <Sparkles size={16} color={mode === 'custom' ? '#10B981' : '#64748B'} />
+            <Sparkles size={16} color={mode === 'custom' ? '#F4C542' : '#64748B'} />
             <span>Round Trip</span>
           </button>
         </div>
@@ -647,18 +731,18 @@ export default function SelectLocationScreen({
                         }
                         setActiveDropdown(null);
                       }}
-                      style={{ padding: '12px 16px', fontSize: '14px', fontWeight: '700', color: '#059669', background: '#ECFDF5', borderBottom: '1px solid #A7F3D0', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}
+                      style={{ padding: '12px 16px', fontSize: '14px', fontWeight: '700', color: '#252B34', background: '#FEF9E7', borderBottom: '1px solid #FDE68A', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}
                     >
-                      <Navigation size={18} color="#10B981" />
+                      <Navigation size={18} color="#F4C542" />
                       <span><strong>Use My Current Live GPS Spot</strong></span>
                     </div>
 
                     {/* Available direct route pickups */}
                     {availablePickups.length > 0 && (
                       <>
-                        <div style={{ padding: '8px 14px', fontSize: '11px', fontWeight: '800', color: '#047857', background: '#F0FDF4', borderBottom: '1px solid #DCFCE7', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ padding: '8px 14px', fontSize: '11px', fontWeight: '800', color: '#252B34', background: '#FEF9E7', borderBottom: '1px solid #FDE68A', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <span>AVAILABLE DIRECT ROUTE PICKUPS</span>
-                          <span style={{ fontSize: '10px', background: '#DCFCE7', padding: '2px 6px', borderRadius: '6px', fontWeight: '800' }}>Direct Routes</span>
+                          <span style={{ fontSize: '10px', background: '#F4C542', color: '#252B34', padding: '2px 6px', borderRadius: '6px', fontWeight: '800' }}>Direct Routes</span>
                         </div>
                         {getFilteredPickups(pickupLoc).map((spot, i) => (
                           <div 
@@ -669,7 +753,7 @@ export default function SelectLocationScreen({
                               setActiveDropdown('dropoff');
                             }}
                           >
-                            <MapPin size={16} color="#10B981" />
+                            <MapPin size={16} color="#F4C542" />
                             <span>{spot}</span>
                           </div>
                         ))}
@@ -680,9 +764,9 @@ export default function SelectLocationScreen({
                     {pickupLoc.trim() !== '' && !availablePickups.some(p => p.toLowerCase() === pickupLoc.toLowerCase().trim()) && !getFilteredPlaces(pickupLoc).some(p => p.toLowerCase() === pickupLoc.toLowerCase().trim()) && (
                       <div 
                         onClick={() => setActiveDropdown(null)}
-                        style={{ padding: '10px 14px', fontSize: '13px', fontWeight: '700', color: '#059669', background: '#F0FDF4', borderBottom: '1px solid #E2E8F0', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+                        style={{ padding: '10px 14px', fontSize: '13px', fontWeight: '700', color: '#252B34', background: '#FEF9E7', borderBottom: '1px solid #E2E8F0', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
                       >
-                        <Sparkles size={16} color="#10B981" />
+                        <Sparkles size={16} color="#F4C542" />
                         <span>Use Custom Spot: "<strong>{pickupLoc}</strong>"</span>
                       </div>
                     )}
@@ -743,9 +827,9 @@ export default function SelectLocationScreen({
                     transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = '#10B981';
+                    e.currentTarget.style.borderColor = '#F4C542';
                     e.currentTarget.style.transform = 'scale(1.1) rotate(180deg)';
-                    e.currentTarget.style.boxShadow = '0 6px 18px rgba(16,185,129,0.25)';
+                    e.currentTarget.style.boxShadow = '0 6px 18px rgba(244,197,66,0.3)';
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.borderColor = '#CBD5E1';
@@ -753,7 +837,7 @@ export default function SelectLocationScreen({
                     e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,0.1)';
                   }}
                 >
-                  <ArrowUpDown size={17} color="#10B981" />
+                  <ArrowUpDown size={17} color="#252B34" />
                 </button>
               </div>
 
@@ -1091,10 +1175,8 @@ export default function SelectLocationScreen({
                   const isSelected = pickupLoc.trim().toLowerCase() === (route.pickup || '').trim().toLowerCase() &&
                                      dropoffLoc.trim().toLowerCase() === (route.dropoff || '').trim().toLowerCase();
                   const baseP = Number(route.price) || 0;
-                  let carPriceVals = [];
-                  if (route.car_prices && typeof route.car_prices === 'object') {
-                    carPriceVals = Object.values(route.car_prices).map(Number).filter(v => v > 0);
-                  }
+                  const cp = parseCarPrices(route.car_prices);
+                  const carPriceVals = Object.values(cp).map(Number).filter(v => v > 0);
                   const startingPrice = baseP > 0 ? (carPriceVals.length > 0 ? Math.min(baseP, ...carPriceVals) : baseP) : (carPriceVals.length > 0 ? Math.min(...carPriceVals) : null);
 
                   return (
@@ -1102,10 +1184,10 @@ export default function SelectLocationScreen({
                       key={route.id || idx} 
                       style={{ 
                         padding: '16px', 
-                        background: isSelected ? '#F0FDF4' : '#FFFFFF', 
+                        background: isSelected ? '#FEF9E7' : '#FFFFFF', 
                         borderRadius: '20px', 
-                        border: isSelected ? '2px solid #10B981' : '1.5px solid #E2E8F0', 
-                        boxShadow: isSelected ? '0 6px 18px rgba(52, 211, 153, 0.25)' : '0 2px 10px rgba(0,0,0,0.03)', 
+                        border: isSelected ? '2px solid #F4C542' : '1.5px solid #E2E8F0', 
+                        boxShadow: isSelected ? '0 6px 18px rgba(244, 197, 66, 0.22)' : '0 2px 10px rgba(0,0,0,0.03)', 
                         cursor: 'pointer',
                         transition: 'all 0.2s ease',
                         position: 'relative'
@@ -1114,11 +1196,11 @@ export default function SelectLocationScreen({
                     >
                       {isSelected && (
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                          <span style={{ fontSize: '11px', fontWeight: '800', color: '#047857', background: '#D1FAE5', border: '1px solid #A7F3D0', padding: '2px 8px', borderRadius: '6px', letterSpacing: '0.5px' }}>
+                          <span style={{ fontSize: '11px', fontWeight: '800', color: '#252B34', background: '#F4C542', border: '1px solid #F4C542', padding: '2px 8px', borderRadius: '6px', letterSpacing: '0.5px' }}>
                             TOP 1 MATCHED ROUTE
                           </span>
-                          <span style={{ fontSize: '12px', fontWeight: '800', color: '#059669', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <CheckCircle size={14} color="#10B981" />
+                          <span style={{ fontSize: '12px', fontWeight: '800', color: '#252B34', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <CheckCircle size={14} color="#F4C542" />
                             Selected
                           </span>
                         </div>
@@ -1429,13 +1511,13 @@ export default function SelectLocationScreen({
                       height: '38px',
                       borderRadius: '12px',
                       border: 'none',
-                      background: '#10B981',
+                      background: '#252B34',
                       color: '#FFFFFF',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       cursor: 'pointer',
-                      boxShadow: '0 4px 12px rgba(16,185,129,0.3)'
+                      boxShadow: '0 4px 12px rgba(37, 43, 52, 0.22)'
                     }}
                   >
                     <Plus size={18} />
@@ -1447,20 +1529,20 @@ export default function SelectLocationScreen({
             {/* DYNAMIC ROUTE SUMMARY BADGE */}
             {isCustomReady && (
               <div style={{
-                background: '#ECFDF5',
-                border: '1.5px solid #A7F3D0',
+                background: '#FEF9E7',
+                border: '1.5px solid #F4C542',
                 borderRadius: '18px',
                 padding: '14px 16px',
                 marginBottom: '20px',
-                boxShadow: '0 4px 14px rgba(16,185,129,0.1)'
+                boxShadow: '0 4px 14px rgba(244, 197, 66, 0.15)'
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <CheckCircle size={20} color="#10B981" />
-                  <span style={{ fontSize: '15px', fontWeight: '800', color: '#047857', fontFamily: 'League Spartan, sans-serif' }}>
+                  <CheckCircle size={20} color="#F4C542" />
+                  <span style={{ fontSize: '15px', fontWeight: '800', color: '#252B34', fontFamily: 'League Spartan, sans-serif' }}>
                     {cPickupCity} ➔ {cDropoffCity} ({cDays} Day{cDays > 1 ? 's' : ''})
                   </span>
                 </div>
-                <div style={{ fontSize: '12px', color: '#065F46', fontWeight: '600', lineHeight: 1.4 }}>
+                <div style={{ fontSize: '12px', color: '#5A626F', fontWeight: '600', lineHeight: 1.4 }}>
                   Custom itinerary specified. Proceed to select your fleet vehicle.
                 </div>
               </div>
@@ -1486,7 +1568,7 @@ export default function SelectLocationScreen({
             style={{
               width: '100%',
               background: isStandardReady 
-                ? 'linear-gradient(135deg, #6EE7B7 0%, #34D399 100%)' 
+                ? '#252B34' 
                 : '#E2E8F0',
               color: isStandardReady ? '#FFFFFF' : '#94A3B8',
               border: 'none',
@@ -1496,7 +1578,7 @@ export default function SelectLocationScreen({
               fontSize: '18px',
               fontWeight: '800',
               cursor: isStandardReady ? 'pointer' : 'not-allowed',
-              boxShadow: isStandardReady ? '0 8px 24px rgba(110, 231, 183, 0.4)' : 'none',
+              boxShadow: isStandardReady ? '0 8px 24px rgba(37, 43, 52, 0.22)' : 'none',
               transition: 'all 0.2s ease',
               display: 'flex',
               alignItems: 'center',
@@ -1517,7 +1599,7 @@ export default function SelectLocationScreen({
             style={{
               width: '100%',
               background: isCustomReady 
-                ? 'linear-gradient(135deg, #6EE7B7 0%, #34D399 100%)' 
+                ? '#252B34' 
                 : '#E2E8F0',
               color: isCustomReady ? '#FFFFFF' : '#94A3B8',
               border: 'none',
@@ -1527,7 +1609,7 @@ export default function SelectLocationScreen({
               fontSize: '18px',
               fontWeight: '800',
               cursor: isCustomReady ? 'pointer' : 'not-allowed',
-              boxShadow: isCustomReady ? '0 8px 24px rgba(52, 211, 153, 0.4)' : 'none',
+              boxShadow: isCustomReady ? '0 8px 24px rgba(37, 43, 52, 0.22)' : 'none',
               transition: 'all 0.2s ease',
               display: 'flex',
               alignItems: 'center',

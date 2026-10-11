@@ -5,7 +5,7 @@ import BottomNavBar from '../../components/BottomNavBar';
 import { getBestLiveLocation, watchLiveLocation, reverseGeocodeCoords } from '../../services/liveLocationService';
 import { db } from '../../services/dbService';
 import { getCustomerNotifications } from '../../services/notificationEngine';
-import { loadAllInquiriesFromMySQL } from '../../services/mysqlService';
+import { loadAllInquiriesFromMySQL, clearCustomerNotificationsInMySQL } from '../../services/mysqlService';
 import { RotateCcw, User, Bell, CheckCircle2, XCircle, Clock3, Gift, MapPin, ArrowRight, X, Car, ShieldCheck, Star, Sparkles, Award, ChevronUp, ChevronDown } from 'lucide-react';
 
 export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, onOpenTracking, userCoords: propCoords, setUserCoords: setPropCoords }) {
@@ -238,14 +238,27 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
   useEffect(() => {
     const loadNotifs = () => {
       const notifs = [];
+      const clearedAt = Number(localStorage.getItem('cabsy_customer_notifs_cleared_at') || 0);
+      let clearedIds = new Set();
+      try {
+        const parsed = JSON.parse(localStorage.getItem('cabsy_cleared_notif_ids') || '[]');
+        if (Array.isArray(parsed)) clearedIds = new Set(parsed.map(String));
+      } catch(e) {}
 
       // 1. Direct Push Notifications from Admin / Engine
       const directNotifs = getCustomerNotifications(userProfile?.phone, userProfile?.email);
-      if (directNotifs && directNotifs.length > 0) {
+      if (Array.isArray(directNotifs) && directNotifs.length > 0) {
         // Keep only the latest notification per inquiry so newer status replaces old
         const seenKeys = new Set();
         directNotifs.forEach(dn => {
-          const key = dn.extraData?.inquiryId || dn.type + '_' + (dn.title || '').slice(0, 15);
+          if (!dn) return;
+          const notifIdStr = String(dn.id || '');
+          if (clearedIds.has(notifIdStr)) return;
+
+          const dnTs = dn.date ? new Date(dn.date).getTime() : (dn.timestamp || 0);
+          if (clearedAt > 0 && dnTs > 0 && dnTs <= clearedAt) return;
+
+          const key = dn.extraData?.inquiryId || (dn.type + '_' + (dn.title || '').slice(0, 15));
           if (!seenKeys.has(key)) {
             seenKeys.add(key);
             notifs.push({
@@ -254,66 +267,31 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
               title: dn.title,
               desc: dn.desc || dn.body,
               time: dn.time || 'Just now',
-              read: dn.read || false
+              read: dn.read || false,
+              date: dn.date
             });
           }
         });
       }
-
-      try {
-        const inquiries = db.getInquiries();
-        const userInquiries = inquiries.filter(i => 
-          (userProfile?.phone && i.customerPhone === userProfile.phone) ||
-          (userProfile?.email && i.customerEmail === userProfile.email) ||
-          (userProfile?.name && i.customerName?.toLowerCase() === userProfile.name?.toLowerCase())
-        );
-
-        if (userInquiries.length > 0) {
-          userInquiries.forEach(inq => {
-            if (inq.status === 'Confirmed' && !notifs.some(n => n.id === `inq-conf-${inq.id}`)) {
-              notifs.push({
-                id: `inq-conf-${inq.id}`,
-                type: 'inquiry',
-                title: `Booking Confirmed (${inq.id})`,
-                desc: `Your trip from ${inq.pickup} to ${inq.dropoff} is confirmed. Driver: ${inq.driver || 'Assigned'}`,
-                time: inq.date || 'Today',
-                read: false
-              });
-            } else if (inq.status === 'Pending' && !notifs.some(n => n.id === `inq-pend-${inq.id}`)) {
-              notifs.push({
-                id: `inq-pend-${inq.id}`,
-                type: 'inquiry',
-                title: `Ride Inquiry Pending (${inq.id})`,
-                desc: `Inquiry for ${inq.vehicle} (₹${inq.fare}) is under review by EMPERIAL CABS dispatchers.`,
-                time: inq.date || 'Just now',
-                read: false
-              });
-            }
-          });
-        }
-      } catch (e) {}
-
-      notifs.push({
-        id: 'sys-gps',
-        type: 'system',
-        title: 'Location Service Active',
-        desc: `Current pickup spot set near ${customerAddress}`,
-        time: 'Active Now',
-        read: true
-      });
 
       setUserNotifs(notifs);
     };
 
     loadNotifs();
 
+    const handleCleared = () => {
+      setUserNotifs([]);
+    };
+
     window.addEventListener('storage', loadNotifs);
     window.addEventListener('EMPERIAL CABS_ride_booked', loadNotifs);
     window.addEventListener('EMPERIAL CABS_customer_notif', loadNotifs);
+    window.addEventListener('EMPERIAL CABS_customer_notif_cleared', handleCleared);
     return () => {
       window.removeEventListener('storage', loadNotifs);
       window.removeEventListener('EMPERIAL CABS_ride_booked', loadNotifs);
       window.removeEventListener('EMPERIAL CABS_customer_notif', loadNotifs);
+      window.removeEventListener('EMPERIAL CABS_customer_notif_cleared', handleCleared);
     };
   }, [customerAddress, userProfile]);
 
@@ -482,7 +460,7 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
                 width: 'auto'
               }}
             >
-              <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+              <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#252B34', color: '#F4C542', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
                 {userPhoto ? (
                   <img 
                     src={userPhoto} 
@@ -520,6 +498,11 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
                 setIsNotifOpen(true);
                 // Mark all as read when opened
                 setUserNotifs(prev => prev.map(n => ({ ...n, read: true })));
+                try {
+                  const existing = JSON.parse(localStorage.getItem('cabsy_customer_notifications') || '[]');
+                  const updated = existing.map(n => ({ ...n, read: true }));
+                  localStorage.setItem('cabsy_customer_notifications', JSON.stringify(updated));
+                } catch (e) {}
               }}
               title="Notifications & Updates"
               style={{
@@ -690,10 +673,22 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
                 {userNotifs.length > 0 && (
                   <button 
                     onClick={() => {
+                      const clearTime = Date.now();
+                      const clearedIds = userNotifs.map(n => String(n.id || '')).filter(Boolean);
                       try {
-                        localStorage.removeItem('cabsy_customer_notifications');
+                        localStorage.setItem('cabsy_customer_notifs_cleared_at', String(clearTime));
+                        const prev = JSON.parse(localStorage.getItem('cabsy_cleared_notif_ids') || '[]');
+                        const merged = Array.from(new Set([...(Array.isArray(prev) ? prev : []), ...clearedIds])).slice(-300);
+                        localStorage.setItem('cabsy_cleared_notif_ids', JSON.stringify(merged));
+                        localStorage.setItem('cabsy_customer_notifications', '[]');
                       } catch (e) {}
+
                       setUserNotifs([]);
+                      clearCustomerNotificationsInMySQL(userProfile?.phone, userProfile?.email).catch(() => {});
+                      if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('EMPERIAL CABS_customer_notif_cleared'));
+                        window.dispatchEvent(new Event('storage'));
+                      }
                     }}
                     style={{ background: '#F1F5F9', border: 'none', padding: '6px 12px', borderRadius: '10px', fontSize: '12px', fontWeight: '700', color: '#64748B', cursor: 'pointer' }}
                   >
@@ -745,7 +740,7 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
 
             <button 
               onClick={() => setIsNotifOpen(false)}
-              style={{ background: 'linear-gradient(135deg, #6EE7B7 0%, #34D399 100%)', color: '#FFFFFF', border: 'none', padding: '14px', borderRadius: '16px', fontWeight: '800', fontSize: '16px', cursor: 'pointer', marginTop: '4px', boxShadow: '0 6px 20px rgba(110, 231, 183, 0.4)' }}
+              style={{ background: '#252B34', color: '#FFFFFF', border: 'none', padding: '14px', borderRadius: '16px', fontWeight: '800', fontSize: '16px', cursor: 'pointer', marginTop: '4px', boxShadow: '0 6px 20px rgba(37, 43, 52, 0.22)' }}
             >
               Close Updates
             </button>
@@ -781,14 +776,14 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
                   style={{ padding: '14px 16px', borderRadius: '14px', background: '#F8FAFC', cursor: 'pointer', border: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
                 >
                   <span style={{ fontFamily: 'Space Grotesk', fontWeight: '700', color: '#0F172A', fontSize: '14px' }}>{loc.name}</span>
-                  <span style={{ fontSize: '12px', color: '#4ADE80', fontWeight: '800' }}>Select →</span>
+                  <span style={{ fontSize: '12px', color: '#F4C542', fontWeight: '800' }}>Select →</span>
                 </div>
               ))}
             </div>
 
             <button 
               onClick={() => { setIsSearchOpen(false); onStartBooking(); }}
-              style={{ background: 'linear-gradient(135deg, #6EE7B7 0%, #34D399 100%)', color: '#FFFFFF', border: 'none', padding: '16px', borderRadius: '16px', fontWeight: '800', fontSize: '16px', cursor: 'pointer', marginTop: '6px', boxShadow: '0 8px 24px rgba(110, 231, 183, 0.4)' }}
+              style={{ background: '#252B34', color: '#FFFFFF', border: 'none', padding: '16px', borderRadius: '16px', fontWeight: '800', fontSize: '16px', cursor: 'pointer', marginTop: '6px', boxShadow: '0 8px 24px rgba(37, 43, 52, 0.22)' }}
             >
               Confirm Location & Continue →
             </button>
@@ -815,9 +810,9 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
               <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
                 <div style={{
                   position: 'relative',
-                  width: '76px', height: '76px', borderRadius: '50%', background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFFFFF',
-                  boxShadow: '0 12px 30px rgba(16, 185, 129, 0.45)'
+                  width: '76px', height: '76px', borderRadius: '50%', background: 'linear-gradient(135deg, #252B34 0%, #1A1F26 100%)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#F4C542',
+                  boxShadow: '0 12px 30px rgba(37, 43, 52, 0.35)'
                 }}>
                   <CheckCircle2 size={44} strokeWidth={2.5} />
                 </div>
@@ -839,14 +834,14 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <span style={{ fontSize: '11px', fontWeight: '800', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Fare</span>
-                    <div style={{ fontWeight: '800', fontSize: '20px', color: '#10B981', fontFamily: 'Space Grotesk, sans-serif' }}>₹{Number(completedModal.fare || 0).toFixed(2)}</div>
+                    <div style={{ fontWeight: '800', fontSize: '20px', color: '#252B34', fontFamily: 'Space Grotesk, sans-serif' }}>₹{Number(completedModal.fare || 0).toFixed(2)}</div>
                   </div>
                 </div>
 
                 {/* Pickup -> Dropoff Locations Timeline */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', position: 'relative', paddingLeft: '4px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#10B981', flexShrink: 0, boxShadow: '0 0 0 3px rgba(16,185,129,0.15)' }}></div>
+                    <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#252B34', flexShrink: 0, boxShadow: '0 0 0 3px rgba(37,43,52,0.15)' }}></div>
                     <span style={{ fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px', fontWeight: '700', color: '#1E293B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{completedModal.pickup || completedModal.pickupLoc || 'Pickup Location'}</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -859,7 +854,7 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
                 {completedModal.driver && (
                   <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px dashed #CBD5E1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#34D399', flexShrink: 0 }}>
+                      <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#F4C542', flexShrink: 0 }}>
                         <Car size={20} />
                       </div>
                       <div>
@@ -879,25 +874,25 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
               {/* REWARD SECTION — ONLY SHOWN IF REWARD WAS ISSUED & > 0 */}
               {hasReward && (
                 <div style={{
-                  background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)',
-                  border: '1.5px solid #10B981',
+                  background: '#FEF9E7',
+                  border: '1.5px solid #F4C542',
                   borderRadius: '20px',
                   padding: '16px',
                   marginBottom: '20px',
                   textAlign: 'center',
-                  boxShadow: '0 8px 20px rgba(16, 185, 129, 0.15)',
+                  boxShadow: '0 8px 20px rgba(244, 197, 66, 0.15)',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '12px'
                 }}>
-                  <div style={{ width: '42px', height: '42px', borderRadius: '14px', background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFFFFF', flexShrink: 0 }}>
+                  <div style={{ width: '42px', height: '42px', borderRadius: '14px', background: '#252B34', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#F4C542', flexShrink: 0 }}>
                     <Gift size={22} />
                   </div>
                   <div style={{ textAlign: 'left', flex: 1 }}>
-                    <h4 style={{ fontFamily: 'League Spartan, sans-serif', fontSize: '16px', fontWeight: '800', color: '#065F46', margin: '0 0 2px 0' }}>
+                    <h4 style={{ fontFamily: 'League Spartan, sans-serif', fontSize: '16px', fontWeight: '800', color: '#252B34', margin: '0 0 2px 0' }}>
                       ₹{rewardVal.toFixed(2)} Cash Reward Earned!
                     </h4>
-                    <p style={{ fontFamily: 'Space Grotesk, sans-serif', fontSize: '12px', color: '#047857', margin: 0, fontWeight: '600' }}>
+                    <p style={{ fontFamily: 'Space Grotesk, sans-serif', fontSize: '12px', color: '#5A626F', margin: 0, fontWeight: '600' }}>
                       Added to your Empire Wallet balance.
                     </p>
                   </div>
@@ -915,11 +910,11 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
                       onClick={() => setDriverRating(star)}
                       style={{
                         background: 'none', border: 'none', padding: '4px', cursor: 'pointer',
-                        color: star <= driverRating ? '#F59E0B' : '#CBD5E1', transition: 'transform 0.15s ease',
+                        color: star <= driverRating ? '#F4C542' : '#CBD5E1', transition: 'transform 0.15s ease',
                         display: 'flex', alignItems: 'center', justifyContent: 'center'
                       }}
                     >
-                      <Star size={28} fill={star <= driverRating ? '#F59E0B' : 'transparent'} strokeWidth={1.5} />
+                      <Star size={28} fill={star <= driverRating ? '#F4C542' : 'transparent'} strokeWidth={1.5} />
                     </button>
                   ))}
                 </div>
@@ -936,14 +931,14 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
                   width: '100%',
                   padding: '16px',
                   borderRadius: '16px',
-                  background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                  background: '#252B34',
                   color: '#FFFFFF',
                   border: 'none',
                   fontFamily: 'League Spartan, sans-serif',
                   fontSize: '17px',
                   fontWeight: '800',
                   cursor: 'pointer',
-                  boxShadow: '0 10px 25px rgba(16, 185, 129, 0.4)',
+                  boxShadow: '0 10px 25px rgba(37, 43, 52, 0.25)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',

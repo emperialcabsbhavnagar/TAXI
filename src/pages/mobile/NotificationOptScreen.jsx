@@ -62,14 +62,14 @@ export default function NotificationOptScreen({ onNext, onBack }) {
           width: '64px',
           height: '64px',
           borderRadius: '20px',
-          background: '#F8FAFC',
-          border: '1.5px solid #E2E8F0',
+          background: '#FEF9E7',
+          border: '1.5px solid #F4C542',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           marginBottom: '24px'
         }}>
-          <Bell size={28} color="#0F172A" />
+          <Bell size={28} color="#F4C542" />
         </div>
 
         {/* Clean Title */}
@@ -99,13 +99,13 @@ export default function NotificationOptScreen({ onNext, onBack }) {
             width: '100%',
             height: '52px',
             borderRadius: '14px',
-            background: 'linear-gradient(135deg, #FFAE00 0%, #FF9500 100%)',
+            background: '#252B34',
             color: '#FFFFFF',
             fontSize: '16px',
             fontWeight: '800',
             border: 'none',
             cursor: isLoading ? 'default' : 'pointer',
-            boxShadow: '0 4px 14px rgba(255, 174, 0, 0.3)',
+            boxShadow: '0 4px 14px rgba(37, 43, 52, 0.22)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

@@ -1,5 +1,6 @@
 import React from 'react';
-import { X, ArrowRight } from 'lucide-react';
+import { X } from 'lucide-react';
+import posterAsset from '../assets/images/short-trip-poster.png';
 
 /**
  * ShortTripPosterModal
@@ -10,16 +11,10 @@ export default function ShortTripPosterModal({ isOpen, onClose, onOpenShortTrip 
   if (!isOpen) return null;
 
   const handleAction = () => {
-    try {
-      sessionStorage.setItem('cabsy_short_trip_poster_dismissed', 'true');
-    } catch (e) {}
     if (onOpenShortTrip) onOpenShortTrip();
   };
 
   const handleDismiss = () => {
-    try {
-      sessionStorage.setItem('cabsy_short_trip_poster_dismissed', 'true');
-    } catch (e) {}
     if (onClose) onClose();
   };
 
@@ -98,8 +93,13 @@ export default function ShortTripPosterModal({ isOpen, onClose, onOpenShortTrip 
         {/* Poster Visual Presentation */}
         <div style={{ width: '100%', position: 'relative', backgroundColor: '#FFFFFF', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <img 
-            src="/short-trip-poster.png" 
+            src={posterAsset || '/short-trip-poster.png'} 
             alt="Short Trips Now Available in Bhavnagar"
+            onError={(e) => {
+              if (e.currentTarget.src !== window.location.origin + '/short-trip-poster.png') {
+                e.currentTarget.src = '/short-trip-poster.png';
+              }
+            }}
             style={{
               width: '100%',
               height: 'auto',

@@ -1,9 +1,8 @@
-// EMPERIAL CABS Mobile User Experience & Navigation Engine v1.0.8
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './MobileAppView.css';
 import { db } from '../services/dbService';
 import { saveInquiryToMySQL, saveCustomerToMySQL, loadAllCustomersFromMySQL, loadAllInquiriesFromMySQL, fetchNotificationsFromMySQL, markNotificationDeliveredInMySQL, checkLocationRequestInMySQL, respondLiveLocationInMySQL, updateInquiryStatusInMySQL } from '../services/mysqlService';
-import { notifyAdmin, notifyCustomer, sendSystemPushNotification, requestNotificationPermission, registerPushNotifications, syncNativeCustomerTrip, isDuplicatePushAlert } from '../services/notificationEngine';
+import { notifyAdmin, notifyCustomer, sendSystemPushNotification, requestNotificationPermission, registerPushNotifications, syncNativeCustomerTrip, isDuplicatePushAlert, playChimeSound } from '../services/notificationEngine';
 import { Geolocation } from '@capacitor/geolocation';
 import { getCoordsForPlace, calculateDistanceKm } from '../utils/locationCoords';
 
@@ -65,6 +64,7 @@ export default function MobileAppView() {
   const [promoCode, setPromoCode] = useState('');
   const [activeTab, setActiveTab] = useState('home');
   const [lastCreatedInquiry, setLastCreatedInquiry] = useState(null);
+  const isFirstNotificationSyncRef = useRef(true);
 
   // Enforce Clean Light Mode Throughout App (Dark mode removed)
   useEffect(() => {
@@ -77,13 +77,13 @@ export default function MobileAppView() {
   // Trigger Short Trip Login Promo Poster when user arrives on APP_HOME
   useEffect(() => {
     if (appStage === 'APP_HOME') {
-      const isDismissed = sessionStorage.getItem('cabsy_short_trip_poster_dismissed');
-      if (!isDismissed) {
-        const timer = setTimeout(() => {
-          setShowShortTripPoster(true);
-        }, 500);
-        return () => clearTimeout(timer);
-      }
+      try {
+        sessionStorage.removeItem('cabsy_short_trip_poster_dismissed');
+      } catch (e) {}
+      const timer = setTimeout(() => {
+        setShowShortTripPoster(true);
+      }, 400);
+      return () => clearTimeout(timer);
     }
   }, [appStage]);
 
@@ -119,15 +119,22 @@ export default function MobileAppView() {
               return isMatch && activeStatuses.some(s => statusStr.toLowerCase() === s.toLowerCase());
             });
 
-            if (activeRide) {
-              setAppStage('TRACKING');
+            if (activeRide && isSessionValid()) {
+              setAppStage((currentStage) => {
+                const unauthStages = ['PRELOADER', 'SPLASH', 'ONBOARDING', 'LETS_YOU_IN', 'OTP_VERIFY', 'CREATE_PROFILE'];
+                if (unauthStages.includes(currentStage)) return currentStage;
+                return 'TRACKING';
+              });
             }
           }
         }
       } catch (e) {}
     };
 
-    syncActiveRideStage();
+    // Only run active ride stage sync if session is valid
+    if (isSessionValid()) {
+      syncActiveRideStage();
+    }
 
     let bc = null;
     try {
@@ -309,16 +316,20 @@ export default function MobileAppView() {
       });
 
       if (userTrips.length > 0) {
-        // Mark all restored historical trips as already notified so login never echoes old driver/receipt alerts
+        // Mark all restored historical trips as already notified so login never echoes old driver/receipt/cancellation alerts
         userTrips.forEach(inq => {
           if (inq?.id) {
             localStorage.setItem(`cabsy_driver_assigned_notified_${inq.id}`, 'true');
+            localStorage.setItem(`cabsy_inquiry_cancelled_notified_${inq.id}`, 'true');
+            localStorage.setItem(`cabsy_inquiry_rejected_notified_${inq.id}`, 'true');
+            localStorage.setItem(`cabsy_trip_completed_handled_${inq.id}`, 'true');
             if (inq.driver) {
               localStorage.setItem(`cabsy_driver_assigned_notified_${inq.id}_${inq.driver}_${inq.plate || ''}`, 'true');
             }
-            if (String(inq.status || '').toLowerCase() === 'completed') {
-              localStorage.setItem(`cabsy_trip_completed_handled_${inq.id}`, 'true');
-            }
+            localStorage.setItem(`cust_cancel_${inq.id}`, 'true');
+            localStorage.setItem(`cust_rej_${inq.id}`, 'true');
+            localStorage.setItem(`cust_driver_${inq.id}`, 'true');
+            localStorage.setItem(`cust_receipt_${inq.id}`, 'true');
           }
         });
 
@@ -372,19 +383,28 @@ export default function MobileAppView() {
         // 2. Poll MySQL inquiries for driver assignment
         const remoteInqs = await loadAllInquiriesFromMySQL().catch(() => []);
         if (!isCancelled && Array.isArray(remoteInqs) && remoteInqs.length > 0) {
-          // If this is the initial sync after app launch or user login, pre-mark truly old completed inquiries (> 24 hours)
-          const syncKey = `cabsy_inquiry_sync_initialized_${cleanUserPhone || 'guest'}`;
-          const isInitialRun = !sessionStorage.getItem(syncKey);
+          // Initial run: only pre-mark historical trips (>24h) or trips created before user cleared notifications
+          const isInitialRun = isFirstNotificationSyncRef.current;
           if (isInitialRun) {
-            sessionStorage.setItem(syncKey, 'true');
+            isFirstNotificationSyncRef.current = false;
+            const clearedAtInit = Number(localStorage.getItem('cabsy_customer_notifs_cleared_at') || 0);
             for (const inq of remoteInqs) {
               if (inq?.id) {
                 const inqTime = parseDateSafe(inq.timestamp || inq.created_at || inq.date);
                 const isAncient = (inqTime > 0 && (now - inqTime) > (24 * 60 * 60 * 1000));
-                const st = String(inq.status || '').toLowerCase();
-                if (st === 'completed' || isAncient) {
+                const wasCleared = (clearedAtInit > 0 && inqTime > 0 && inqTime <= clearedAtInit);
+                if (isAncient || wasCleared) {
+                  localStorage.setItem(`cabsy_inquiry_cancelled_notified_${inq.id}`, 'true');
+                  localStorage.setItem(`cabsy_inquiry_rejected_notified_${inq.id}`, 'true');
                   localStorage.setItem(`cabsy_driver_assigned_notified_${inq.id}`, 'true');
                   localStorage.setItem(`cabsy_trip_completed_handled_${inq.id}`, 'true');
+                  if (inq.driver) {
+                    localStorage.setItem(`cabsy_driver_assigned_notified_${inq.id}_${inq.driver}_${inq.plate || ''}`, 'true');
+                  }
+                  localStorage.setItem(`cust_cancel_${inq.id}`, 'true');
+                  localStorage.setItem(`cust_rej_${inq.id}`, 'true');
+                  localStorage.setItem(`cust_driver_${inq.id}`, 'true');
+                  localStorage.setItem(`cust_receipt_${inq.id}`, 'true');
                 }
               }
             }
@@ -403,6 +423,10 @@ export default function MobileAppView() {
 
             const inqTime = parseDateSafe(inq.timestamp || inq.created_at || inq.date);
             const isHistoricalTrip = (inqTime > 0 && (now - inqTime) > (24 * 60 * 60 * 1000));
+            const clearedAtTs = Number(localStorage.getItem('cabsy_customer_notifs_cleared_at') || 0);
+            if (clearedAtTs > 0 && inqTime > 0 && inqTime <= clearedAtTs) {
+              continue;
+            }
 
             // Only notify if trip is active (NOT Completed or Cancelled) and driver is assigned
             const activeStatuses = ['Confirmed', 'Assigned', 'In Progress', 'On Ride'];
@@ -437,6 +461,26 @@ export default function MobileAppView() {
                       driverPhone: driverContact,
                       vehicle: carName,
                       plate: plateNo,
+                      adminTriggered: true
+                    }
+                  });
+                }
+              }
+            } else if (isActiveTrip && inqStatus.toLowerCase() === 'confirmed') {
+              const confKey = `cabsy_inquiry_confirmed_notified_${inq.id}`;
+              const unifiedConfKey = `cust_conf_${inq.id}`;
+              if (!localStorage.getItem(confKey)) {
+                localStorage.setItem(confKey, 'true');
+                if (!isHistoricalTrip && !isDuplicatePushAlert(unifiedConfKey, 120000)) {
+                  notifyCustomer({
+                    type: 'confirmed',
+                    title: `Booking #${inq.id} Confirmed!`,
+                    body: `Your booking #${inq.id} has been confirmed by dispatch. Driver details will be updated shortly.`,
+                    customerPhone: inq.customerPhone,
+                    customerEmail: inq.customerEmail,
+                    extraData: {
+                      inquiryId: inq.id,
+                      status: 'Confirmed',
                       adminTriggered: true
                     }
                   });
@@ -503,7 +547,12 @@ export default function MobileAppView() {
                   });
 
                   window.dispatchEvent(new CustomEvent('EMPERIAL CABS_trip_completed', { detail: inq }));
-                  setAppStage('RECEIPT');
+                  if (isSessionValid()) {
+                    setAppStage((curr) => {
+                      if (curr === 'TRACKING' || curr === 'RADAR' || curr === 'MATCHED') return 'RECEIPT';
+                      return curr;
+                    });
+                  }
                 }
               }
             }
@@ -533,9 +582,23 @@ export default function MobileAppView() {
             savedSigs.forEach(s => knownSignatures.add(String(s).trim().toLowerCase()));
           } catch (e) {}
 
+          let clearedAt = Number(localStorage.getItem('cabsy_customer_notifs_cleared_at') || 0);
+          let clearedIds = new Set();
+          try {
+            const parsed = JSON.parse(localStorage.getItem('cabsy_cleared_notif_ids') || '[]');
+            if (Array.isArray(parsed)) clearedIds = new Set(parsed.map(String));
+          } catch(e) {}
+
           for (const cn of cloudNotifs) {
-            // A) If already marked delivered on MySQL, skip immediately
-            if (cn.delivered == 1 || cn.delivered === '1' || cn.delivered === true) {
+            // A) If already marked delivered on MySQL or previously cleared by user, skip immediately
+            if (cn.delivered == 1 || cn.delivered === '1' || cn.delivered === true || clearedIds.has(String(cn.id))) {
+              markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+              continue;
+            }
+
+            const notifTime = parseDateSafe(cn.created_at) || now;
+            if (clearedAt > 0 && notifTime > 0 && notifTime <= clearedAt) {
+              markNotificationDeliveredInMySQL(cn.id).catch(() => {});
               continue;
             }
 
@@ -580,35 +643,54 @@ export default function MobileAppView() {
               continue;
             }
 
-            // D) Deduplication against local storage and signatures
-            if (localStorage.getItem(cnKey) === 'true' || knownNotifIds.has(cn.id) || knownSignatures.has(cnSig)) {
+            // D) Deduplication against local storage
+            if (localStorage.getItem(cnKey) === 'true' || knownNotifIds.has(cn.id)) {
               localStorage.setItem(cnKey, 'true');
               markNotificationDeliveredInMySQL(cn.id).catch(() => {});
               continue;
             }
 
-            // E) Stale notification filter: If created more than 24 hours ago, mark seen without pushing
-            const notifTime = parseDateSafe(cn.created_at) || now;
-            const isStale = notifTime > 0 && (now - notifTime) > (24 * 60 * 60 * 1000);
-
-            if (isStale) {
-              localStorage.setItem(cnKey, 'true');
-              markNotificationDeliveredInMySQL(cn.id).catch(() => {});
-              continue;
-            }
-
+            // Mark delivered locally and on MySQL
             localStorage.setItem(cnKey, 'true');
-            knownSignatures.add(cnSig);
+            knownNotifIds.add(cn.id);
+            markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+
+            // Construct notification item and update cabsy_customer_notifications in localStorage
+            const notifItem = {
+              id: cn.id,
+              type: cn.type || 'confirmed',
+              title: cn.title,
+              desc: cn.body,
+              body: cn.body,
+              time: cn.created_at ? new Date(cn.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
+              date: cn.created_at || new Date().toISOString(),
+              read: false,
+              customerPhone: cn.target_phone,
+              customerEmail: cn.target_email,
+              ...parsedExtra
+            };
+
             try {
-              const sigs = JSON.parse(localStorage.getItem('cabsy_delivered_signatures') || '[]');
-              if (!sigs.includes(cnSig)) {
-                sigs.push(cnSig);
-                localStorage.setItem('cabsy_delivered_signatures', JSON.stringify(sigs.slice(-100)));
+              const raw = localStorage.getItem('cabsy_customer_notifications');
+              const list = raw ? JSON.parse(raw) : [];
+              const updated = [notifItem, ...list.filter(item => item.id !== notifItem.id)].slice(0, 50);
+              localStorage.setItem('cabsy_customer_notifications', JSON.stringify(updated));
+            } catch (e) {}
+
+            // Send system push notification on customer device
+            sendSystemPushNotification(cn.title, cn.body, 'disp-cust-' + (cnInqId || cn.id), { ...parsedExtra, inquiryId: cnInqId });
+
+            // Play alert sound & vibration
+            try {
+              playChimeSound();
+              if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                navigator.vibrate([200, 100, 200, 100, 200]);
               }
             } catch (e) {}
 
-            markNotificationDeliveredInMySQL(cn.id).catch(() => {});
-            sendSystemPushNotification(cn.title, cn.body, 'disp-cust-' + (cnInqId || cn.id), { inquiryId: cnInqId });
+            // Dispatch reactive events for instant in-app drawer and badge updates
+            window.dispatchEvent(new CustomEvent('EMPERIAL CABS_customer_notif', { detail: notifItem }));
+            window.dispatchEvent(new Event('storage'));
           }
         }
 
@@ -671,7 +753,12 @@ export default function MobileAppView() {
                     sendSystemPushNotification('Trip Completed', `You have safely arrived at ${matchingInq.dropoff}. Total Fare: ₹${finalFare}.`);
                     window.dispatchEvent(new Event('storage'));
                     window.dispatchEvent(new CustomEvent('EMPERIAL CABS_trip_completed', { detail: completed }));
-                    setAppStage('RECEIPT');
+                    if (isSessionValid()) {
+                      setAppStage((curr) => {
+                        if (curr === 'TRACKING' || curr === 'RADAR' || curr === 'MATCHED') return 'RECEIPT';
+                        return curr;
+                      });
+                    }
                   }
                 }
               }
@@ -679,6 +766,9 @@ export default function MobileAppView() {
             }
           }
         }
+
+        // Mark first synchronization finished so subsequent polling cycles can detect live status transitions
+        isFirstNotificationSyncRef.current = false;
       } catch (e) {}
     };
 
@@ -1009,6 +1099,7 @@ export default function MobileAppView() {
       noOfDays: carObj?.noOfDays || noOfDays || 1,
       isCustom: isCustomTrip,
       vehicle: selectedVehicleName,
+      vehicleImage: carObj?.img || carObj?.image || carObj?.carImage || '',
       ratePerKm: isCustomTrip ? ratePerKm : (carObj?.ratePerKm || 12),
       fare: isCustomTrip ? ratePerKm : totalFareNum,
       originalFare,
@@ -1071,7 +1162,7 @@ export default function MobileAppView() {
 
   const renderTabContent = () => {
     return (
-      <div className="mobile-tabs-keep-alive-wrapper" style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: '#F8FAFC' }}>
+      <div className="mobile-tabs-keep-alive-wrapper" style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: '#F5F5F2' }}>
         {/* Tab 1: Home Screen with Live Map */}
         <div style={{ position: 'absolute', inset: 0, display: activeTab === 'home' ? 'flex' : 'none', flexDirection: 'column', zIndex: activeTab === 'home' ? 2 : 1 }}>
           <HomeScreen
@@ -1473,7 +1564,7 @@ export default function MobileAppView() {
         flexDirection: 'column',
         overflow: 'hidden',
         position: 'relative',
-        background: '#F8FAFC'
+        background: '#F5F5F2'
       }}
     >
       {renderStage()}

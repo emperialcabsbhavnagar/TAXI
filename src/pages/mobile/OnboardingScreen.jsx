@@ -232,7 +232,7 @@ export default function OnboardingScreen({ onFinish }) {
                 height: '7px',
                 width: idx === onboardingStep ? '32px' : '7px',
                 borderRadius: '4px',
-                background: idx === onboardingStep ? '#FFAA00' : '#E2E8F0',
+                background: idx === onboardingStep ? '#F4C542' : '#E2E8F0',
                 cursor: 'pointer',
                 transition: 'all 0.35s cubic-bezier(0.16, 1, 0.3, 1)'
               }} 
@@ -252,7 +252,7 @@ export default function OnboardingScreen({ onFinish }) {
             fontFamily: "'Space Grotesk', sans-serif",
             fontSize: '16px',
             fontWeight: '700',
-            color: '#64748B',
+            color: '#5A626F',
             cursor: 'pointer',
             padding: '12px 16px',
             borderRadius: '12px',
@@ -272,8 +272,8 @@ export default function OnboardingScreen({ onFinish }) {
             }
           }}
           style={{
-            background: '#FFAA00',
-            color: '#0F172A',
+            background: '#252B34',
+            color: '#FFFFFF',
             border: 'none',
             borderRadius: '20px',
             padding: '12px 36px',
@@ -281,7 +281,7 @@ export default function OnboardingScreen({ onFinish }) {
             fontSize: '15px',
             fontWeight: '800',
             cursor: 'pointer',
-            boxShadow: '0 6px 20px rgba(255, 170, 0, 0.35)',
+            boxShadow: '0 6px 20px rgba(37, 43, 52, 0.22)',
             transition: 'transform 0.15s ease, background 0.2s ease'
           }}
         >

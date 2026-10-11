@@ -215,6 +215,19 @@ async function ensureTablesExist() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       );
     `);
+    await executeQuery(`
+      CREATE TABLE IF NOT EXISTS customer_notifications (
+        id VARCHAR(64) PRIMARY KEY,
+        target_phone VARCHAR(64) DEFAULT NULL,
+        target_email VARCHAR(255) DEFAULT NULL,
+        title VARCHAR(255) NOT NULL,
+        body TEXT NOT NULL,
+        type VARCHAR(64) DEFAULT 'inquiry',
+        extra_data LONGTEXT DEFAULT NULL,
+        delivered INT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
     tablesEnsured = true;
   } catch (err) {
     console.warn('ensureTablesExist warning:', err);
@@ -359,18 +372,61 @@ export async function handleMySQLRequest(action, data = {}) {
         const [rows] = await executeQuery('SELECT * FROM customers ORDER BY created_at DESC');
         const map = new Map();
         (rows || []).forEach(row => {
-          const key = (row.email || row.phone || row.id || '').toLowerCase().trim();
-          if (!key) return;
-          if (!map.has(key)) {
-            map.set(key, { ...row });
-          } else {
-            const existing = map.get(key);
-            existing.totalRides = Math.max(Number(existing.totalRides || 0), Number(row.totalRides || 0));
-            existing.totalSpent = Math.max(Number(existing.totalSpent || 0), Number(row.totalSpent || 0));
-            if (!existing.phone && row.phone) existing.phone = row.phone;
-            if (!existing.email && row.email) existing.email = row.email;
-          }
+          const rPhone = String(row.phone || '').replace(/\D/g, '');
+          const rPhone10 = rPhone.length >= 10 ? rPhone.slice(-10) : rPhone;
+          const rEmail = String(row.email || '').trim().toLowerCase();
+          const key = rPhone10 ? (`p_${rPhone10}`) : (rEmail ? (`e_${rEmail}`) : (`id_${row.id || Math.random()}`));
+          const joinedDate = row.registeredAt || (row.created_at ? String(row.created_at).split('T')[0].split(' ')[0] : '2026-01-15');
+          map.set(key, {
+            ...row,
+            joined: joinedDate,
+            registeredAt: joinedDate
+          });
         });
+
+        // Auto-discover customers from inquiries
+        try {
+          const [inqs] = await executeQuery('SELECT customerName, customerPhone, customerEmail, fare, status, created_at, date FROM inquiries ORDER BY created_at DESC');
+          (inqs || []).forEach(inq => {
+            const iPhone = String(inq.customerPhone || '').replace(/\D/g, '');
+            const iPhone10 = iPhone.length >= 10 ? iPhone.slice(-10) : iPhone;
+            const iEmail = String(inq.customerEmail || '').trim().toLowerCase();
+            const key = iPhone10 ? (`p_${iPhone10}`) : (iEmail ? (`e_${iEmail}`) : '');
+            if (!key) return;
+
+            const fare = Number(inq.fare || 0);
+            const isConfirmed = ['confirmed', 'completed', 'in progress', 'on ride', 'assigned'].includes(String(inq.status || '').toLowerCase());
+            const inqDate = (inq.date || (inq.created_at ? String(inq.created_at).split('T')[0].split(' ')[0] : null) || '2026-01-15');
+            const name = String(inq.customerName || '').trim();
+
+            if (map.has(key)) {
+              const existing = map.get(key);
+              existing.totalRides = Number(existing.totalRides || 0) + 1;
+              if (isConfirmed) {
+                existing.totalSpent = Number(existing.totalSpent || 0) + fare;
+              }
+              if (!existing.phone && inq.customerPhone) existing.phone = inq.customerPhone;
+              if (!existing.email && inq.customerEmail) existing.email = inq.customerEmail;
+              if ((!existing.name || ['rider', 'customer'].includes(existing.name.toLowerCase())) && name) {
+                existing.name = name;
+              }
+            } else {
+              const id = 'CUST-' + (iPhone10 && iPhone10.length >= 4 ? iPhone10.slice(-4) : Math.floor(100 + Math.random() * 899));
+              map.set(key, {
+                id,
+                name: name || 'Customer',
+                phone: inq.customerPhone || '',
+                email: inq.customerEmail || '',
+                totalRides: 1,
+                totalSpent: isConfirmed ? fare : 0,
+                joined: inqDate,
+                registeredAt: inqDate,
+                status: 'Active'
+              });
+            }
+          });
+        } catch (e) {}
+
         return { success: true, customers: Array.from(map.values()) };
       }
 
@@ -819,9 +875,41 @@ export async function handleMySQLRequest(action, data = {}) {
         const sql = `
           INSERT INTO customer_notifications (id, target_phone, target_email, title, body, type, extra_data, delivered)
           VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+          ON DUPLICATE KEY UPDATE
+            title = VALUES(title),
+            body = VALUES(body),
+            type = VALUES(type),
+            extra_data = VALUES(extra_data),
+            delivered = 0,
+            created_at = NOW();
         `;
         await executeQuery(sql, [id, target_phone, target_email, title, body, type, extra_data]);
         return { success: true, id };
+      }
+
+      case 'clearCustomerNotifications': {
+        const phone = (data.phone || '').trim().replace(/\D/g, '');
+        const email = (data.email || '').trim().toLowerCase();
+        const phone10 = phone.length >= 10 ? phone.slice(-10) : phone;
+        try {
+          const [all] = await executeQuery(`SELECT id, target_phone, target_email FROM customer_notifications WHERE UPPER(TRIM(target_phone)) != 'ADMIN' AND (delivered = 0 OR delivered IS NULL)`);
+          const idsToUpdate = [];
+          (all || []).forEach(r => {
+            const rPhone = (r.target_phone || '').replace(/\D/g, '');
+            const rPhone10 = rPhone.length >= 10 ? rPhone.slice(-10) : rPhone;
+            const rEmail = (r.target_email || '').toLowerCase().trim();
+            if ((phone10 && rPhone10 && phone10 === rPhone10) ||
+                (email && rEmail && email === rEmail) ||
+                (!phone10 && !email && !rPhone && !rEmail)) {
+              idsToUpdate.push(r.id);
+            }
+          });
+          if (idsToUpdate.length > 0) {
+            const placeholders = idsToUpdate.map(() => '?').join(',');
+            await executeQuery(`UPDATE customer_notifications SET delivered = 1 WHERE id IN (${placeholders})`, idsToUpdate);
+          }
+        } catch (e) {}
+        return { success: true };
       }
 
       case 'getCustomerNotifications': {
@@ -833,7 +921,8 @@ export async function handleMySQLRequest(action, data = {}) {
 
         const [all] = await executeQuery(`
           SELECT * FROM customer_notifications 
-          WHERE created_at >= NOW() - INTERVAL 48 HOUR
+          WHERE (delivered = 0 OR delivered IS NULL)
+            AND created_at >= NOW() - INTERVAL 48 HOUR
           ORDER BY created_at DESC LIMIT 50
         `);
 

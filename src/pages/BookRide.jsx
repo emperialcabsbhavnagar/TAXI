@@ -192,7 +192,7 @@ export default function BookRide() {
       }).catch(() => {});
 
       loadAllRoutesFromMySQL().then(fetchedRoutes => {
-        if (fetchedRoutes !== null && Array.isArray(fetchedRoutes)) {
+        if (Array.isArray(fetchedRoutes) && fetchedRoutes.length > 0) {
           const formatted = fetchedRoutes.map(r => ({
             id: r.id,
             name: `${r.pickup} → ${r.dropoff}`,

@@ -4,12 +4,16 @@ import { INITIAL_VEHICLES } from '../AdminPortal';
 import { loadAllInquiriesFromMySQL, updateInquiryStatusInMySQL, saveInquiryToMySQL } from '../../services/mysqlService';
 import { notifyAdmin, registerPushNotifications } from '../../services/notificationEngine';
 import db from '../../services/dbService';
-import { Calendar, Clock3, CheckCircle2, XCircle, Car, ArrowRight, X, Edit3, User, Phone } from 'lucide-react';
+import { Calendar, Clock3, CheckCircle2, XCircle, Car, ArrowRight, X, Edit3, User, Phone, ChevronRight, Briefcase, FileText } from 'lucide-react';
+import TripReceiptScreen from './TripReceiptScreen';
+import sedanImg from '../../assets/images/short-trip-sedan.png';
+import suvImg from '../../assets/images/short-trip-suv.png';
 
 export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide }) {
   const [filter, setFilter] = useState('ALL'); // ALL, SUCCESS, REJECT
   const [inquiries, setInquiries] = useState([]);
   const [selectedInquiry, setSelectedInquiry] = useState(null); // Modal state for viewing/editing receipt
+  const [viewingReceipt, setViewingReceipt] = useState(null); // Full pre-receipt screen view
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
 
@@ -238,6 +242,7 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
         bg: '#DCFCE7',
         border: '#86EFAC',
         color: '#15803D',
+        step: 4,
         canCancel: false,
         canEdit: false
       };
@@ -249,6 +254,7 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
         bg: '#E0F2FE',
         border: '#BAE6FD',
         color: '#0369A1',
+        step: 3,
         canCancel: false,
         canEdit: false,
         cancelReason: 'Trip has already started. Active trips cannot be cancelled by customer.'
@@ -258,12 +264,25 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
       return {
         label: 'Confirmed',
         Icon: CheckCircle2,
-        bg: '#ECFDF5',
-        border: '#A7F3D0',
-        color: '#047857',
+        bg: '#DCFCE7',
+        border: '#86EFAC',
+        color: '#15803D',
+        step: 3,
         canCancel: true,
         canEdit: false,
         cancelReason: 'You can cancel this inquiry before the trip starts.'
+      };
+    }
+    if (st.includes('review')) {
+      return {
+        label: 'Reviewing',
+        Icon: Clock3,
+        bg: '#FEF3C7',
+        border: '#FDE68A',
+        color: '#B45309',
+        step: 2,
+        canCancel: true,
+        canEdit: true
       };
     }
     if (st.includes('reject') || st.includes('decline') || st.includes('cancel')) {
@@ -273,6 +292,8 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
         bg: '#FEE2E2',
         border: '#FCA5A5',
         color: '#B91C1C',
+        step: 1,
+        isCancelled: true,
         canCancel: false,
         canEdit: false,
         cancelReason: 'Booking already cancelled.'
@@ -281,14 +302,119 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
     return {
       label: 'Pending Approval',
       Icon: Clock3,
-      bg: '#F1F5F9',
-      border: '#CBD5E1',
-      color: '#475569',
+      bg: '#FEF3C7',
+      border: '#FDE68A',
+      color: '#B45309',
+      step: 1,
       canCancel: true,
       canEdit: true,
       cancelReason: 'You can modify or cancel this pending inquiry anytime.'
     };
   };
+
+  // Automated vehicle classification for all regular inquiries & Short Trip inquiries:
+  // - 4 Seats (or <= 4 seats, or Sedan / fleet 4-seater): Car Name: "Sedan", Seats: "4 Seats", Bags: "2 Bags"
+  // - More than 4 seats (> 4 seats, or SUV / fleet 7-seater): Car Name: "SUV", Seats: "6-7 Seats", Bags: "3 Bags"
+  const getVehicleClassification = (inq) => {
+    if (!inq) {
+      return { isSuv: false, carName: 'Sedan', seats: '4 Seats', bags: '2 Bags', image: sedanImg };
+    }
+    const rawName = String(inq.vehicle || inq.carName || inq.selectedCar || '').trim();
+    const lowerName = rawName.toLowerCase();
+    const vType = String(inq.vehicleType || '').toLowerCase().trim();
+
+    // 1. Check matched fleet vehicle from admin
+    let fleetCar = null;
+    const fleet = getAvailableVehicles();
+    if (Array.isArray(fleet) && fleet.length > 0 && lowerName) {
+      fleetCar = fleet.find(f => {
+        const fName = String(f.name || '').toLowerCase().trim();
+        const fId = String(f.id || '').toLowerCase().trim();
+        return fName === lowerName || fId === lowerName ||
+               (fName.length > 2 && lowerName.includes(fName)) ||
+               (lowerName.length > 2 && fName.includes(lowerName));
+      });
+    }
+
+    // 2. Extract numeric seat count
+    let seatNum = null;
+    const rawSeats = inq.seats || inq.passengers || fleetCar?.passengers || fleetCar?.seats || '';
+    if (typeof rawSeats === 'number') {
+      seatNum = rawSeats;
+    } else if (typeof rawSeats === 'string' && rawSeats) {
+      const match = rawSeats.match(/\d+/);
+      if (match) {
+        seatNum = parseInt(match[0], 10);
+      }
+    }
+
+    // 3. Name keywords for SUV detection
+    const suvKeywords = [
+      'suv', 'ertiga', 'eartice', 'innova', 'crysta', 'carens', 'rumion',
+      'scorpio', 'xuv', 'bolero', 'fortuner', 'safari', 'harrier',
+      'marazzo', 'triber', 'hycross', 'tavera', 'cruiser'
+    ];
+    const isSuvName = suvKeywords.some(k => lowerName.includes(k));
+
+    let isSuv = false;
+    if (seatNum !== null) {
+      isSuv = seatNum > 4;
+    } else if (vType === 'suv' || isSuvName) {
+      isSuv = true;
+    } else if (vType === 'sedan') {
+      isSuv = false;
+    } else if (fleetCar) {
+      const fPass = String(fleetCar.passengers || '').toLowerCase();
+      const m = fPass.match(/\d+/);
+      const fSeats = m ? parseInt(m[0], 10) : 4;
+      isSuv = fSeats > 4;
+    } else {
+      isSuv = false;
+    }
+
+    return isSuv ? {
+      isSuv: true,
+      carName: 'SUV',
+      seats: '6-7 Seats',
+      bags: '3 Bags',
+      image: suvImg
+    } : {
+      isSuv: false,
+      carName: 'Sedan',
+      seats: '4 Seats',
+      bags: '2 Bags',
+      image: sedanImg
+    };
+  };
+
+  const getShortVehicleName = (raw, inq) => {
+    return getVehicleClassification(inq || { vehicle: raw }).carName;
+  };
+
+  const getSpecificCarImage = (inq) => {
+    return getVehicleClassification(inq).image;
+  };
+
+  const formatFare = (val) => {
+    if (!val && val !== 0) return '10,000.00';
+    if (typeof val === 'string') {
+      const clean = val.replace(/[^\d.]/g, '');
+      const num = parseFloat(clean);
+      if (!isNaN(num)) return num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return val;
+    }
+    return Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  // Full Pre-Receipt Screen View Interception
+  if (viewingReceipt) {
+    return (
+      <TripReceiptScreen
+        tripData={viewingReceipt}
+        onDone={() => setViewingReceipt(null)}
+      />
+    );
+  }
 
   return (
     <div className="real-mobile-app">
@@ -386,10 +512,26 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
             </button>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {filteredInquiries.map((inq, index) => {
               const badge = getStatusBadge(inq.status);
-              const inqId = inq.id || inq.createdAt || `INQ-${index}`;
+              const inqId = inq.id || (inq.createdAt ? `INQ-${String(inq.createdAt).slice(-4)}` : `INQ-${index + 29}`);
+              const vehClass = getVehicleClassification(inq);
+              const displayCarName = vehClass.carName;
+              const seatsCount = vehClass.seats;
+              const bagsCount = vehClass.bags;
+              const carImgSrc = vehClass.image;
+              const isSuv = vehClass.isSuv;
+              const fareFormatted = formatFare(inq.fare || inq.price);
+
+              const timelineSteps = [
+                { key: 'submitted', label: 'Inquiry Submitted', step: 1 },
+                { key: 'reviewing', label: 'Reviewing', step: 2 },
+                { key: 'assignment', label: 'Driver Assignment', step: 3 },
+                { key: 'completed', label: 'Completed', step: 4 }
+              ];
+              const currentStep = badge.step || 1;
+
               return (
                 <div
                   key={inqId}
@@ -397,10 +539,11 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
                     background: '#FFFFFF',
                     border: '1.5px solid #E2E8F0',
                     borderRadius: '20px',
-                    padding: '16px',
-                    boxShadow: '0 4px 14px rgba(0,0,0,0.03)',
+                    padding: '16px 14px 14px',
+                    boxShadow: '0 4px 18px rgba(0, 0, 0, 0.04)',
                     transition: 'all 0.2s ease',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    overflow: 'hidden'
                   }}
                   onClick={() => {
                     setSelectedInquiry(inq);
@@ -408,156 +551,241 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
                     setIsEditing(false);
                   }}
                 >
-                  {/* Top Bar ID & Status Badge */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  {/* Top Header: ID + Status Pill + Chevron & Date below */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
                     <div>
-                      <span style={{ fontFamily: 'League Spartan', fontWeight: '800', color: '#0F172A', fontSize: '16px' }}>
-                        {inq.id || `INQ-#${1000 + index}`}
-                      </span>
-                      <span style={{ fontSize: '11px', fontWeight: '700', color: '#64748B', marginLeft: '8px', textTransform: 'uppercase' }}>
-                        {inq.tripType === 'round-trip' ? '• Round Trip' : '• One-Way'}
-                      </span>
-                    </div>
-
-                    <span 
-                      style={{
-                        background: badge.bg,
-                        border: `1px solid ${badge.border}`,
-                        color: badge.color,
-                        padding: '4px 10px',
-                        borderRadius: '16px',
-                        fontSize: '12px',
-                        fontWeight: '800',
-                        fontFamily: 'League Spartan',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}
-                    >
-                      {badge.Icon && <badge.Icon size={13} />}
-                      {badge.label}
-                    </span>
-                  </div>
-
-                  {/* Date & Time */}
-                  <div style={{ fontSize: '13px', color: '#64748B', marginBottom: '12px', fontFamily: 'Space Grotesk', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Calendar size={14} color="#64748B" />
-                    <span>{inq.scheduledDate || 'Today'} • {inq.scheduledTime || '04:30 PM'}</span>
-                  </div>
-
-                  {/* Route Box */}
-                  <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: '14px', marginBottom: '12px', border: '1px solid #F1F5F9' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22C55E', flexShrink: 0 }}></span>
-                      <span style={{ fontSize: '14px', fontWeight: '700', color: '#0F172A', fontFamily: 'League Spartan' }}>
-                        {inq.pickup || inq.pickupLoc || 'Pickup Location'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EF4444', flexShrink: 0 }}></span>
-                      <span style={{ fontSize: '14px', fontWeight: '700', color: '#0F172A', fontFamily: 'League Spartan' }}>
-                        {inq.dropoff || inq.dropoffLoc || 'Destination Point'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Chauffeur, Driver Number & Plate Details */}
-                  {(() => {
-                    const hasDriverAssigned = Boolean(inq.driver && inq.driver !== 'Unassigned' && inq.driver !== '-');
-                    if (hasDriverAssigned) {
-                      return (
-                        <div style={{ margin: '8px 0 12px 0', padding: '10px 12px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                          <div>
-                            <div style={{ fontSize: '13px', fontWeight: '800', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <User size={14} style={{ color: '#059669', flexShrink: 0 }} />
-                              <span>Chauffeur: {inq.driver}</span>
-                            </div>
-                            {(inq.driverPhone || inq.driverNumber) && (
-                              <a 
-                                href={`tel:${inq.driverPhone || inq.driverNumber}`} 
-                                onClick={e => e.stopPropagation()} 
-                                style={{ fontSize: '12px', color: '#059669', fontWeight: '700', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '3px' }}
-                              >
-                                <Phone size={11} style={{ flexShrink: 0 }} /> {inq.driverPhone || inq.driverNumber}
-                              </a>
-                            )}
-                          </div>
-                          {(inq.plate || inq.vehiclePlate || inq.carPlate) && (
-                            <span style={{ background: '#FFFFFF', color: '#0F172A', padding: '4px 9px', borderRadius: '8px', fontWeight: '900', fontSize: '11px', fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '0.8px', border: '1.5px solid #CBD5E1', display: 'inline-flex', alignItems: 'center', gap: '5px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-                              🚗 {inq.plate || inq.vehiclePlate || inq.carPlate}
-                            </span>
-                          )}
-                        </div>
-                      );
-                    } else {
-                      return (
-                        <div style={{ margin: '6px 0 10px 0', padding: '8px 12px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '10px', fontSize: '12px', color: '#0F172A', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span>Assigning Dedicated Chauffeur...</span>
-                        </div>
-                      );
-                    }
-                  })()}
-
-                  {/* Car, Fare & Action Buttons */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #F1F5F9', paddingTop: '10px' }}>
-                    <div>
-                      <div style={{ fontWeight: '800', color: '#0F172A', fontSize: '15px', fontFamily: 'League Spartan' }}>
-                        {inq.vehicle || inq.carName || inq.selectedCar || 'SWIFT'}
-                      </div>
-                      <div style={{ fontSize: '12px', color: '#64748B', fontFamily: 'Space Grotesk' }}>
-                        {typeof inq.price === 'string' ? inq.price : (inq.fare ? `₹${inq.fare.toLocaleString('en-IN')}` : '₹0')}
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {/* Hide receipt button until driver is assigned */}
-                      {Boolean(inq.driver && inq.driver !== 'Unassigned' && inq.driver !== '-') && (
-                        <button 
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedInquiry(inq);
-                            setEditForm(inq);
-                            setIsEditing(false);
-                          }}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontFamily: 'League Spartan', fontWeight: '800', color: '#0F172A', fontSize: '19px', letterSpacing: '-0.02em' }}>
+                          {inqId}
+                        </span>
+                        <span 
                           style={{
-                            background: '#F1F5F9',
-                            border: '1px solid #CBD5E1',
-                            color: '#0F172A',
-                            padding: '6px 12px',
-                            borderRadius: '12px',
+                            background: badge.bg,
+                            color: badge.color,
+                            padding: '3px 10px',
+                            borderRadius: '999px',
+                            fontSize: '11.5px',
+                            fontWeight: '700',
                             fontFamily: 'League Spartan',
-                            fontWeight: '800',
-                            fontSize: '13px',
-                            cursor: 'pointer'
+                            whiteSpace: 'nowrap'
                           }}
                         >
-                          View Receipt
-                        </button>
-                      )}
+                          {badge.label}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '12.5px', color: '#64748B', fontFamily: 'Space Grotesk', fontWeight: '500', marginTop: '3px' }}>
+                        {inq.scheduledDate || inq.date || '10 Aug 2026'} • {inq.scheduledTime || inq.time || '03:30 PM'}
+                      </div>
+                    </div>
 
-                      {badge.canCancel && (
-                        <button 
+                    <div style={{ padding: '2px', color: '#94A3B8' }}>
+                      <ChevronRight size={19} strokeWidth={2.2} />
+                    </div>
+                  </div>
+
+                  {/* Route Container (Pickup & Drop-off with ... truncation) */}
+                  <div style={{ background: '#F8FAFC', padding: '12px 14px', borderRadius: '16px', marginBottom: '14px', border: '1px solid #F1F5F9' }}>
+                    {/* Pickup Row */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                      <div style={{ width: '9px', height: '9px', borderRadius: '50%', background: '#10B981', flexShrink: 0, marginTop: '4px' }} />
+                      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                        <div 
+                          title={inq.pickup || inq.pickupLoc || 'Bhavnagar'}
+                          style={{
+                            fontSize: '14px',
+                            fontWeight: '800',
+                            color: '#0F172A',
+                            fontFamily: 'League Spartan',
+                            lineHeight: 1.25,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            display: 'block'
+                          }}
+                        >
+                          {inq.pickup || inq.pickupLoc || 'Bhavnagar'}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#64748B', fontWeight: '500', marginTop: '1px' }}>
+                          Pickup Location
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Vertical Dashed Line */}
+                    <div style={{ borderLeft: '2px dashed #CBD5E1', height: '14px', marginLeft: '3.5px', margin: '3px 0 3px 3.5px' }} />
+
+                    {/* Drop-off Row */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                      <div style={{ width: '9px', height: '9px', borderRadius: '50%', background: '#EF4444', flexShrink: 0, marginTop: '4px' }} />
+                      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                        <div 
+                          title={inq.dropoff || inq.dropoffLoc || 'Mumbai'}
+                          style={{
+                            fontSize: '14px',
+                            fontWeight: '800',
+                            color: '#0F172A',
+                            fontFamily: 'League Spartan',
+                            lineHeight: 1.25,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            display: 'block'
+                          }}
+                        >
+                          {inq.dropoff || inq.dropoffLoc || 'Mumbai'}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#64748B', fontWeight: '500', marginTop: '1px' }}>
+                          Drop-off Location
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Vehicle Thumbnail, Specs, Fare & Cancel Button (Spacious, No Overlap) */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', gap: '10px' }}>
+                    {/* Car Thumbnail */}
+                    <div style={{ width: '74px', height: '52px', background: '#F8FAFC', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: '3px', overflow: 'hidden', border: '1px solid #F1F5F9' }}>
+                      <img 
+                        src={carImgSrc} 
+                        alt={displayCarName}
+                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                        onError={(e) => { e.currentTarget.src = isSuv ? suvImg : sedanImg; }}
+                      />
+                    </div>
+
+                    {/* Car Name & Seats / Bags */}
+                    <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
+                      <div style={{
+                        fontWeight: '800',
+                        color: '#0F172A',
+                        fontSize: '15px',
+                        fontFamily: 'League Spartan',
+                        lineHeight: 1.2,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}>
+                        {displayCarName}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                        <User size={12} color="#64748B" />
+                        <span style={{ fontSize: '11.5px', color: '#64748B', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                          {seatsCount}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                        <Briefcase size={12} color="#64748B" />
+                        <span style={{ fontSize: '11.5px', color: '#64748B', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                          {bagsCount}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Subtle Vertical Divider */}
+                    <div style={{ width: '1px', backgroundColor: '#F1F5F9', margin: '0 2px', alignSelf: 'stretch', flexShrink: 0 }} />
+
+                    {/* Fare & Cancel Booking Button */}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', gap: '6px', flexShrink: 0, minWidth: '95px' }}>
+                      <div style={{ fontSize: '17px', fontWeight: '800', color: '#0F172A', fontFamily: 'Space Grotesk', lineHeight: 1 }}>
+                        ₹{fareFormatted}
+                      </div>
+
+                      {badge.canCancel ? (
+                        <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleCancelInquiry(inq.id || inq.createdAt);
                           }}
                           style={{
-                            background: '#FEF2F2',
-                            border: '1px solid #FECACA',
-                            color: '#DC2626',
-                            padding: '6px 12px',
-                            borderRadius: '12px',
+                            background: '#FFF1F2',
+                            border: '1.2px solid #FECDD3',
+                            color: '#E11D48',
+                            padding: '5px 12px',
+                            borderRadius: '8px',
                             fontFamily: 'League Spartan',
-                            fontWeight: '800',
-                            fontSize: '13px',
-                            cursor: 'pointer'
+                            fontWeight: '700',
+                            fontSize: '11.5px',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            boxShadow: '0 1px 4px rgba(225, 29, 72, 0.08)'
                           }}
                         >
-                          Cancel ✕
+                          Cancel Booking
                         </button>
+                      ) : badge.isCancelled ? (
+                        <span style={{ color: '#DC2626', fontSize: '11.5px', fontWeight: '700' }}>
+                          Cancelled
+                        </span>
+                      ) : (
+                        <span style={{ color: '#15803D', fontSize: '11.5px', fontWeight: '700' }}>
+                          {badge.label}
+                        </span>
                       )}
+                    </div>
+                  </div>
+
+                  {/* 4-Step Horizontal Timeline Progress Tracker */}
+                  <div style={{ paddingTop: '10px', borderTop: '1px solid #F1F5F9' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', position: 'relative', margin: '0 8px' }}>
+                      {timelineSteps.map((stepItem, sIdx) => {
+                        const isCurrent = currentStep === stepItem.step;
+                        const isPast = currentStep > stepItem.step;
+                        const isLast = sIdx === timelineSteps.length - 1;
+
+                        return (
+                          <React.Fragment key={stepItem.key}>
+                            {/* Node Indicator */}
+                            <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              {isCurrent ? (
+                                /* Red Double Circle for current active node */
+                                <div style={{ width: '18px', height: '18px', borderRadius: '50%', border: '2px solid #EF4444', backgroundColor: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <div style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#EF4444' }} />
+                                </div>
+                              ) : isPast ? (
+                                /* Solid Red dot for completed node */
+                                <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#EF4444' }} />
+                              ) : (
+                                /* Gray Outline Circle for upcoming node */
+                                <div style={{ width: '12px', height: '12px', borderRadius: '50%', border: '1.8px solid #CBD5E1', backgroundColor: '#FFFFFF' }} />
+                              )}
+                            </div>
+
+                            {/* Connecting Line between nodes */}
+                            {!isLast && (
+                              <div style={{
+                                flex: 1,
+                                height: '2px',
+                                backgroundColor: isPast ? '#EF4444' : '#E2E8F0',
+                                margin: '0 2px'
+                              }} />
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+
+                    {/* Step Labels Row */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', marginTop: '6px', textAlign: 'center' }}>
+                      {timelineSteps.map((stepItem) => {
+                        const isCurrent = currentStep === stepItem.step;
+                        return (
+                          <span
+                            key={stepItem.key}
+                            style={{
+                              fontSize: '10px',
+                              lineHeight: 1.15,
+                              fontFamily: 'League Spartan',
+                              fontWeight: isCurrent ? '800' : '600',
+                              color: isCurrent ? '#EF4444' : '#64748B',
+                              padding: '0 2px',
+                              wordBreak: 'break-word'
+                            }}
+                          >
+                            {stepItem.label}
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -634,8 +862,13 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
                         <Phone size={11} /> {selectedInquiry.driverPhone || selectedInquiry.driverNumber}
                       </a>
                     )}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
-                      <span style={{ fontSize: '16px', fontWeight: '800', color: '#0F172A', fontFamily: 'League Spartan' }}>{selectedInquiry.vehicle || selectedInquiry.carName || selectedInquiry.selectedCar || 'SWIFT'}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '16px', fontWeight: '800', color: '#0F172A', fontFamily: 'League Spartan' }}>
+                        {getVehicleClassification(selectedInquiry).carName}
+                      </span>
+                      <span style={{ fontSize: '12px', color: '#64748B', fontWeight: '700', fontFamily: 'Space Grotesk' }}>
+                        ({getVehicleClassification(selectedInquiry).seats} • {getVehicleClassification(selectedInquiry).bags})
+                      </span>
                       {(selectedInquiry.plate || selectedInquiry.vehiclePlate || selectedInquiry.carPlate) && (
                         <span style={{ background: '#FFFFFF', color: '#0F172A', padding: '3px 8px', borderRadius: '8px', fontWeight: '900', fontSize: '11px', fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '0.8px', border: '1.5px solid #CBD5E1', display: 'inline-flex', alignItems: 'center', gap: '5px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
                           🚗 {selectedInquiry.plate || selectedInquiry.vehiclePlate || selectedInquiry.carPlate}
@@ -651,21 +884,49 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
 
                 {/* MODAL ACTION BUTTONS */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {/* Prominent View Pre-Receipt / E-Invoice button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setViewingReceipt(selectedInquiry);
+                      setSelectedInquiry(null);
+                    }}
+                    style={{
+                      width: '100%',
+                      background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      padding: '14px',
+                      borderRadius: '16px',
+                      fontFamily: 'League Spartan, sans-serif',
+                      fontSize: '15px',
+                      fontWeight: '800',
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    <FileText size={18} />
+                    <span>View Pre-Receipt / E-Invoice</span>
+                  </button>
+
                   {getStatusBadge(selectedInquiry.status).canEdit && (
                     <button
                       onClick={() => setIsEditing(true)}
                       style={{
                         width: '100%',
-                        background: 'linear-gradient(135deg, #6EE7B7 0%, #34D399 100%)',
-                        color: '#FFFFFF',
-                        border: 'none',
-                        padding: '14px',
+                        background: '#F1F5F9',
+                        color: '#0F172A',
+                        border: '1.5px solid #CBD5E1',
+                        padding: '13px',
                         borderRadius: '16px',
                         fontFamily: 'League Spartan, sans-serif',
-                        fontSize: '16px',
+                        fontSize: '15px',
                         fontWeight: '800',
                         cursor: 'pointer',
-                        boxShadow: '0 4px 14px rgba(110, 231, 183, 0.4)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -685,10 +946,10 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
                         background: '#FEF2F2',
                         border: '1.5px solid #FECACA',
                         color: '#DC2626',
-                        padding: '14px',
+                        padding: '13px',
                         borderRadius: '16px',
                         fontFamily: 'League Spartan, sans-serif',
-                        fontSize: '16px',
+                        fontSize: '15px',
                         fontWeight: '800',
                         cursor: 'pointer',
                         display: 'flex',
@@ -769,21 +1030,29 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
                       const matched = vehicles.find(v => v.name === selName);
                       const rate = Number(matched?.ratePerKm || matched?.pricePerKm || matched?.rate) || 5;
                       const newFare = Math.round(rate * 154); // default route distance
+                      const vClass = getVehicleClassification({ vehicle: selName, passengers: matched?.passengers });
                       setEditForm(prev => ({
                         ...prev,
                         vehicle: selName,
                         carName: selName,
+                        seats: vClass.seats,
+                        luggage: vClass.bags,
+                        bags: vClass.bags,
+                        vehicleType: vClass.isSuv ? 'suv' : 'sedan',
                         fare: newFare,
                         price: `₹${newFare.toLocaleString('en-IN')}`
                       }));
                     }}
                     style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1.5px solid #CBD5E1', fontFamily: 'Space Grotesk', fontWeight: '700', background: '#FFFFFF', color: '#0F172A', boxSizing: 'border-box' }}
                   >
-                    {getAvailableVehicles().map(v => (
-                      <option key={v.id || v.name} value={v.name}>
-                        🚗 {v.name} — ₹{v.ratePerKm || v.rate || 5}/km
-                      </option>
-                    ))}
+                    {getAvailableVehicles().map(v => {
+                      const vc = getVehicleClassification({ vehicle: v.name, passengers: v.passengers });
+                      return (
+                        <option key={v.id || v.name} value={v.name}>
+                          🚗 {v.name} ({vc.carName} • {vc.seats}, {vc.bags}) — ₹{v.ratePerKm || v.rate || 5}/km
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
