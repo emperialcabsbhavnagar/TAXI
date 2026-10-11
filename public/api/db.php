@@ -1406,7 +1406,9 @@ switch ($action) {
                     $body,
                     "/?tab=rides",
                     "disp-cust-" . ($notifInqId ?: $id),
-                    "customer"
+                    "customer",
+                    $target_phone,
+                    $target_email
                 );
             }
         } catch (Exception $e) {}
@@ -1484,14 +1486,24 @@ switch ($action) {
         $cleanPhone10 = strlen($cleanPhone) >= 10 ? substr($cleanPhone, -10) : $cleanPhone;
 
         // Select undelivered targeted notifications AND all broadcasts from the past 48 hours
-        $stmt = $pdo->prepare("SELECT * FROM customer_notifications 
-                               WHERE ((delivered = 0 OR delivered IS NULL) 
-                                      OR UPPER(TRIM(target_phone)) = 'ALL' 
-                                      OR LOWER(TRIM(target_email)) = 'all')
-                                 AND created_at >= NOW() - INTERVAL 48 HOUR
-                               ORDER BY created_at DESC LIMIT 50");
-        $stmt->execute();
-        $all = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if ($isAdmin) {
+            $stmt = $pdo->prepare("SELECT * FROM customer_notifications 
+                                   WHERE UPPER(TRIM(target_phone)) = 'ADMIN' 
+                                     AND created_at >= NOW() - INTERVAL 48 HOUR 
+                                   ORDER BY created_at DESC LIMIT 50");
+            $stmt->execute();
+            $all = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } else {
+            $stmt = $pdo->prepare("SELECT * FROM customer_notifications 
+                                   WHERE ((delivered = 0 OR delivered IS NULL) 
+                                          OR UPPER(TRIM(target_phone)) = 'ALL' 
+                                          OR LOWER(TRIM(target_email)) = 'all')
+                                     AND UPPER(TRIM(target_phone)) != 'ADMIN'
+                                     AND created_at >= NOW() - INTERVAL 48 HOUR
+                                   ORDER BY created_at DESC LIMIT 100");
+            $stmt->execute();
+            $all = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
 
         $filtered = [];
         foreach ($all as $row) {

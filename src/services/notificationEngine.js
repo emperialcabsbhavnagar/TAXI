@@ -620,23 +620,10 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
     }).catch(() => {});
   } catch (e) {}
 
-  // 2. Broadcast across tabs/windows on the same device via BroadcastChannel
-  try {
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-      const bc = new BroadcastChannel('emperial_cabs_channel');
-      bc.postMessage({
-        type: 'ADMIN_NOTIFICATION',
-        notification: notifObj,
-        title,
-        body,
-        extraData: { tab: targetTab, inquiryId: inqId, canonicalKey, ...extraData }
-      });
-      // Close channel after brief moment to avoid dangling port
-      setTimeout(() => { try { bc.close(); } catch(e) {} }, 1000);
-    }
-  } catch (e) {}
-
-  // 3. Trigger immediate remote server push to all Admin devices
+  // 2. Trigger remote server push to Admin devices (for background/closed browser scenarios).
+  //    The AdminPortal's own 3.5s polling diff is the single source of truth for in-app alerts,
+  //    so we intentionally do NOT fire BroadcastChannel, window events, or direct local push here
+  //    to prevent duplicate notifications.
   try {
     triggerRemoteServerPush({
       title,
@@ -646,18 +633,6 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
       tag: 'disp-' + canonicalKey
     }).catch(() => {});
   } catch (e) {}
-
-  // 4. If called directly from an active Admin session, dispatch local push if not duplicate
-  if (isAdminContext()) {
-    if (!isDuplicatePushAlert('admin_disp_' + canonicalKey, 20000)) {
-      sendSystemPushNotification(title, body, 'disp-' + canonicalKey, { tab: targetTab, inquiryId: inqId, canonicalKey, ...extraData });
-    }
-  }
-
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('EMPERIAL CABS_admin_notif', { detail: notifObj }));
-    window.dispatchEvent(new Event('storage'));
-  }
 
   return notifObj;
 };

@@ -1,21 +1,41 @@
 # Add project specific ProGuard rules here.
 # You can control the set of applied configuration files using the
 # proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Capacitor WebView App - Keep rules for R8 optimization
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Keep Capacitor core classes
+-keep class com.getcapacitor.** { *; }
+-keep class com.emperialcabs.booking.** { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Keep JavaScript interface classes for WebView bridge
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+
+# Keep Capacitor plugin annotations and methods
+-keepattributes *Annotation*
+-keepclassmembers class * extends com.getcapacitor.Plugin {
+    public *;
+}
+
+# Keep Google Auth plugin
+-keep class com.codetrixstudio.capacitor.GoogleAuth.** { *; }
+
+# Keep AndroidX classes used by Capacitor
+-keep class androidx.** { *; }
+-keep interface androidx.** { *; }
+
+# Keep notification-related classes
+-keep class android.app.NotificationChannel { *; }
+-keep class android.app.NotificationManager { *; }
+
+# Preserve line number information for debugging stack traces
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
+
+# Don't warn about missing optional dependencies
+-dontwarn org.bouncycastle.**
+-dontwarn org.conscrypt.**
+-dontwarn org.openjsse.**
+-dontwarn com.google.android.gms.**

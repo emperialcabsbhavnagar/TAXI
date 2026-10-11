@@ -38,8 +38,13 @@ public class TripNotificationReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
+        final PendingResult pendingResult = goAsync();
         Executors.newSingleThreadExecutor().execute(() -> {
-            checkAndDispatch(context);
+            try {
+                checkAndDispatch(context);
+            } finally {
+                pendingResult.finish();
+            }
         });
     }
 
@@ -48,10 +53,6 @@ public class TripNotificationReceiver extends BroadcastReceiver {
         String phone = prefs.getString("customer_phone", "");
         String email = prefs.getString("customer_email", "");
         String activeInquiryId = prefs.getString("pending_inquiry_id", "");
-
-        if (phone.isEmpty() && email.isEmpty() && activeInquiryId.isEmpty()) {
-            return;
-        }
 
         try {
             String queryUrl = "https://emperialcabs.com/api/db.php?action=getCustomerNotifications";
@@ -65,8 +66,8 @@ public class TripNotificationReceiver extends BroadcastReceiver {
             URL url = new URL(queryUrl);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
-            conn.setConnectTimeout(6000);
-            conn.setReadTimeout(6000);
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(8000);
 
             int status = conn.getResponseCode();
             if (status == 200) {
@@ -120,12 +121,13 @@ public class TripNotificationReceiver extends BroadcastReceiver {
                 }
             }
             conn.disconnect();
-        } catch (Exception ignored) {}
-
-        // Schedule next check in background: 25s if active trip pending, 45s for standard background alerts/broadcasts
-        boolean hasPendingInq = !prefs.getString("pending_inquiry_id", "").isEmpty();
-        int nextDelay = hasPendingInq ? 25 : 45;
-        scheduleNextCheck(context, nextDelay);
+        } catch (Exception ignored) {
+        } finally {
+            // Schedule next check in background: 20s if active trip pending, 40s for background alerts/broadcasts
+            boolean hasPendingInq = !prefs.getString("pending_inquiry_id", "").isEmpty();
+            int nextDelay = hasPendingInq ? 20 : 40;
+            scheduleNextCheck(context, nextDelay);
+        }
     }
 
     private void showSystemNotification(Context context, String title, String body, String notifId) {

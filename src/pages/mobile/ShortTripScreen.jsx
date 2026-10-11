@@ -269,35 +269,10 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
         }
       });
 
-      // 3. Trigger immediate remote push to all Admin devices
-      triggerRemoteServerPush({
-        title: notifTitle,
-        body: notifBody,
-        url: '/admin?tab=short_trips',
-        userType: 'admin',
-        tag: 'disp-st_' + shortTripId
-      }).catch(() => {});
-
-      // 4. Save to Hostinger MySQL & Customer DB concurrently with reliable awaiting
+      // 3. Save to Hostinger MySQL & Customer DB concurrently
       await Promise.allSettled([
         saveInquiryToMySQL(newInquiry),
-        saveCustomerToMySQL(userProf),
-        saveNotificationToMySQL({
-          id: 'admin_st_' + shortTripId,
-          target_phone: 'ADMIN',
-          target_email: 'emperialcabsbhavnagar@gmail.com',
-          title: notifTitle,
-          body: notifBody,
-          type: 'short_trip',
-          extra_data: JSON.stringify({ tab: 'short_trips', inquiryId: shortTripId, isShortTrip: true })
-        }),
-        triggerRemoteServerPush({
-          title: notifTitle,
-          body: notifBody,
-          url: '/admin?tab=short_trips',
-          userType: 'admin',
-          tag: 'disp-st_' + shortTripId
-        })
+        saveCustomerToMySQL(userProf)
       ]);
 
       // 5. Register push & background alarm sync for closed-app delivery

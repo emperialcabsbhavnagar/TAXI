@@ -1301,36 +1301,25 @@ export default function AdminPortal() {
 
         // 2. Real-Time Diff Detection: Check for incoming customer inquiries, cancellations, contact messages & remote alerts!
         if (isInitialLoadRef.current) {
-          // On first launch, record all existing IDs and statuses
+          // On first launch, record all existing IDs and statuses SILENTLY.
+          // No chimes, no push notifications, no live alert banners — just record state and populate list.
           mergedInquiries.forEach(i => {
             if (i?.id) {
               const inqIdStr = String(i.id);
               knownInquiryStatusRef.current.set(inqIdStr, String(i.status || 'Pending'));
+              seenInquiryAlertIdsRef.current.add(inqIdStr);
 
-              // If an inquiry is 'Pending', recent (within last 3 hours), and NEVER seen on this admin device, alert immediately!
+              // Silently add recent pending inquiries to the notification dropdown list (no chime, no push)
               const isPending = String(i.status || 'Pending').toLowerCase() === 'pending';
               const createdTs = i.timestamp ? new Date(i.timestamp).getTime() : (i.created_at ? new Date(i.created_at).getTime() : 0);
-              const isRecent = createdTs > 0 ? (Date.now() - createdTs < 3 * 3600 * 1000) : true;
+              const isRecent = createdTs > 0 ? (Date.now() - createdTs < 3 * 3600 * 1000) : false;
 
-              if (isPending && isRecent && !seenInquiryAlertIdsRef.current.has(inqIdStr)) {
-                seenInquiryAlertIdsRef.current.add(inqIdStr);
-                try {
-                  const existing = JSON.parse(localStorage.getItem('cabsy_seen_inq_alert_ids') || '[]');
-                  localStorage.setItem('cabsy_seen_inq_alert_ids', JSON.stringify([inqIdStr, ...existing].slice(0, 200)));
-                } catch (e) {}
-
+              if (isPending && isRecent) {
                 const isCust = Boolean(i.isCustom || i.tripType === 'Custom Trip' || i.tripType === 'custom-trip');
                 const isShort = Boolean(i.isShortTrip || i.tripType === 'Short Trip' || i.tripType === 'short-trip');
                 const notifTitle = isShort ? `New Short Trip Booking #${i.id}` : (isCust ? 'New Custom Route Inquiry' : 'New Customer Ride Booking');
                 const notifTab = isShort ? 'short_trips' : (isCust ? 'custom_inquiries' : 'inquiries');
                 const notifBody = `${i.customerName || 'Customer'} (${i.customerPhone || 'Direct'}): ${i.pickup} ➔ ${i.dropoff}${i.fare ? ` · ₹${i.fare}` : ''}`;
-
-                playChimeSound();
-                if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-                  navigator.vibrate([200, 100, 200, 100, 200]);
-                }
-                sendSystemPushNotification(notifTitle, notifBody, 'disp-inq_' + inqIdStr, { tab: notifTab, inquiryId: inqIdStr, canonicalKey: 'inq_' + inqIdStr });
-                triggerLiveAlertBanner({ title: notifTitle, body: notifBody, tab: notifTab, inquiryId: inqIdStr });
 
                 const newNotifItem = {
                   id: 'inq_notif_' + i.id,
@@ -1345,11 +1334,13 @@ export default function AdminPortal() {
                   tab: notifTab
                 };
                 setNotifications(prev => [newNotifItem, ...prev.filter(n => n.id !== newNotifItem.id)].slice(0, 50));
-              } else {
-                seenInquiryAlertIdsRef.current.add(inqIdStr);
               }
             }
           });
+          try {
+            const arr = Array.from(seenInquiryAlertIdsRef.current);
+            localStorage.setItem('cabsy_seen_inq_alert_ids', JSON.stringify(arr.slice(-200)));
+          } catch (e) {}
           validMessages.forEach(m => m?.id && knownMessageIdsRef.current.add(String(m.id)));
           if (Array.isArray(adminRemoteNotifs) && adminRemoteNotifs.length > 0) {
             const formattedRemote = [];
@@ -1375,6 +1366,10 @@ export default function AdminPortal() {
                 tab: targetTab
               });
             });
+            try {
+              const arr = Array.from(knownRemoteNotifIdsRef.current);
+              localStorage.setItem('cabsy_seen_admin_notif_ids', JSON.stringify(arr.slice(-200)));
+            } catch (e) {}
             if (formattedRemote.length > 0) {
               setNotifications(prev => dedupeNotificationList([...formattedRemote, ...prev]));
             }
@@ -1398,8 +1393,11 @@ export default function AdminPortal() {
               const notifBody = `${newInq.customerName || 'Customer'} (${newInq.customerPhone || 'Direct'}): ${newInq.pickup} ➔ ${newInq.dropoff}${newInq.fare ? ` · ₹${newInq.fare}` : ''}`;
               const alertKey = `inq_${inqIdStr}`;
 
-              // Trigger audio & popup alert only once per inquiry
-              if (!alreadyAlerted && !isDuplicatePushAlert('adm_chime_' + alertKey, 15000)) {
+              // Trigger audio & popup alert only for inquiries that arrived in the last 90 seconds
+              const inqCreatedTs = newInq.timestamp ? new Date(newInq.timestamp).getTime() : (newInq.created_at ? new Date(newInq.created_at).getTime() : 0);
+              const isTrulyRecent = inqCreatedTs > 0 ? (Date.now() - inqCreatedTs < 90 * 1000) : false;
+
+              if (isTrulyRecent && !alreadyAlerted && !isDuplicatePushAlert('adm_chime_' + alertKey, 15000)) {
                 sendSystemPushNotification(notifTitle, notifBody, 'disp-' + alertKey, { tab: notifTab, inquiryId: inqIdStr, canonicalKey: alertKey });
                 triggerLiveAlertBanner({ title: notifTitle, body: notifBody, tab: notifTab, inquiryId: inqIdStr });
               }
@@ -1495,7 +1493,11 @@ export default function AdminPortal() {
                 const nTitle = notifRow.title || (isShortTrip ? 'New Short Trip Booking' : 'Dispatch Update');
                 const nBody = notifRow.body || 'You have an update from a customer.';
                 
-                if (!alreadyAlertedInq && !isDuplicatePushAlert('adm_chime_' + alertKey, 15000)) {
+                // Only fire live audio/banner alert if notification arrived within the last 90 seconds
+                const notifCreatedTs = notifRow.created_at ? new Date(notifRow.created_at).getTime() : 0;
+                const isRowTrulyRecent = notifCreatedTs > 0 ? (Date.now() - notifCreatedTs < 90 * 1000) : false;
+                
+                if (isRowTrulyRecent && !alreadyAlertedInq && !isDuplicatePushAlert('adm_chime_' + alertKey, 15000)) {
                   sendSystemPushNotification(nTitle, nBody, 'disp-' + alertKey, { tab: targetTab, inquiryId: rowInqId, messageId: rowMsgId, canonicalKey: alertKey });
                   triggerLiveAlertBanner({ title: nTitle, body: nBody, tab: targetTab, inquiryId: rowInqId });
                 }
@@ -1544,64 +1546,8 @@ export default function AdminPortal() {
 
     fetchAllData(true);
 
-    // Sync admin notifications from localStorage / internal events
-    const syncAdminNotifs = () => {
-      const fresh = getAdminNotifications();
-      if (fresh && fresh.length > 0) {
-        setNotifications(prev => dedupeNotificationList([...fresh, ...prev]));
-      }
-    };
-
-    window.addEventListener('EMPERIAL CABS_admin_notif', syncAdminNotifs);
-    window.addEventListener('EMPERIAL CABS_db_sync', syncAdminNotifs);
-
-    // BroadcastChannel for cross-tab and cross-window sync
-    let bc = null;
-    try {
-      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-        bc = new BroadcastChannel('emperial_cabs_channel');
-        bc.onmessage = (event) => {
-          if (event.data?.type === 'ADMIN_NOTIFICATION' && event.data?.notification) {
-            const notif = event.data.notification;
-            const inqId = notif.inquiryId || notif.extraData?.inquiryId;
-            const msgId = notif.messageId || notif.extraData?.messageId;
-            const isCancel = notif.type === 'cancellation' || notif.type === 'cancelled' || (notif.title && notif.title.toLowerCase().includes('cancel'));
-            const isRem30 = notif.type === 'reminder_30m' || (notif.title && notif.title.includes('30-Minute'));
-            const isToday = notif.type === 'scheduled_today' || (notif.title && notif.title.includes('Today')) || (notif.title && notif.title.includes('Upcoming'));
-
-            // Suppress upcoming trip alerts completely per user instruction
-            if (isToday || isRem30) {
-              return;
-            }
-
-            const alertKey = notif.extraData?.canonicalKey || (inqId 
-              ? (isCancel ? `inq_cancel_${inqId}` : `inq_${inqId}`) 
-              : (msgId ? `msg_${msgId}` : (notif.id || `${notif.title}|${notif.body}`)));
-
-            if (inqId) {
-              if (isCancel) {
-                knownInquiryStatusRef.current.set(String(inqId), 'Cancelled');
-              } else {
-                seenInquiryAlertIdsRef.current.add(String(inqId));
-                knownInquiryStatusRef.current.set(String(inqId), 'Pending');
-              }
-            }
-
-            if (!isDuplicatePushAlert('adm_chime_' + alertKey, 15000)) {
-              playChimeSound();
-              if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-                navigator.vibrate([200, 100, 200, 100, 200]);
-              }
-              sendSystemPushNotification(notif.title, notif.body || notif.desc, 'disp-' + alertKey, { ...notif.extraData, canonicalKey: alertKey });
-              triggerLiveAlertBanner({ title: notif.title, body: notif.body || notif.desc, tab: notif.extraData?.tab || 'short_trips', inquiryId: inqId });
-            }
-
-            setNotifications(prev => dedupeNotificationList([notif, ...prev]));
-            fetchAllData(false);
-          }
-        };
-      }
-    } catch(e) {}
+    // BroadcastChannel and localStorage event listeners removed:
+    // notifyAdmin() no longer fires these events; the polling diff is the single source of truth.
     
     // Poll Hostinger MySQL safely (every 3.5 seconds) for real-time customer alerts!
     const interval = setInterval(() => fetchAllData(false), 3500);
@@ -1635,14 +1581,11 @@ export default function AdminPortal() {
     window.addEventListener('click', handleGestureUnlock, { passive: true });
 
     return () => {
-      window.removeEventListener('EMPERIAL CABS_admin_notif', syncAdminNotifs);
-      window.removeEventListener('EMPERIAL CABS_db_sync', syncAdminNotifs);
       window.removeEventListener('EMPERIAL CABS_inquiry_cancelled', handleInquiryCancelled);
       window.removeEventListener('visibilitychange', handleVisibilityOrFocus);
       window.removeEventListener('focus', handleVisibilityOrFocus);
       window.removeEventListener('touchstart', handleGestureUnlock);
       window.removeEventListener('click', handleGestureUnlock);
-      if (bc) bc.close();
       clearInterval(interval);
     };
   }, []);

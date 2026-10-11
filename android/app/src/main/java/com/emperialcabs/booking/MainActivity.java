@@ -3,6 +3,7 @@ package com.emperialcabs.booking;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import androidx.activity.EdgeToEdge;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -43,8 +44,18 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        EdgeToEdge.enable(this);
         super.onCreate(savedInstanceState);
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().hide();
+        }
+        if (getActionBar() != null) {
+            getActionBar().hide();
+        }
         registerPlugin(GoogleAuth.class);
         registerPlugin(NativeTripSyncPlugin.class);
+
+        // Immediately start background notification receiver loop
+        TripNotificationReceiver.scheduleNextCheck(this, 3);
     }
 }

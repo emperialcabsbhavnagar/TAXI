@@ -94,6 +94,15 @@ export default function MobileAppView() {
       .then(() => registerPushNotifications('customer'))
       .catch(() => {});
 
+    try {
+      const savedProfile = localStorage.getItem('cabsy_user_profile');
+      const savedPhone = localStorage.getItem('cabsy_user_phone') || localStorage.getItem('cabsy_customer_phone');
+      const userProf = savedProfile ? JSON.parse(savedProfile) : null;
+      const uPhone = (userProf?.phone || savedPhone || '').replace(/\D/g, '');
+      const uEmail = (userProf?.email || '').toLowerCase().trim();
+      syncNativeCustomerTrip('', uPhone, uEmail).catch(() => {});
+    } catch (e) {}
+
     const syncActiveRideStage = () => {
       try {
         const savedProfile = localStorage.getItem('cabsy_user_profile');
