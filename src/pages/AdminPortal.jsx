@@ -1151,7 +1151,8 @@ export default function AdminPortal() {
     const result = [];
     for (const item of list) {
       if (!item) continue;
-      const inqKey = item.inquiryId ? `inq_${String(item.inquiryId).toLowerCase()}` : null;
+      const isCancelItem = String(item.type || '').toLowerCase().includes('cancel') || String(item.title || '').toLowerCase().includes('cancel');
+      const inqKey = item.inquiryId ? `${isCancelItem ? 'inq_cancel_' : 'inq_'}${String(item.inquiryId).toLowerCase()}` : null;
       const msgKey = item.messageId ? `msg_${String(item.messageId).toLowerCase()}` : null;
       const idKey = item.id ? String(item.id).toLowerCase() : null;
       const titleBodyKey = `${(item.title || '').trim()}|${(item.desc || item.body || '').trim()}`.toLowerCase();
@@ -1163,6 +1164,16 @@ export default function AdminPortal() {
       }
     }
     return result.slice(0, 50);
+  };
+
+  // Single shared record of inquiries that have already produced an admin alert on this device
+  const markInquiryAlerted = (inqIdStr) => {
+    if (!inqIdStr || seenInquiryAlertIdsRef.current.has(inqIdStr)) return;
+    seenInquiryAlertIdsRef.current.add(inqIdStr);
+    try {
+      const existing = JSON.parse(localStorage.getItem('cabsy_seen_inq_alert_ids') || '[]');
+      localStorage.setItem('cabsy_seen_inq_alert_ids', JSON.stringify([inqIdStr, ...existing].slice(0, 200)));
+    } catch (e) {}
   };
 
   const isInitialLoadRef = React.useRef(true);
@@ -1323,6 +1334,7 @@ export default function AdminPortal() {
 
                 const newNotifItem = {
                   id: 'inq_notif_' + i.id,
+                  inquiryId: inqIdStr,
                   type: isShort ? 'short_trip' : (isCust ? 'custom' : 'inquiry'),
                   title: notifTitle,
                   desc: notifBody,
@@ -1375,11 +1387,9 @@ export default function AdminPortal() {
             newInquiries.forEach(newInq => {
               const inqIdStr = String(newInq.id);
               knownInquiryStatusRef.current.set(inqIdStr, String(newInq.status || 'Pending'));
-              seenInquiryAlertIdsRef.current.add(inqIdStr);
-              try {
-                const existing = JSON.parse(localStorage.getItem('cabsy_seen_inq_alert_ids') || '[]');
-                localStorage.setItem('cabsy_seen_inq_alert_ids', JSON.stringify([inqIdStr, ...existing].slice(0, 200)));
-              } catch (e) {}
+              // If a MySQL admin notification row for this inquiry already alerted, stay silent
+              const alreadyAlerted = seenInquiryAlertIdsRef.current.has(inqIdStr);
+              markInquiryAlerted(inqIdStr);
 
               const isCust = Boolean(newInq.isCustom || newInq.tripType === 'Custom Trip' || newInq.tripType === 'custom-trip');
               const isShort = Boolean(newInq.isShortTrip || newInq.tripType === 'Short Trip' || newInq.tripType === 'short-trip');
@@ -1388,8 +1398,8 @@ export default function AdminPortal() {
               const notifBody = `${newInq.customerName || 'Customer'} (${newInq.customerPhone || 'Direct'}): ${newInq.pickup} ➔ ${newInq.dropoff}${newInq.fare ? ` · ₹${newInq.fare}` : ''}`;
               const alertKey = `inq_${inqIdStr}`;
 
-              // Trigger audio & popup alert if not alerted within 15 seconds
-              if (!isDuplicatePushAlert('adm_chime_' + alertKey, 15000)) {
+              // Trigger audio & popup alert only once per inquiry
+              if (!alreadyAlerted && !isDuplicatePushAlert('adm_chime_' + alertKey, 15000)) {
                 sendSystemPushNotification(notifTitle, notifBody, 'disp-' + alertKey, { tab: notifTab, inquiryId: inqIdStr, canonicalKey: alertKey });
                 triggerLiveAlertBanner({ title: notifTitle, body: notifBody, tab: notifTab, inquiryId: inqIdStr });
               }
@@ -1477,8 +1487,11 @@ export default function AdminPortal() {
                   localStorage.setItem('cabsy_seen_admin_notif_ids', JSON.stringify([notifIdStr, ...existing].slice(0, 200)));
                 } catch (e) {}
 
-                // If this inquiry was already alerted via newInquiries, do not trigger a second alert!
-                const alreadyAlertedInq = rowInqId && seenInquiryAlertIdsRef.current.has(String(rowInqId));
+                // New-booking rows (alert key inq_<id>) alert once per inquiry, whichever path sees it first.
+                // Other rows for the same inquiry (e.g. cancellation, key inq_cancel_<id>) are not affected.
+                const isNewBookingAlert = rowInqId && alertKey === `inq_${rowInqId}`;
+                const alreadyAlertedInq = isNewBookingAlert && seenInquiryAlertIdsRef.current.has(String(rowInqId));
+                if (isNewBookingAlert) markInquiryAlerted(String(rowInqId));
                 const nTitle = notifRow.title || (isShortTrip ? 'New Short Trip Booking' : 'Dispatch Update');
                 const nBody = notifRow.body || 'You have an update from a customer.';
                 

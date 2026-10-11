@@ -1388,11 +1388,16 @@ switch ($action) {
         try {
             if (strtoupper($target_phone) === 'ADMIN') {
                 $adminTab = ($type === 'short_trip') ? '/admin?tab=short_trips' : ($isCust ? '/admin?tab=custom_inquiries' : '/admin?tab=inquiries');
+                // Use the same canonical tag as the booking push (disp-inq_<id>) so the dedupe gate
+                // and the browser collapse them into ONE notification instead of stacking duplicates
+                $parsedForTag = !empty($extra_data) ? json_decode($extra_data, true) : [];
+                $canonicalKey = is_array($parsedForTag) && !empty($parsedForTag['canonicalKey']) ? $parsedForTag['canonicalKey'] : null;
+                $adminTag = $canonicalKey ? ('disp-' . $canonicalKey) : ($notifInqId ? ('disp-inq_' . $notifInqId) : ('disp-notif_' . $id));
                 triggerServerPushNotification(
                     $title,
                     $body,
                     $adminTab,
-                    "disp-notif_" . $id
+                    $adminTag
                 );
             } else if (strtoupper($target_phone) !== 'ADMIN' && $type !== 'inquiry') {
                 dispatchNativeWebPush(

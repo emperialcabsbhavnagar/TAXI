@@ -446,8 +446,19 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
         });
       } catch (ce) {}
 
-      // Unique 32-bit positive integer ID so multiple notifications can stack in tray without collision
-      const notifId = Math.floor(Date.now() % 2147483000) + Math.floor(Math.random() * 1000) + 1;
+      // Admin: stable 31-bit ID derived from the dedupe key, so a repeat alert for the same
+      // inquiry/message REPLACES the existing tray entry instead of stacking a duplicate.
+      // Customer: unique ID, so successive trip updates (confirmed, driver, receipt) all remain visible.
+      let notifId;
+      if (isAdminContext()) {
+        let hash = 0;
+        for (let i = 0; i < dedupKey.length; i++) {
+          hash = ((hash << 5) - hash + dedupKey.charCodeAt(i)) | 0;
+        }
+        notifId = (Math.abs(hash) % 2147483000) + 1;
+      } else {
+        notifId = Math.floor(Date.now() % 2147483000) + Math.floor(Math.random() * 1000) + 1;
+      }
       await LocalNotifications.schedule({
         notifications: [
           {
