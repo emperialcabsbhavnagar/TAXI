@@ -122,7 +122,7 @@ export default function SelectLocationScreen({
       pickup: 'Bhavnagar, Gujarat',
       dropoff: 'Ahmedabad Airport (AMD)',
       price: 2200,
-      duration: '2.5 - 3 hrs',
+      duration: '2 Hr 45 MIN',
       car_prices: { 'SEDAN': 2200, 'ERTIGA': 3200, 'INNOVA': 4200, 'CRYSTA': 5000 }
     },
     {
@@ -131,7 +131,7 @@ export default function SelectLocationScreen({
       pickup: 'Bhavnagar, Gujarat',
       dropoff: 'Ahmedabad',
       price: 2200,
-      duration: '2.5 - 3 hrs',
+      duration: '2 Hr 45 MIN',
       car_prices: { 'SEDAN': 2200, 'ERTIGA': 3200, 'INNOVA': 4200, 'CRYSTA': 5000 }
     },
     {
@@ -139,27 +139,27 @@ export default function SelectLocationScreen({
       name: 'Bhavnagar, Gujarat → Vadodara',
       pickup: 'Bhavnagar, Gujarat',
       dropoff: 'Vadodara',
-      price: 2800,
-      duration: '3.5 - 4 hrs',
-      car_prices: { 'SEDAN': 2800, 'ERTIGA': 4000, 'INNOVA': 5000, 'CRYSTA': 6000 }
+      price: 2500,
+      duration: '3 Hr 15 MIN',
+      car_prices: { 'SEDAN': 2500, 'ERTIGA': 3800, 'INNOVA': 4800, 'CRYSTA': 5800 }
     },
     {
       id: 'R-BHV-ST',
       name: 'Bhavnagar, Gujarat → Surat',
       pickup: 'Bhavnagar, Gujarat',
       dropoff: 'Surat',
-      price: 3800,
-      duration: '5 - 6 hrs',
-      car_prices: { 'SEDAN': 3800, 'ERTIGA': 5200, 'INNOVA': 6500, 'CRYSTA': 7800 }
+      price: 4500,
+      duration: '5 Hr 40 MIN',
+      car_prices: { 'SEDAN': 4500, 'ERTIGA': 5800, 'INNOVA': 7000, 'CRYSTA': 8200 }
     },
     {
       id: 'R-BHV-RAJ',
       name: 'Bhavnagar, Gujarat → Rajkot',
       pickup: 'Bhavnagar, Gujarat',
       dropoff: 'Rajkot',
-      price: 2200,
-      duration: '3 - 3.5 hrs',
-      car_prices: { 'SEDAN': 2200, 'ERTIGA': 3200, 'INNOVA': 4200, 'CRYSTA': 5000 }
+      price: 2300,
+      duration: '3 Hr 15 MIN',
+      car_prices: { 'SEDAN': 2300, 'ERTIGA': 3400, 'INNOVA': 4400, 'CRYSTA': 5200 }
     },
     {
       id: 'R-BHV-GNR',
@@ -175,9 +175,9 @@ export default function SelectLocationScreen({
       name: 'Bhavnagar, Gujarat → Mumbai',
       pickup: 'Bhavnagar, Gujarat',
       dropoff: 'Mumbai',
-      price: 11000,
-      duration: '11 - 12 hrs',
-      car_prices: { 'SEDAN': 11000, 'ERTIGA': 14500, 'INNOVA': 17500, 'CRYSTA': 21000 }
+      price: 10000,
+      duration: '10 Hr 45 MIN',
+      car_prices: { 'SEDAN': 10000, 'ERTIGA': 14000, 'INNOVA': 17000, 'CRYSTA': 20000 }
     }
   ];
 

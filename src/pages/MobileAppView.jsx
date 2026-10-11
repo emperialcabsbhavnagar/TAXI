@@ -335,9 +335,11 @@ export default function MobileAppView() {
 
         const localRaw = localStorage.getItem('cabsy_inquiries');
         const localList = localRaw ? JSON.parse(localRaw) : [];
-        const existingIds = new Set(localList.map(i => i.id).filter(Boolean));
-        const fresh = userTrips.filter(i => !existingIds.has(i.id));
-        const merged = [...fresh, ...localList];
+        const inqMap = new Map();
+        (Array.isArray(localList) ? localList : []).forEach(i => { if (i?.id) inqMap.set(i.id, i); });
+        // MySQL trips OVERWRITE with the latest live truth
+        userTrips.forEach(i => { if (i?.id) inqMap.set(i.id, { ...inqMap.get(i.id), ...i }); });
+        const merged = Array.from(inqMap.values());
         localStorage.setItem('cabsy_inquiries', JSON.stringify(merged));
         window.dispatchEvent(new Event('storage'));
       }
@@ -890,8 +892,8 @@ export default function MobileAppView() {
         } catch (e) {}
       }
 
-      // Helper for quick remote timeout (2 seconds max for instant UX)
-      const withTimeout = (promise, ms = 2000) => {
+      // Helper for remote timeout (8 seconds for reliable cellular connections)
+      const withTimeout = (promise, ms = 8000) => {
         return Promise.race([
           promise,
           new Promise(resolve => setTimeout(() => resolve(null), ms))
@@ -901,7 +903,7 @@ export default function MobileAppView() {
       // 3. Check Hostinger MySQL database customers
       if (!foundProfile) {
         try {
-          const mysqlCustomers = await withTimeout(loadAllCustomersFromMySQL().catch(() => []), 2000);
+          const mysqlCustomers = await withTimeout(loadAllCustomersFromMySQL().catch(() => []), 8000);
 
           if (mysqlCustomers && Array.isArray(mysqlCustomers)) {
             const match = mysqlCustomers.find(c => {

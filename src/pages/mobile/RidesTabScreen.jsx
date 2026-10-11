@@ -21,7 +21,13 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
   const getUserProfile = () => {
     try {
       const saved = localStorage.getItem('cabsy_user_profile');
-      return saved ? JSON.parse(saved) : null;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed) return parsed;
+      }
+      const savedPhone = localStorage.getItem('cabsy_user_phone');
+      if (savedPhone) return { phone: savedPhone };
+      return null;
     } catch (e) { return null; }
   };
 
@@ -72,24 +78,31 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
       }
     } catch (e) {}
 
-    // ── 2. BACKGROUND PASS: Fetch fresh MySQL updates with tight 2.5s timeout ──
+    // ── 2. BACKGROUND PASS: Fetch fresh MySQL updates directly from Hostinger database ──
     try {
-      const withTimeout = (p, ms = 2500) => Promise.race([p, new Promise(r => setTimeout(() => r([]), ms))]);
-
-      const mysqlData = await withTimeout(loadAllInquiriesFromMySQL().catch(() => []));
+      const mysqlData = await loadAllInquiriesFromMySQL().catch(() => []);
 
       const inqMap = new Map();
       const localRaw = localStorage.getItem('cabsy_inquiries');
       const localList = localRaw ? JSON.parse(localRaw) : [];
-      [...(Array.isArray(localList) ? localList : []),
-       ...(Array.isArray(mysqlData) ? mysqlData : [])].forEach(item => {
+      // Populate local items first
+      (Array.isArray(localList) ? localList : []).forEach(item => {
+        if (item && item.id) {
+          inqMap.set(item.id, item);
+        }
+      });
+      // Remote MySQL data takes priority with the live truth
+      (Array.isArray(mysqlData) ? mysqlData : []).forEach(item => {
         if (item && item.id) {
           inqMap.set(item.id, { ...inqMap.get(item.id), ...item });
         }
       });
       const mergedList = Array.from(inqMap.values());
-      const freshUserRides = filterUserRides(mergedList);
+      try {
+        localStorage.setItem('cabsy_inquiries', JSON.stringify(mergedList));
+      } catch (e) {}
 
+      const freshUserRides = filterUserRides(mergedList);
       setInquiries(freshUserRides);
       return;
     } catch (e) {

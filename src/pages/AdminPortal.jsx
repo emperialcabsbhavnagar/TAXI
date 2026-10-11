@@ -102,7 +102,8 @@ import {
   Fingerprint,
   Smartphone,
   Share2,
-  Copy
+  Copy,
+  Megaphone
 } from 'lucide-react';
 import './AdminPortal.css';
 
@@ -550,6 +551,15 @@ export default function AdminPortal() {
     title: '',
     body: '',
     type: 'reward'
+  });
+
+  // Broadcast Advertisement / Promotion to All Customers Modal State
+  const [broadcastModal, setBroadcastModal] = useState({
+    open: false,
+    title: '',
+    body: '',
+    type: 'reward',
+    isSending: false
   });
 
   // PWA Install Prompt State
@@ -5986,14 +5996,30 @@ export default function AdminPortal() {
         {/* TAB 4: CUSTOMERS */}
         {activeTab === 'customers' && (
           <div className="tab-pane">
-            <div className="pane-header flex justify-between align-center">
+            <div className="pane-header flex justify-between align-center flex-wrap gap-3">
               <div>
                 <h2>Customer Directory</h2>
                 <p>Automatic customer profile creation from ride inquiries with complete trip history and billing logs.</p>
               </div>
-              <button className="btn btn-primary btn-sm flex align-center gap-1" onClick={() => setAddCustomerModal(true)}>
-                <UserPlus size={16} /> Add Customer
-              </button>
+              <div className="flex gap-2 align-center flex-wrap">
+                <button 
+                  className="btn btn-sm flex align-center gap-2"
+                  style={{ background: 'linear-gradient(135deg, #2563EB, #1D4ED8)', color: '#FFFFFF', border: 'none', padding: '9px 16px', borderRadius: '10px', fontWeight: '800', fontSize: '13px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(37,99,235,0.25)', whiteSpace: 'nowrap' }}
+                  onClick={() => setBroadcastModal({
+                    open: true,
+                    title: '🎉 Special Discount from EMPERIAL CABS!',
+                    body: 'Book your outstation or airport cab today and get exclusive discounts! Safe, sanitized and on-time guaranteed.',
+                    type: 'reward',
+                    isSending: false
+                  })}
+                  title="Broadcast Advertisement or Offer Notification to All Customers at Once"
+                >
+                  <Megaphone size={16} /> Broadcast Adv to All ({customers.length})
+                </button>
+                <button className="btn btn-primary btn-sm flex align-center gap-1" onClick={() => setAddCustomerModal(true)}>
+                  <UserPlus size={16} /> Add Customer
+                </button>
+              </div>
             </div>
 
             <div className="card admin-table-card">
@@ -6003,7 +6029,7 @@ export default function AdminPortal() {
                     <tr>
                       <th>Customer ID</th>
                       <th>Name</th>
-                <th>Phone Number</th>
+                      <th>Phone Number</th>
                       <th>Email Address</th>
                       <th>Total Rides</th>
                       <th>Total Revenue Spent</th>
@@ -6022,10 +6048,10 @@ export default function AdminPortal() {
                       </tr>
                     ) : customers.map(cust => (
                       <tr key={cust.id}>
-                        <td><strong>{cust.id}</strong></td>
+                        <td><strong title={cust.id} style={{ display: 'inline-block', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>{cust.id}</strong></td>
                         <td><strong>{cust.name}</strong></td>
-                        <td><Phone size={12} className="inline-icon text-muted" /> {cust.phone || '-'}</td>
-                        <td><Mail size={12} className="inline-icon text-muted" /> {cust.email || '-'}</td>
+                        <td><Phone size={12} className="inline-icon text-muted" /> <a href={`tel:${cust.phone}`} style={{ color: 'inherit', textDecoration: 'none', fontWeight: '600' }}>{cust.phone || '-'}</a></td>
+                        <td><Mail size={12} className="inline-icon text-muted" /> <span title={cust.email} style={{ display: 'inline-block', maxWidth: '190px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>{cust.email || '-'}</span></td>
                         <td><span className="pill-badge-sm">{cust.totalRides || 1} Rides</span></td>
                         <td><strong className="text-green">₹{Number(cust.totalSpent || 0).toFixed(2)}</strong></td>
                         <td><small className="text-muted">{cust.joined || cust.registeredAt || '-'}</small></td>
@@ -6071,31 +6097,54 @@ export default function AdminPortal() {
                 </table>
               </div>
 
-              {/* HOSTINGER ALIGNED MOBILE CARDS FOR CUSTOMERS */}
+              {/* RESPONSIVE CARDS FOR CUSTOMERS */}
               <div className="admin-mobile-card-list">
                 {customers.map(cust => (
-                  <div key={cust.id} className="hostinger-admin-card">
-                    <div className="hostinger-card-top">
-                      <div className="hostinger-card-id-group">
-                        <span className="hostinger-card-id">{cust.id}</span>
-                        <span className="hostinger-card-date">• {cust.joined || cust.registeredAt || '-'}</span>
+                  <div key={cust.id} className="customer-directory-card">
+                    <div className="cust-card-header">
+                      <div className="cust-card-avatar-group">
+                        <div className="cust-avatar-circle">
+                          {(cust.name || 'C').charAt(0).toUpperCase()}
+                        </div>
+                        <div className="cust-identity">
+                          <h4 className="cust-name-title" title={cust.name}>{cust.name || 'Customer'}</h4>
+                          <span className="cust-id-chip" title={cust.id}>{cust.id}</span>
+                        </div>
                       </div>
-                      <span className="pill-badge-sm" style={{ background: '#ECFDF5', color: '#059669', fontWeight: '800' }}>
+                      <span className="cust-rides-badge">
                         {cust.totalRides || 1} Rides
                       </span>
                     </div>
-                    <div className="hostinger-card-customer">
-                      <span className="hostinger-cust-name">{cust.name}</span>
-                      <span className="hostinger-cust-phone">📞 {cust.phone || '-'}</span>
+
+                    <div className="cust-info-block">
+                      <div className="cust-info-item">
+                        <Phone size={13} className="cust-info-icon" />
+                        <a href={`tel:${cust.phone}`} className="cust-phone-link">
+                          {cust.phone || 'No phone'}
+                        </a>
+                      </div>
+                      <div className="cust-info-item">
+                        <Mail size={13} className="cust-info-icon" />
+                        <span className="cust-email-text" title={cust.email}>
+                          {cust.email || 'No email provided'}
+                        </span>
+                      </div>
                     </div>
-                    <div style={{ fontSize: '0.82rem', color: '#475569', background: '#F8FAFC', padding: '8px 12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span>✉️ {cust.email || '-'}</span>
-                      <strong style={{ color: '#059669', fontSize: '0.95rem' }}>₹{Number(cust.totalSpent || 0).toFixed(2)}</strong>
+
+                    <div className="cust-stats-strip">
+                      <div className="cust-stat-pill">
+                        <span className="cust-stat-pill-label">Total Spent</span>
+                        <strong className="cust-stat-pill-val">₹{Number(cust.totalSpent || 0).toFixed(2)}</strong>
+                      </div>
+                      <div className="cust-stat-pill">
+                        <span className="cust-stat-pill-label">Member Since</span>
+                        <span className="cust-stat-pill-date">{cust.joined || cust.registeredAt || '-'}</span>
+                      </div>
                     </div>
-                    <div className="hostinger-card-actions">
+
+                    <div className="cust-actions-grid">
                       <button 
-                        className="btn btn-sm flex align-center gap-1"
-                        style={{ backgroundColor: '#10b981', color: '#ffffff', border: 'none', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800', fontSize: '12px' }}
+                        className="btn btn-sm btn-cust-action-notif"
                         onClick={() => {
                           setSendNotifModal({
                             open: true,
@@ -6105,22 +6154,23 @@ export default function AdminPortal() {
                             type: 'reward'
                           });
                         }}
+                        title="Send Push Notification to Customer"
                       >
                         <Bell size={13} /> Send Notif
                       </button>
 
                       <button 
-                        className="btn btn-sm btn-outline flex align-center gap-1"
-                        style={{ padding: '6px 10px', fontSize: '12px', borderRadius: '8px' }}
+                        className="btn btn-sm btn-cust-action-profile"
                         onClick={() => setCustomerDetailModal({ open: true, customer: cust })}
+                        title="View Customer Profile & Trip History"
                       >
                         <Eye size={13} /> Profile
                       </button>
 
                       <button 
-                        className="btn btn-sm flex align-center gap-1"
-                        style={{ backgroundColor: '#ef4444', color: '#ffffff', border: 'none', padding: '6px 10px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}
+                        className="btn btn-sm btn-cust-action-delete"
                         onClick={() => handleDeleteCustomer(cust.id || cust.email)}
+                        title="Delete Customer Profile"
                       >
                         <Trash2 size={13} /> Delete
                       </button>
@@ -8433,6 +8483,208 @@ export default function AdminPortal() {
                 }}
               >
                 🚀 Dispatch Push Notification Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Universal Broadcast Advertisement / Message to All Customers Modal */}
+      {broadcastModal.open && (
+        <div className="admin-modal-overlay" onClick={() => setBroadcastModal({ open: false, title: '', body: '', type: 'reward', isSending: false })}>
+          <div className="admin-modal-box card" style={{ maxWidth: '640px', width: '92%', borderRadius: '24px', padding: '28px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between align-center mb-3" style={{ borderBottom: '1px solid #E2E8F0', paddingBottom: '14px' }}>
+              <div>
+                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', color: '#0F172A', fontSize: '20px', fontFamily: 'League Spartan, sans-serif', fontWeight: '800' }}>
+                  <Megaphone size={22} style={{ color: '#2563EB' }} /> Broadcast Adv / Message to All Customers
+                </h3>
+                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748B' }}>
+                  Dispatches an instant live push notification & inbox message to all <strong style={{ color: '#0F172A' }}>{customers.length} registered customers</strong>.
+                </p>
+              </div>
+              <button 
+                onClick={() => setBroadcastModal({ open: false, title: '', body: '', type: 'reward', isSending: false })}
+                style={{ background: '#F1F5F9', border: 'none', width: '36px', height: '36px', borderRadius: '50%', fontSize: '16px', cursor: 'pointer', color: '#0F172A', fontWeight: 'bold' }}
+              >✕</button>
+            </div>
+
+            {/* Target Audience Summary */}
+            <div style={{ background: '#EFF6FF', border: '1.5px solid #BFDBFE', padding: '14px 18px', borderRadius: '16px', marginBottom: '18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: '800', color: '#1E40AF' }}>📢 Target Audience: All Active App Users</div>
+                <div style={{ fontSize: '12px', color: '#3B82F6', marginTop: '2px' }}>Will be delivered to customer app notification inboxes and phone notification panels.</div>
+              </div>
+              <span style={{ background: '#2563EB', color: '#FFFFFF', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '800', whiteSpace: 'nowrap' }}>
+                {customers.length} Customers
+              </span>
+            </div>
+
+            {/* Quick Presets Buttons */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ fontSize: '12px', fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', display: 'block' }}>Quick Advertisement Presets</label>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#166534', padding: '7px 12px', borderRadius: '10px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+                  onClick={() => setBroadcastModal(prev => ({
+                    ...prev,
+                    title: `🎉 Special 20% Off Weekend Sale!`,
+                    body: `Book any outstation or city cab this weekend and get an instant 20% flat discount on your trip fare! Safe & sanitized cabs guaranteed.`,
+                    type: 'reward'
+                  }))}
+                >
+                  🎁 20% Discount Offer
+                </button>
+
+                <button
+                  type="button"
+                  style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1E40AF', padding: '7px 12px', borderRadius: '10px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+                  onClick={() => setBroadcastModal(prev => ({
+                    ...prev,
+                    title: `✈️ Ahmedabad Airport Taxi at Just ₹2,200!`,
+                    body: `Direct one-way cab from Bhavnagar to Ahmedabad Airport starting at just ₹2,200. On-time doorstep pickup & zero surge pricing!`,
+                    type: 'inquiry'
+                  }))}
+                >
+                  ✈️ Airport Flat ₹2,200
+                </button>
+
+                <button
+                  type="button"
+                  style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#B45309', padding: '7px 12px', borderRadius: '10px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+                  onClick={() => setBroadcastModal(prev => ({
+                    ...prev,
+                    title: `🚖 Festive Season Cab Bookings Now Open!`,
+                    body: `Planning your outstation trip for the holidays? Reserve your Sedan or Ertiga with EMPERIAL CABS in advance for guaranteed confirmed cabs.`,
+                    type: 'system'
+                  }))}
+                >
+                  🚖 Festive Bookings Open
+                </button>
+
+                <button
+                  type="button"
+                  style={{ background: '#FAF5FF', border: '1px solid #E9D5FF', color: '#6B21A8', padding: '7px 12px', borderRadius: '10px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+                  onClick={() => setBroadcastModal(prev => ({
+                    ...prev,
+                    title: `⭐ Mumbai & Surat Superfast Luxury Cabs`,
+                    body: `Travel comfortably between Bhavnagar, Surat and Mumbai with our premium luxury fleet. Verified professional chauffeurs & 24x7 support.`,
+                    type: 'system'
+                  }))}
+                >
+                  ⭐ Outstation Routes
+                </button>
+              </div>
+            </div>
+
+            {/* Title & Body Inputs */}
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ fontSize: '13px', fontWeight: '800', color: '#334155', marginBottom: '6px', display: 'block' }}>Advertisement Title:</label>
+              <input 
+                type="text"
+                value={broadcastModal.title}
+                onChange={(e) => setBroadcastModal(prev => ({ ...prev, title: e.target.value }))}
+                placeholder="e.g. 🎉 Special 20% Discount Offer on All Rides!"
+                style={{ width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1.5px solid #CBD5E1', fontFamily: 'Space Grotesk', fontSize: '15px', fontWeight: '700', outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ fontSize: '13px', fontWeight: '800', color: '#334155', marginBottom: '6px', display: 'block' }}>Advertisement Body Message:</label>
+              <textarea 
+                rows={3}
+                value={broadcastModal.body}
+                onChange={(e) => setBroadcastModal(prev => ({ ...prev, body: e.target.value }))}
+                placeholder="Enter advertisement message details for all customers..."
+                style={{ width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1.5px solid #CBD5E1', fontFamily: 'Space Grotesk', fontSize: '14px', outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            {/* Live Phone Banner Preview */}
+            <div style={{ background: '#0F172A', color: '#FFFFFF', padding: '14px 16px', borderRadius: '16px', marginBottom: '22px' }}>
+              <small style={{ color: '#94A3B8', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '6px' }}>
+                📱 Customer Lock Screen Notification Preview
+              </small>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#2563EB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '16px', color: '#FFFFFF', flexShrink: 0 }}>📢</div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: '14px', fontWeight: '800', color: '#FFFFFF', wordBreak: 'break-word' }}>{broadcastModal.title || 'Advertisement Title'}</div>
+                  <div style={{ fontSize: '12px', color: '#CBD5E1', marginTop: '2px', lineHeight: '1.4', wordBreak: 'break-word' }}>{broadcastModal.body || 'Message content preview will appear here...'}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-actions-flex" style={{ display: 'flex', gap: '12px' }}>
+              <button 
+                type="button" 
+                className="btn btn-outline" 
+                style={{ flex: 1, padding: '14px' }}
+                onClick={() => setBroadcastModal({ open: false, title: '', body: '', type: 'reward', isSending: false })}
+                disabled={broadcastModal.isSending}
+              >
+                Cancel
+              </button>
+              <button 
+                type="button" 
+                className="btn btn-primary"
+                style={{ flex: 2, padding: '14px', background: 'linear-gradient(135deg, #2563EB, #1D4ED8)', border: 'none', color: '#FFFFFF', fontWeight: '800', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 8px 20px rgba(37,99,235,0.35)', cursor: broadcastModal.isSending ? 'not-allowed' : 'pointer' }}
+                disabled={broadcastModal.isSending}
+                onClick={async () => {
+                  if (!broadcastModal.title || !broadcastModal.body) {
+                    alert('Please enter both title and body for the broadcast announcement.');
+                    return;
+                  }
+
+                  setBroadcastModal(prev => ({ ...prev, isSending: true }));
+
+                  try {
+                    // 1. Dispatch universal server push to customer devices
+                    triggerRemoteServerPush({
+                      title: broadcastModal.title,
+                      body: broadcastModal.body,
+                      url: '/?tab=rides',
+                      userType: 'customer',
+                      tag: 'promo_broadcast_' + Date.now()
+                    }).catch(e => console.warn('Broadcast remote push notice:', e));
+
+                    // 2. Dispatch to each customer profile
+                    customers.forEach(cust => {
+                      notifyCustomer({
+                        type: broadcastModal.type || 'reward',
+                        title: broadcastModal.title,
+                        body: broadcastModal.body,
+                        customerEmail: cust.email,
+                        customerPhone: cust.phone
+                      });
+
+                      saveNotificationToMySQL({
+                        target_phone: cust.phone || '',
+                        target_email: cust.email || '',
+                        title: broadcastModal.title,
+                        body: broadcastModal.body,
+                        type: broadcastModal.type || 'reward'
+                      }).catch(() => {});
+                    });
+
+                    // 3. Save universal broadcast notification in MySQL
+                    saveNotificationToMySQL({
+                      target_phone: 'ALL',
+                      target_email: 'ALL',
+                      title: broadcastModal.title,
+                      body: broadcastModal.body,
+                      type: broadcastModal.type || 'reward'
+                    }).catch(() => {});
+
+                    alert(`✅ Broadcast Advertisement Sent Successfully!\n\nDispatched to all ${customers.length} registered customers.\nTitle: ${broadcastModal.title}`);
+                    setBroadcastModal({ open: false, title: '', body: '', type: 'reward', isSending: false });
+                  } catch (err) {
+                    console.error('Broadcast error:', err);
+                    alert('Broadcast error: ' + (err.message || String(err)));
+                    setBroadcastModal(prev => ({ ...prev, isSending: false }));
+                  }
+                }}
+              >
+                {broadcastModal.isSending ? '⏳ Dispatching Broadcast...' : `📢 Send Broadcast to All ${customers.length} Customers`}
               </button>
             </div>
           </div>
