@@ -1478,8 +1478,11 @@ switch ($action) {
         $cleanPhone = preg_replace('/\D/', '', $phone);
         $cleanPhone10 = strlen($cleanPhone) >= 10 ? substr($cleanPhone, -10) : $cleanPhone;
 
+        // Select undelivered targeted notifications AND all broadcasts from the past 48 hours
         $stmt = $pdo->prepare("SELECT * FROM customer_notifications 
-                               WHERE (delivered = 0 OR delivered IS NULL)
+                               WHERE ((delivered = 0 OR delivered IS NULL) 
+                                      OR UPPER(TRIM(target_phone)) = 'ALL' 
+                                      OR LOWER(TRIM(target_email)) = 'all')
                                  AND created_at >= NOW() - INTERVAL 48 HOUR
                                ORDER BY created_at DESC LIMIT 50");
         $stmt->execute();
@@ -1498,8 +1501,14 @@ switch ($action) {
                     $match = true;
                 }
             } else {
-                // Global broadcast notification (target empty)
-                if (empty($rPhone) && empty($rEmail)) {
+                // If targeted to ADMIN, regular customer devices must never receive it
+                if ($tPhone === 'ADMIN') {
+                    continue;
+                }
+
+                // Global broadcast notification (target ALL or empty)
+                $isBroadcast = ($tPhone === 'ALL' || $rEmail === 'all' || (empty($rPhone) && empty($rEmail)));
+                if ($isBroadcast) {
                     $match = true;
                 } else if (!empty($cleanPhone10) && !empty($rPhone10) && $cleanPhone10 === $rPhone10) {
                     $match = true;
@@ -1517,7 +1526,11 @@ switch ($action) {
     case 'markNotificationDelivered':
         $id = $data['id'] ?? null;
         if ($id) {
-            $stmt = $pdo->prepare("UPDATE customer_notifications SET delivered = 1 WHERE id = ?");
+            // NEVER mark broadcast notifications delivered=1 in MySQL, otherwise other customer devices cannot receive it
+            $stmt = $pdo->prepare("UPDATE customer_notifications SET delivered = 1 
+                                   WHERE id = ? 
+                                     AND UPPER(TRIM(target_phone)) != 'ALL' 
+                                     AND LOWER(TRIM(target_email)) != 'all'");
             $stmt->execute([$id]);
         }
         echo json_encode(['success' => true]);

@@ -46,9 +46,10 @@ public class TripNotificationReceiver extends BroadcastReceiver {
     private void checkAndDispatch(Context context) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         String phone = prefs.getString("customer_phone", "");
+        String email = prefs.getString("customer_email", "");
         String activeInquiryId = prefs.getString("pending_inquiry_id", "");
 
-        if (phone.isEmpty() && activeInquiryId.isEmpty()) {
+        if (phone.isEmpty() && email.isEmpty() && activeInquiryId.isEmpty()) {
             return;
         }
 
@@ -56,6 +57,9 @@ public class TripNotificationReceiver extends BroadcastReceiver {
             String queryUrl = "https://emperialcabs.com/api/db.php?action=getCustomerNotifications";
             if (!phone.isEmpty()) {
                 queryUrl += "&phone=" + URLEncoder.encode(phone, "UTF-8");
+            }
+            if (!email.isEmpty()) {
+                queryUrl += "&email=" + URLEncoder.encode(email, "UTF-8");
             }
 
             URL url = new URL(queryUrl);
@@ -85,17 +89,24 @@ public class TripNotificationReceiver extends BroadcastReceiver {
                         String title = notif.optString("title", "EMPERIAL CABS Update");
                         String body = notif.optString("body", "");
                         String type = notif.optString("type", "");
+                        String targetPhone = notif.optString("target_phone", "");
+                        String targetEmail = notif.optString("target_email", "");
+                        boolean isBroadcast = "ALL".equalsIgnoreCase(targetPhone) || "all".equalsIgnoreCase(targetEmail);
 
                         if (prefs.getBoolean("delivered_" + notifId, false)) {
                             continue;
                         }
 
-                        // Display native notification
+                        // Display native system tray notification
                         showSystemNotification(context, title, body, notifId);
 
-                        // Mark in local prefs and on server
+                        // Mark in local prefs so this device never re-alerts
                         prefs.edit().putBoolean("delivered_" + notifId, true).apply();
-                        markDeliveredOnServer(notifId);
+
+                        // Only mark delivered on MySQL if NOT a universal broadcast!
+                        if (!isBroadcast) {
+                            markDeliveredOnServer(notifId);
+                        }
 
                         if ("confirmed".equalsIgnoreCase(type) || "rejected".equalsIgnoreCase(type) || "cancelled".equalsIgnoreCase(type)) {
                             anyTerminalFound = true;
@@ -105,18 +116,16 @@ public class TripNotificationReceiver extends BroadcastReceiver {
                     if (anyTerminalFound) {
                         // Trip terminal status reached -> Clean pending inquiry state
                         prefs.edit().remove("pending_inquiry_id").apply();
-                        return; // Stop repeating checks
                     }
                 }
             }
             conn.disconnect();
         } catch (Exception ignored) {}
 
-        // Schedule next check in 25 seconds if inquiry is still pending
-        String currentInq = prefs.getString("pending_inquiry_id", "");
-        if (!currentInq.isEmpty()) {
-            scheduleNextCheck(context, 25);
-        }
+        // Schedule next check in background: 25s if active trip pending, 45s for standard background alerts/broadcasts
+        boolean hasPendingInq = !prefs.getString("pending_inquiry_id", "").isEmpty();
+        int nextDelay = hasPendingInq ? 25 : 45;
+        scheduleNextCheck(context, nextDelay);
     }
 
     private void showSystemNotification(Context context, String title, String body, String notifId) {
@@ -213,7 +222,11 @@ public class TripNotificationReceiver extends BroadcastReceiver {
             long triggerAt = System.currentTimeMillis() + (delaySeconds * 1000L);
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
+                try {
+                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
+                } catch (SecurityException se) {
+                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
+                }
             } else {
                 am.setExact(AlarmManager.RTC_WAKEUP, triggerAt, pi);
             }

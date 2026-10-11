@@ -43,15 +43,17 @@ export function getSavedCustomerCredentials() {
 }
 
 // Native Trip Sync bridge for Android background wake-up
-export const syncNativeCustomerTrip = async (inquiryId, phone) => {
+export const syncNativeCustomerTrip = async (inquiryId, phone, email = '') => {
   if (typeof window === 'undefined') return;
   const cCreds = getSavedCustomerCredentials();
   const targetPhone = phone || cCreds.phone;
+  const targetEmail = email || cCreds.email;
   try {
     if (window.Capacitor?.Plugins?.NativeTripSync) {
       await window.Capacitor.Plugins.NativeTripSync.syncCustomerTrip({
         inquiryId: String(inquiryId || ''),
-        phone: String(targetPhone || '')
+        phone: String(targetPhone || ''),
+        email: String(targetEmail || '')
       });
     }
   } catch (e) {}

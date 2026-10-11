@@ -65,6 +65,7 @@ export default function MobileAppView() {
   const [activeTab, setActiveTab] = useState('home');
   const [lastCreatedInquiry, setLastCreatedInquiry] = useState(null);
   const isFirstNotificationSyncRef = useRef(true);
+  const appMountTimeRef = useRef(Date.now());
 
   // Enforce Clean Light Mode Throughout App (Dark mode removed)
   useEffect(() => {
@@ -385,29 +386,25 @@ export default function MobileAppView() {
         // 2. Poll MySQL inquiries for driver assignment
         const remoteInqs = await loadAllInquiriesFromMySQL().catch(() => []);
         if (!isCancelled && Array.isArray(remoteInqs) && remoteInqs.length > 0) {
-          // Initial run: only pre-mark historical trips (>24h) or trips created before user cleared notifications
+          // Initial run: pre-mark ALL existing inquiries on startup so the app never echoes past trips
           const isInitialRun = isFirstNotificationSyncRef.current;
           if (isInitialRun) {
             isFirstNotificationSyncRef.current = false;
-            const clearedAtInit = Number(localStorage.getItem('cabsy_customer_notifs_cleared_at') || 0);
             for (const inq of remoteInqs) {
               if (inq?.id) {
-                const inqTime = parseDateSafe(inq.timestamp || inq.created_at || inq.date);
-                const isAncient = (inqTime > 0 && (now - inqTime) > (24 * 60 * 60 * 1000));
-                const wasCleared = (clearedAtInit > 0 && inqTime > 0 && inqTime <= clearedAtInit);
-                if (isAncient || wasCleared) {
-                  localStorage.setItem(`cabsy_inquiry_cancelled_notified_${inq.id}`, 'true');
-                  localStorage.setItem(`cabsy_inquiry_rejected_notified_${inq.id}`, 'true');
-                  localStorage.setItem(`cabsy_driver_assigned_notified_${inq.id}`, 'true');
-                  localStorage.setItem(`cabsy_trip_completed_handled_${inq.id}`, 'true');
-                  if (inq.driver) {
-                    localStorage.setItem(`cabsy_driver_assigned_notified_${inq.id}_${inq.driver}_${inq.plate || ''}`, 'true');
-                  }
-                  localStorage.setItem(`cust_cancel_${inq.id}`, 'true');
-                  localStorage.setItem(`cust_rej_${inq.id}`, 'true');
-                  localStorage.setItem(`cust_driver_${inq.id}`, 'true');
-                  localStorage.setItem(`cust_receipt_${inq.id}`, 'true');
+                localStorage.setItem(`cabsy_inquiry_cancelled_notified_${inq.id}`, 'true');
+                localStorage.setItem(`cabsy_inquiry_rejected_notified_${inq.id}`, 'true');
+                localStorage.setItem(`cabsy_inquiry_confirmed_notified_${inq.id}`, 'true');
+                localStorage.setItem(`cabsy_driver_assigned_notified_${inq.id}`, 'true');
+                localStorage.setItem(`cabsy_trip_completed_handled_${inq.id}`, 'true');
+                if (inq.driver) {
+                  localStorage.setItem(`cabsy_driver_assigned_notified_${inq.id}_${inq.driver}_${inq.plate || ''}`, 'true');
                 }
+                localStorage.setItem(`cust_conf_${inq.id}`, 'true');
+                localStorage.setItem(`cust_cancel_${inq.id}`, 'true');
+                localStorage.setItem(`cust_rej_${inq.id}`, 'true');
+                localStorage.setItem(`cust_driver_${inq.id}`, 'true');
+                localStorage.setItem(`cust_receipt_${inq.id}`, 'true');
               }
             }
           }
@@ -564,6 +561,10 @@ export default function MobileAppView() {
         // 3. Poll MySQL cloud push notifications dispatched by Admin (e.g. from Customer Directory or Direct Dispatch)
         const checkPhones = Array.from(localPhones);
         const searchPhone = cleanUserPhone || checkPhones[0] || uPhone || '';
+        if (searchPhone || uEmail) {
+          syncNativeCustomerTrip('', searchPhone, uEmail).catch(() => {});
+        }
+
         const cloudNotifs = await fetchNotificationsFromMySQL(searchPhone, uEmail).catch(() => []);
         if (!isCancelled && Array.isArray(cloudNotifs) && cloudNotifs.length > 0) {
           // Track already known local notifications and signatures so this device never echoes alerts
@@ -592,21 +593,24 @@ export default function MobileAppView() {
           } catch(e) {}
 
           for (const cn of cloudNotifs) {
+            const isBroadcastNotif = String(cn.target_phone || '').toUpperCase() === 'ALL' || 
+                                     String(cn.target_email || '').toLowerCase() === 'all';
+
             // A) If already marked delivered on MySQL or previously cleared by user, skip immediately
-            if (cn.delivered == 1 || cn.delivered === '1' || cn.delivered === true || clearedIds.has(String(cn.id))) {
-              markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+            if ((!isBroadcastNotif && (cn.delivered == 1 || cn.delivered === '1' || cn.delivered === true)) || clearedIds.has(String(cn.id))) {
+              if (!isBroadcastNotif) markNotificationDeliveredInMySQL(cn.id).catch(() => {});
               continue;
             }
 
             const notifTime = parseDateSafe(cn.created_at) || now;
             if (clearedAt > 0 && notifTime > 0 && notifTime <= clearedAt) {
-              markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+              if (!isBroadcastNotif) markNotificationDeliveredInMySQL(cn.id).catch(() => {});
               continue;
             }
 
             // B) Location ping ACK
             if (cn.type === 'LOCATION_PING') {
-              markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+              if (!isBroadcastNotif) markNotificationDeliveredInMySQL(cn.id).catch(() => {});
               continue;
             }
 
@@ -615,7 +619,7 @@ export default function MobileAppView() {
               (cn.title && cn.title.toLowerCase().includes('booking request received')) ||
               (cn.title && cn.title.toLowerCase().includes('inquiry'));
             if (isBookingInquiry) {
-              markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+              if (!isBroadcastNotif) markNotificationDeliveredInMySQL(cn.id).catch(() => {});
               continue;
             }
 
@@ -641,21 +645,23 @@ export default function MobileAppView() {
 
             if (unifiedKey && isDuplicatePushAlert(unifiedKey, 120000)) {
               localStorage.setItem(cnKey, 'true');
-              markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+              if (!isBroadcastNotif) markNotificationDeliveredInMySQL(cn.id).catch(() => {});
               continue;
             }
 
             // D) Deduplication against local storage
             if (localStorage.getItem(cnKey) === 'true' || knownNotifIds.has(cn.id)) {
               localStorage.setItem(cnKey, 'true');
-              markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+              if (!isBroadcastNotif) markNotificationDeliveredInMySQL(cn.id).catch(() => {});
               continue;
             }
 
-            // Mark delivered locally and on MySQL
+            // Mark delivered locally and on MySQL (skip MySQL mark for broadcasts so other devices receive it)
             localStorage.setItem(cnKey, 'true');
             knownNotifIds.add(cn.id);
-            markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+            if (!isBroadcastNotif) {
+              markNotificationDeliveredInMySQL(cn.id).catch(() => {});
+            }
 
             // Construct notification item and update cabsy_customer_notifications in localStorage
             const notifItem = {
@@ -679,16 +685,12 @@ export default function MobileAppView() {
               localStorage.setItem('cabsy_customer_notifications', JSON.stringify(updated));
             } catch (e) {}
 
-            // Send system push notification on customer device
-            sendSystemPushNotification(cn.title, cn.body, 'disp-cust-' + (cnInqId || cn.id), { ...parsedExtra, inquiryId: cnInqId });
-
-            // Play alert sound & vibration
-            try {
-              playChimeSound();
-              if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-                navigator.vibrate([200, 100, 200, 100, 200]);
-              }
-            } catch (e) {}
+            // CRITICAL: Suppress loud popups, chime sounds, and vibrations for old/historical notifications on app open!
+            // Only trigger system push alert if the notification is fresh (created in the last 20s while app is active)
+            const isFreshNotif = notifTime >= (appMountTimeRef.current - 20000);
+            if (isFreshNotif) {
+              sendSystemPushNotification(cn.title, cn.body, 'disp-cust-' + (cnInqId || cn.id), { ...parsedExtra, inquiryId: cnInqId });
+            }
 
             // Dispatch reactive events for instant in-app drawer and badge updates
             window.dispatchEvent(new CustomEvent('EMPERIAL CABS_customer_notif', { detail: notifItem }));

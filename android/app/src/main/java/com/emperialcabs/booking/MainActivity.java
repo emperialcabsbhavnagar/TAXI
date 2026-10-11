@@ -18,14 +18,18 @@ public class MainActivity extends BridgeActivity {
         public void syncCustomerTrip(PluginCall call) {
             String inquiryId = call.getString("inquiryId", "");
             String phone = call.getString("phone", "");
+            String email = call.getString("email", "");
             Context ctx = getContext();
             if (ctx != null) {
                 SharedPreferences prefs = ctx.getSharedPreferences(TripNotificationReceiver.PREFS_NAME, Context.MODE_PRIVATE);
                 SharedPreferences.Editor editor = prefs.edit();
-                if (!phone.isEmpty()) {
+                if (phone != null && !phone.isEmpty()) {
                     editor.putString("customer_phone", phone);
                 }
-                if (!inquiryId.isEmpty()) {
+                if (email != null && !email.isEmpty()) {
+                    editor.putString("customer_email", email);
+                }
+                if (inquiryId != null && !inquiryId.isEmpty()) {
                     editor.putString("pending_inquiry_id", inquiryId);
                 }
                 editor.apply();

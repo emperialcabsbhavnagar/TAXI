@@ -1151,13 +1151,12 @@ export default function AdminPortal() {
     const result = [];
     for (const item of list) {
       if (!item) continue;
-      const typeStr = (item.type || 'inq').toLowerCase();
-      const inqKey = item.inquiryId ? `${typeStr}_inq_${String(item.inquiryId).toLowerCase()}` : null;
+      const inqKey = item.inquiryId ? `inq_${String(item.inquiryId).toLowerCase()}` : null;
       const msgKey = item.messageId ? `msg_${String(item.messageId).toLowerCase()}` : null;
       const idKey = item.id ? String(item.id).toLowerCase() : null;
       const titleBodyKey = `${(item.title || '').trim()}|${(item.desc || item.body || '').trim()}`.toLowerCase();
       
-      const primaryKey = idKey || inqKey || msgKey || titleBodyKey;
+      const primaryKey = inqKey || msgKey || idKey || titleBodyKey;
       if (!seen.has(primaryKey)) {
         seen.add(primaryKey);
         result.push(item);
@@ -1391,10 +1390,6 @@ export default function AdminPortal() {
 
               // Trigger audio & popup alert if not alerted within 15 seconds
               if (!isDuplicatePushAlert('adm_chime_' + alertKey, 15000)) {
-                playChimeSound();
-                if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-                  navigator.vibrate([200, 100, 200, 100, 200]);
-                }
                 sendSystemPushNotification(notifTitle, notifBody, 'disp-' + alertKey, { tab: notifTab, inquiryId: inqIdStr, canonicalKey: alertKey });
                 triggerLiveAlertBanner({ title: notifTitle, body: notifBody, tab: notifTab, inquiryId: inqIdStr });
               }
@@ -1433,10 +1428,6 @@ export default function AdminPortal() {
               const notifBody = `${newMsg.name || 'Customer'} (${newMsg.phone || ''}): ${newMsg.subject || newMsg.message || 'New Inquiry'}`;
               
               if (!isDuplicatePushAlert('adm_chime_' + msgAlertKey, 15000)) {
-                playChimeSound();
-                if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-                  navigator.vibrate([200, 100, 200, 100, 200]);
-                }
                 sendSystemPushNotification(notifTitle, notifBody, 'disp-' + msgAlertKey, { tab: 'messages', messageId: String(newMsg.id), canonicalKey: msgAlertKey });
                 triggerLiveAlertBanner({ title: notifTitle, body: notifBody, tab: 'messages', messageId: String(newMsg.id) });
               }
@@ -1486,14 +1477,12 @@ export default function AdminPortal() {
                   localStorage.setItem('cabsy_seen_admin_notif_ids', JSON.stringify([notifIdStr, ...existing].slice(0, 200)));
                 } catch (e) {}
 
+                // If this inquiry was already alerted via newInquiries, do not trigger a second alert!
+                const alreadyAlertedInq = rowInqId && seenInquiryAlertIdsRef.current.has(String(rowInqId));
                 const nTitle = notifRow.title || (isShortTrip ? 'New Short Trip Booking' : 'Dispatch Update');
                 const nBody = notifRow.body || 'You have an update from a customer.';
                 
-                if (!isDuplicatePushAlert('adm_chime_' + alertKey, 15000)) {
-                  playChimeSound();
-                  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-                    navigator.vibrate([200, 100, 200, 100, 200]);
-                  }
+                if (!alreadyAlertedInq && !isDuplicatePushAlert('adm_chime_' + alertKey, 15000)) {
                   sendSystemPushNotification(nTitle, nBody, 'disp-' + alertKey, { tab: targetTab, inquiryId: rowInqId, messageId: rowMsgId, canonicalKey: alertKey });
                   triggerLiveAlertBanner({ title: nTitle, body: nBody, tab: targetTab, inquiryId: rowInqId });
                 }
