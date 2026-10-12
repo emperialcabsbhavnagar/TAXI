@@ -277,7 +277,7 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
 
       // 5. Register push & background alarm sync for closed-app delivery
       registerPushNotifications('customer', cPhone, cEmail).catch(() => {});
-      syncNativeCustomerTrip(shortTripId, cPhone).catch(() => {});
+      syncNativeCustomerTrip(shortTripId, cPhone, cEmail).catch(() => {});
 
       // 6. Broadcast updates
       window.dispatchEvent(new Event('storage'));
@@ -320,7 +320,8 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '14px 18px',
+          padding: '10px 18px',
+          paddingTop: 'calc(var(--android-status-bar-height, 0px) + 8px)',
           borderBottom: '1px solid #E2E8F0',
           backgroundColor: '#FFFFFF',
           position: 'sticky',

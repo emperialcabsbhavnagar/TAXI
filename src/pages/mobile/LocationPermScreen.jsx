@@ -125,7 +125,7 @@ export default function LocationPermScreen({ onAllow, onSkip, onNext, onBack }) 
   return (
     <div className="real-mobile-app" style={{ background: '#FFFFFF', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Clean Top Navigation matching phone_screen_updated.png */}
-      <div className="white-header-nav" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #F1F5F9' }}>
+      <div className="white-header-nav" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F1F5F9' }}>
         <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#0F172A', margin: 0, letterSpacing: '-0.01em' }}>
           Location
         </h2>

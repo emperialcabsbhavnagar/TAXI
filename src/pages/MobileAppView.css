@@ -20,6 +20,7 @@
   --emperial-shadow-md: 0 6px 20px rgba(37, 43, 52, 0.08);
   --emperial-shadow-lg: 0 12px 32px rgba(37, 43, 52, 0.12);
   --emperial-glow-yellow: 0 6px 20px rgba(244, 197, 66, 0.35);
+  --android-status-bar-height: 0px;
 }
 
 
@@ -33,7 +34,7 @@
   max-height: 100vh;
   max-height: 100dvh;
   margin: 0;
-  background: #F5F5F2 !important;
+  background: #F5F5F2;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -47,6 +48,10 @@
   -webkit-transform: translateZ(0);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
+}
+
+.onboarding-mobile-screen {
+  background: #FFFFFF !important;
 }
 
 /* Ensure nested screen containers flex and scroll properly */
@@ -319,26 +324,27 @@
 
 .let-you-red-header {
   width: 100%;
-  height: 240px;
+  height: calc(210px + var(--android-status-bar-height, 0px));
   background: #FB4945 url('../assets/images/let-you-screen/bg-img.svg') no-repeat center top / cover;
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 16px;
+  padding-top: calc(var(--android-status-bar-height, 0px) + 8px);
   box-sizing: border-box;
 }
 
 .let-you-white-back-btn {
   position: absolute;
-  top: 20px;
-  left: 20px;
-  background: rgba(255, 255, 255, 0.2);
+  top: calc(var(--android-status-bar-height, 0px) + 8px);
+  left: 16px;
+  background: rgba(255, 255, 255, 0.25);
   backdrop-filter: blur(8px);
   border: none;
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -441,7 +447,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 18px 20px;
+  padding: 10px 20px;
+  padding-top: calc(var(--android-status-bar-height, 0px) + 8px);
   background: #FFFFFF;
   position: relative;
   border-bottom: 1px solid #E2E8F0;
@@ -459,7 +466,8 @@
 
 .header-back-arrow {
   position: absolute;
-  left: 18px;
+  left: 16px;
+  top: calc(var(--android-status-bar-height, 0px) + 8px);
   background: #F1F5F9;
   border: none;
   width: 36px;
@@ -613,7 +621,7 @@
 
 .map-floating-header {
   position: absolute;
-  top: 16px;
+  top: calc(var(--android-status-bar-height, 0px) + 8px);
   left: 16px;
   right: 16px;
   display: flex;

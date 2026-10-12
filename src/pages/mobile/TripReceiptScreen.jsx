@@ -63,7 +63,7 @@ export default function TripReceiptScreen({ tripData, onDone }) {
 
   return (
     <div className="real-mobile-app">
-      <div className="white-header-nav" style={{ padding: '16px 20px', borderBottom: '1px solid #E2E8F0', background: '#FFFFFF' }}>
+      <div className="white-header-nav">
         <h2 className="white-header-title" style={{ fontFamily: 'League Spartan', fontSize: '20px', fontWeight: '800', color: '#0F172A', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Receipt size={22} color="#34D399" />
           <span>Official Trip E-Receipt</span>

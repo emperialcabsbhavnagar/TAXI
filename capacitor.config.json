@@ -20,6 +20,9 @@
       "clientId": "555496247847-mhki7n17mv041nogm83nd51qqldp9vbl.apps.googleusercontent.com",
       "serverClientId": "555496247847-mhki7n17mv041nogm83nd51qqldp9vbl.apps.googleusercontent.com",
       "forceCodeForRefreshToken": false
+    },
+    "CapacitorHttp": {
+      "enabled": true
     }
   }
 }

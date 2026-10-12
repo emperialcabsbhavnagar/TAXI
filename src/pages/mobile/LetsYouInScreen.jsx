@@ -3,6 +3,7 @@ import { signInWithGoogle, setupRecaptcha, sendPhoneOTP, sendEmailOTP } from '..
 import logoPng from '../../assets/images/let-you-screen/logo.png';
 import bgImg from '../../assets/images/let-you-screen/bg-img.svg';
 import { Smartphone, Mail, ArrowLeft, AlertCircle } from 'lucide-react';
+import { NativeTripSync } from '../../services/notificationEngine';
 
 export default function LetsYouInScreen({
   phoneNumber, setPhoneNumber,
@@ -15,6 +16,26 @@ export default function LetsYouInScreen({
   const [emailInput, setEmailInput] = useState('');
   const [otpSending, setOtpSending] = useState(false);
   const [otpError, setOtpError] = useState('');
+
+  // Switch status bar icons to white on red header banner, restore to dark on exit
+  React.useEffect(() => {
+    try {
+      if (NativeTripSync && typeof NativeTripSync.setStatusBarTheme === 'function') {
+        NativeTripSync.setStatusBarTheme({ theme: 'dark' });
+      } else if (window.Capacitor?.Plugins?.NativeTripSync?.setStatusBarTheme) {
+        window.Capacitor.Plugins.NativeTripSync.setStatusBarTheme({ theme: 'dark' });
+      }
+    } catch (e) {}
+    return () => {
+      try {
+        if (NativeTripSync && typeof NativeTripSync.setStatusBarTheme === 'function') {
+          NativeTripSync.setStatusBarTheme({ theme: 'light' });
+        } else if (window.Capacitor?.Plugins?.NativeTripSync?.setStatusBarTheme) {
+          window.Capacitor.Plugins.NativeTripSync.setStatusBarTheme({ theme: 'light' });
+        }
+      } catch (e) {}
+    };
+  }, []);
 
   // ─── Main handler: "Continue with Google" button ──
   const handleGoogleAuth = async () => {

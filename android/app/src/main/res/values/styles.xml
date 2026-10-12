@@ -7,12 +7,13 @@
         <item name="windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
         <item name="android:windowNoTitle">true</item>
+        <item name="android:fitsSystemWindows">false</item>
         <item name="colorPrimary">#FFFFFF</item>
         <item name="colorPrimaryDark">#FFFFFF</item>
         <item name="colorAccent">#34D399</item>
         <item name="android:windowBackground">#FFFFFF</item>
         <item name="android:colorBackground">#FFFFFF</item>
-        <item name="android:statusBarColor">#FFFFFF</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">#FFFFFF</item>
         <item name="android:windowLightStatusBar">true</item>
     </style>
@@ -22,9 +23,10 @@
         <item name="windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
         <item name="android:windowNoTitle">true</item>
+        <item name="android:fitsSystemWindows">false</item>
         <item name="android:windowBackground">#FFFFFF</item>
         <item name="android:colorBackground">#FFFFFF</item>
-        <item name="android:statusBarColor">#FFFFFF</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">#FFFFFF</item>
         <item name="android:windowLightStatusBar">true</item>
     </style>
@@ -37,7 +39,7 @@
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowBackground">#FFFFFF</item>
         <item name="windowSplashScreenBackground">#FFFFFF</item>
-        <item name="android:statusBarColor">#FFFFFF</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">#FFFFFF</item>
         <item name="android:windowLightStatusBar">true</item>
     </style>

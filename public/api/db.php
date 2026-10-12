@@ -609,44 +609,6 @@ switch ($action) {
             ':date' => $data['date'] ?? date('Y-m-d')
         ]);
         
-        $cName = $data['customerName'] ?? 'Customer';
-        $cPick = $data['pickup'] ?? 'Location';
-        $cDrop = $data['dropoff'] ?? 'Destination';
-        $isCust = !empty($data['isCustom']) || (isset($data['tripType']) && stripos($data['tripType'], 'custom') !== false);
-        $isShort = !empty($data['isShortTrip']) || (isset($data['tripType']) && stripos($data['tripType'], 'short') !== false);
-        $cFareStr = $fare > 0 ? " (₹" . number_format($fare, 0) . ")" : "";
-        
-        $notifTitle = $isShort ? "New Short Trip Booking: {$cName}" : ($isCust ? "New Custom Route Inquiry: {$cName}" : "New Booking: {$cName}");
-        try {
-            triggerServerPushNotification(
-                $notifTitle,
-                "{$cPick} to {$cDrop}{$cFareStr}",
-                $notifUrl,
-                "disp-inq_" . $id
-            );
-        } catch (Exception $e) {}
-
-        // Also record in customer_notifications for ADMIN so live sync and polling catch it instantly
-        try {
-            $notifId = 'notif_inq_' . $id;
-            $notifType = $isShort ? 'short_trip' : ($isCust ? 'custom' : 'inquiry');
-            $notifExtra = json_encode([
-                'tab' => $isShort ? 'short_trips' : ($isCust ? 'custom_inquiries' : 'inquiries'),
-                'inquiryId' => $id,
-                'isShortTrip' => $isShort
-            ]);
-            $notifStmt = $pdo->prepare("INSERT INTO customer_notifications (id, target_phone, target_email, title, body, type, extra_data, delivered)
-                                        VALUES (:id, 'ADMIN', 'emperialcabsbhavnagar@gmail.com', :title, :body, :type, :extra_data, 0)
-                                        ON DUPLICATE KEY UPDATE title = VALUES(title), body = VALUES(body), extra_data = VALUES(extra_data), delivered = 0, created_at = NOW()");
-            $notifStmt->execute([
-                ':id' => $notifId,
-                ':title' => $notifTitle,
-                ':body' => "{$cPick} to {$cDrop}{$cFareStr}",
-                ':type' => $notifType,
-                ':extra_data' => $notifExtra
-            ]);
-        } catch (Exception $e) {}
-
         echo json_encode(['success' => true, 'id' => $id]);
         break;
 

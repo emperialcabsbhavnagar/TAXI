@@ -35,7 +35,7 @@ export default function NotificationOptScreen({ onNext, onBack }) {
   return (
     <div className="real-mobile-app" style={{ background: '#FFFFFF', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Clean Top Navigation */}
-      <div className="white-header-nav" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #F1F5F9' }}>
+      <div className="white-header-nav" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F1F5F9' }}>
         <button 
           className="header-back-arrow" 
           onClick={handleSkip}

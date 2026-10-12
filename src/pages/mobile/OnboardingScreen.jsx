@@ -13,97 +13,6 @@ if (typeof window !== 'undefined') {
 }
 
 // ============================================================================
-// SLIDE 1: REQUEST A RIDE (100% EXACT 4K IMAGE RENDERING WITH VECTOR CRISPNESS)
-// ============================================================================
-function RequestRideSVG() {
-  return (
-    <svg width="100%" height="100%" viewBox="0 0 440 440" preserveAspectRatio="xMidYMid meet">
-      <rect x="0" y="0" width="440" height="440" fill="#FFFFFF" />
-      <image 
-        href={onboarding1Img} 
-        x="0" 
-        y="0" 
-        width="440" 
-        height="440" 
-        preserveAspectRatio="xMidYMid meet"
-        style={{
-          imageRendering: 'crisp-edges',
-          filter: 'contrast(102%) brightness(101%)',
-          WebkitFontSmoothing: 'antialiased'
-        }}
-      />
-    </svg>
-  );
-}
-
-// 2. VEHICLE SELECTION SVG (100% EXACT 4K IMAGE RENDERING)
-function VehicleSelectionSVG() {
-  return (
-    <svg width="100%" height="100%" viewBox="0 0 440 440" preserveAspectRatio="xMidYMid meet">
-      <rect x="0" y="0" width="440" height="440" fill="#FFFFFF" />
-      <image 
-        href={onboarding2Img} 
-        x="0" 
-        y="0" 
-        width="440" 
-        height="440" 
-        preserveAspectRatio="xMidYMid meet"
-        style={{
-          imageRendering: 'crisp-edges',
-          filter: 'contrast(102%) brightness(101%)',
-          WebkitFontSmoothing: 'antialiased'
-        }}
-      />
-    </svg>
-  );
-}
-
-// 3. LIVE RIDE TRACKING SVG (100% EXACT 4K IMAGE RENDERING)
-function LiveTrackingSVG() {
-  return (
-    <svg width="100%" height="100%" viewBox="0 0 440 440" preserveAspectRatio="xMidYMid meet">
-      <rect x="0" y="0" width="440" height="440" fill="#FFFFFF" />
-      <image 
-        href={onboarding3Img} 
-        x="0" 
-        y="0" 
-        width="440" 
-        height="440" 
-        preserveAspectRatio="xMidYMid meet"
-        style={{
-          imageRendering: 'crisp-edges',
-          filter: 'contrast(102%) brightness(101%)',
-          WebkitFontSmoothing: 'antialiased'
-        }}
-      />
-    </svg>
-  );
-}
-
-// 4. TRIP SHARING SVG (100% EXACT 4K IMAGE RENDERING)
-function TripSharingSVG() {
-  return (
-    <svg width="100%" height="100%" viewBox="0 0 440 440" preserveAspectRatio="xMidYMid meet">
-      <rect x="0" y="0" width="440" height="440" fill="#FFFFFF" />
-      <image 
-        href={onboarding4Img} 
-        x="0" 
-        y="0" 
-        width="440" 
-        height="440" 
-        preserveAspectRatio="xMidYMid meet"
-        style={{
-          imageRendering: 'crisp-edges',
-          filter: 'contrast(102%) brightness(101%)',
-          WebkitFontSmoothing: 'antialiased'
-        }}
-      />
-    </svg>
-  );
-}
-
-
-// ============================================================================
 // MAIN MOBILE ONBOARDING SCREEN COMPONENT
 // ============================================================================
 export default function OnboardingScreen({ onFinish }) {
@@ -113,22 +22,22 @@ export default function OnboardingScreen({ onFinish }) {
     {
       title: "Request a Ride",
       desc: "Request a ride get picked up by a nearby community driver.",
-      svg: <RequestRideSVG />
+      img: onboarding1Img
     },
     {
       title: "Vehicle Selection",
       desc: "Users have the liberty to choose the type of vehicle as per their need.",
-      svg: <VehicleSelectionSVG />
+      img: onboarding2Img
     },
     {
       title: "Live Ride Tracking",
       desc: "Know your driver in advance and be able to view current location in real time on the map.",
-      svg: <LiveTrackingSVG />
+      img: onboarding3Img
     },
     {
       title: "Trip Sharing",
       desc: "Passengers can share their ride details with family and friends for safety reasons.",
-      svg: <TripSharingSVG />
+      img: onboarding4Img
     }
   ];
 
@@ -136,7 +45,7 @@ export default function OnboardingScreen({ onFinish }) {
 
   return (
     <div 
-      className="real-mobile-app" 
+      className="real-mobile-app onboarding-mobile-screen" 
       style={{ 
         background: '#FFFFFF',
         width: '100%',
@@ -147,7 +56,9 @@ export default function OnboardingScreen({ onFinish }) {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '20px 20px 30px 20px',
+        padding: '20px',
+        paddingTop: 'calc(max(var(--android-status-bar-height, 0px), env(safe-area-inset-top, 0px)) + 16px)',
+        paddingBottom: 'calc(max(var(--android-nav-bar-height, 0px), env(safe-area-inset-bottom, 0px)) + 24px)',
         boxSizing: 'border-box',
         userSelect: 'none',
         overflow: 'hidden'
@@ -164,16 +75,17 @@ export default function OnboardingScreen({ onFinish }) {
         }
       `}</style>
 
-      {/* Top Graphic Scene Container */}
+      {/* Top Graphic Scene Container — image merges seamlessly with white background */}
       <div 
         style={{ 
           width: '100%', 
           display: 'flex', 
           justifyContent: 'center', 
-          alignItems: 'center',
+          alignItems: 'center', 
           flex: 1,
           padding: '0',
-          maxHeight: '66vh'
+          maxHeight: '66vh',
+          background: '#FFFFFF'
         }}
       >
         <div
@@ -188,12 +100,27 @@ export default function OnboardingScreen({ onFinish }) {
             justifyContent: 'center',
             backgroundColor: '#FFFFFF',
             position: 'relative',
-            transform: 'scale(1.04)',
             animation: 'slideFadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1), floatMotion 3.8s ease-in-out infinite 0.45s',
             willChange: 'transform'
           }}
         >
-          {currentSlide.svg}
+          <img
+            src={currentSlide.img}
+            alt={currentSlide.title}
+            style={{
+              width: '100%',
+              height: '100%',
+              maxWidth: '440px',
+              maxHeight: '380px',
+              objectFit: 'contain',
+              display: 'block',
+              background: '#FFFFFF',
+              border: 'none',
+              outline: 'none',
+              boxShadow: 'none'
+            }}
+            draggable={false}
+          />
         </div>
       </div>
 

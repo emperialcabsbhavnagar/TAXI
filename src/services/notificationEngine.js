@@ -4,10 +4,12 @@
  * and Automated Ecosystem Pre-Trip Scheduler.
  */
 
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { saveNotificationToMySQL, markNotificationDeliveredInMySQL, savePushSubscriptionToMySQL, sendPushNotificationViaMySQL } from './mysqlService';
+
+export const NativeTripSync = registerPlugin('NativeTripSync');
 
 const VAPID_PUBLIC_KEY = 'BNjJ7GWaU-7KXkdkyyxoTyNGCRFSztK8KNtPQW9BWDycOZyVpSJZB7PZJ74JfL0ZSS9DZtrgHPe-cE9U9qi23CY';
 
@@ -49,14 +51,22 @@ export const syncNativeCustomerTrip = async (inquiryId, phone, email = '') => {
   const targetPhone = phone || cCreds.phone;
   const targetEmail = email || cCreds.email;
   try {
-    if (window.Capacitor?.Plugins?.NativeTripSync) {
+    if (NativeTripSync && typeof NativeTripSync.syncCustomerTrip === 'function') {
+      await NativeTripSync.syncCustomerTrip({
+        inquiryId: String(inquiryId || ''),
+        phone: String(targetPhone || ''),
+        email: String(targetEmail || '')
+      });
+    } else if (window.Capacitor?.Plugins?.NativeTripSync) {
       await window.Capacitor.Plugins.NativeTripSync.syncCustomerTrip({
         inquiryId: String(inquiryId || ''),
         phone: String(targetPhone || ''),
         email: String(targetEmail || '')
       });
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn('syncNativeCustomerTrip notice:', e);
+  }
 };
 
 // Global listener for Native Push Notifications (Android APK & iOS)
@@ -607,7 +617,8 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
   const targetTab = extraData?.tab || (type === 'short_trip' ? 'short_trips' : (type === 'custom' || type === 'custom-trip' ? 'custom_inquiries' : 'inquiries'));
   const targetUrl = `/admin?tab=${targetTab}`;
 
-  // 1. Save to Remote MySQL for Admin alerts so remote and local Admin live sync always receives it
+  // 1. Save to Remote MySQL for Admin alerts so remote and local Admin live sync always receives it.
+  // Note: saveCustomerNotification in db.php already triggers native WebPush to all Admin devices.
   try {
     saveNotificationToMySQL({
       id: notifObj.id,
@@ -617,21 +628,26 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
       body: body,
       type: type,
       extra_data: JSON.stringify({ tab: targetTab, inquiryId: inqId, canonicalKey, ...extraData })
-    }).catch(() => {});
-  } catch (e) {}
-
-  // 2. Trigger remote server push to Admin devices (for background/closed browser scenarios).
-  //    The AdminPortal's own 3.5s polling diff is the single source of truth for in-app alerts,
-  //    so we intentionally do NOT fire BroadcastChannel, window events, or direct local push here
-  //    to prevent duplicate notifications.
-  try {
-    triggerRemoteServerPush({
-      title,
-      body,
-      url: targetUrl,
-      userType: 'admin',
-      tag: 'disp-' + canonicalKey
-    }).catch(() => {});
+    }).then(res => {
+      // Only fall back to standalone send-push.php if saveNotificationToMySQL failed
+      if (!res) {
+        triggerRemoteServerPush({
+          title,
+          body,
+          url: targetUrl,
+          userType: 'admin',
+          tag: 'disp-' + canonicalKey
+        }).catch(() => {});
+      }
+    }).catch(() => {
+      triggerRemoteServerPush({
+        title,
+        body,
+        url: targetUrl,
+        userType: 'admin',
+        tag: 'disp-' + canonicalKey
+      }).catch(() => {});
+    });
   } catch (e) {}
 
   return notifObj;

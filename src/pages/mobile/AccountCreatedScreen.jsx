@@ -51,7 +51,7 @@ export default function AccountCreatedScreen({ onNext, onBack }) {
 
   return (
     <div className="real-mobile-app" style={{ background: '#FFFFFF' }}>
-      <div className="white-header-nav" style={{ display: 'flex', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid #F1F5F9' }}>
+      <div className="white-header-nav" style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #F1F5F9' }}>
         <button 
           className="header-back-arrow" 
           onClick={onNext}

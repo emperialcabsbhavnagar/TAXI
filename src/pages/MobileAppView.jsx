@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './MobileAppView.css';
 import { db } from '../services/dbService';
-import { saveInquiryToMySQL, saveCustomerToMySQL, loadAllCustomersFromMySQL, loadAllInquiriesFromMySQL, fetchNotificationsFromMySQL, markNotificationDeliveredInMySQL, checkLocationRequestInMySQL, respondLiveLocationInMySQL, updateInquiryStatusInMySQL } from '../services/mysqlService';
+import { saveInquiryToMySQL, saveCustomerToMySQL, loadAllCustomersFromMySQL, loadAllInquiriesFromMySQL, fetchNotificationsFromMySQL, markNotificationDeliveredInMySQL, checkLocationRequestInMySQL, respondLiveLocationInMySQL, updateInquiryStatusInMySQL, loadAllVehiclesFromMySQL, loadAllRoutesFromMySQL, safeStorageSetItem } from '../services/mysqlService';
 import { notifyAdmin, notifyCustomer, sendSystemPushNotification, requestNotificationPermission, registerPushNotifications, syncNativeCustomerTrip, isDuplicatePushAlert, playChimeSound } from '../services/notificationEngine';
 import { Geolocation } from '@capacitor/geolocation';
 import { getCoordsForPlace, calculateDistanceKm } from '../utils/locationCoords';
@@ -72,6 +72,11 @@ export default function MobileAppView() {
     try {
       document.body.classList.remove('dark-mode');
       localStorage.removeItem('cabsy_theme_mode');
+      if (typeof window !== 'undefined' && (window.Capacitor?.isNativePlatform?.() || window.location.protocol === 'file:' || window.location.protocol === 'capacitor:')) {
+        if (!document.documentElement.style.getPropertyValue('--android-status-bar-height')) {
+          document.documentElement.style.setProperty('--android-status-bar-height', '38px');
+        }
+      }
     } catch (e) {}
   }, []);
 
@@ -102,6 +107,27 @@ export default function MobileAppView() {
       const uEmail = (userProf?.email || '').toLowerCase().trim();
       syncNativeCustomerTrip('', uPhone, uEmail).catch(() => {});
     } catch (e) {}
+
+    // Synchronize latest fleet cars and routes directly from MySQL
+    loadAllVehiclesFromMySQL().then(vehicles => {
+      if (Array.isArray(vehicles) && vehicles.length > 0) {
+        safeStorageSetItem('cabsy_vehicles', vehicles);
+        try { localStorage.setItem('cabsy_vehicles', JSON.stringify(vehicles)); } catch (e) {}
+        window.dispatchEvent(new CustomEvent('EMPERIAL CABS_vehicles_updated', { detail: vehicles }));
+      }
+    }).catch(() => {});
+
+    loadAllRoutesFromMySQL().then(routes => {
+      if (Array.isArray(routes) && routes.length > 0) {
+        safeStorageSetItem('cabsy_destinations', routes);
+        safeStorageSetItem('cabsy_routes', routes);
+        try {
+          localStorage.setItem('cabsy_destinations', JSON.stringify(routes));
+          localStorage.setItem('cabsy_routes', JSON.stringify(routes));
+        } catch (e) {}
+        window.dispatchEvent(new CustomEvent('EMPERIAL CABS_routes_updated', { detail: routes }));
+      }
+    }).catch(() => {});
 
     const syncActiveRideStage = () => {
       try {
@@ -845,6 +871,7 @@ export default function MobileAppView() {
         localStorage.setItem('cabsy_user_phone_verified', 'true');
         const formatted = activePhone.startsWith('+') ? activePhone : `+91 ${cleanPhone}`;
         localStorage.setItem('cabsy_user_phone', formatted);
+        syncNativeCustomerTrip('', formatted, activeEmail).catch(() => {});
       }
       if ((currentMethod === 'google' || currentMethod === 'email') && activeEmail) {
         localStorage.setItem('cabsy_user_email_verified', 'true');
@@ -1152,7 +1179,7 @@ export default function MobileAppView() {
     saveInquiryToMySQL(newInquiry).catch(e => console.warn('MySQL inquiry save failed:', e));
     saveCustomerToMySQL(userProf).catch(e => console.warn('MySQL customer save failed:', e));
     registerPushNotifications('customer', newInquiry.customerPhone, newInquiry.customerEmail).catch(() => {});
-    syncNativeCustomerTrip(newInquiry.id, newInquiry.customerPhone).catch(() => {});
+    syncNativeCustomerTrip(newInquiry.id, newInquiry.customerPhone, newInquiry.customerEmail).catch(() => {});
 
     // 5. Dispatch events to notify Admin Portal in real time
     window.dispatchEvent(new Event('storage'));
@@ -1577,7 +1604,7 @@ export default function MobileAppView() {
         flexDirection: 'column',
         overflow: 'hidden',
         position: 'relative',
-        background: '#F5F5F2'
+        background: (appStage === 'ONBOARDING' || appStage === 'SPLASH' || appStage === 'PRELOADER' || appStage === 'LOCATION_PERM' || appStage === 'NOTIFICATION_OPT' || appStage === 'ACCOUNT_CREATED') ? '#FFFFFF' : '#F5F5F2'
       }}
     >
       {renderStage()}

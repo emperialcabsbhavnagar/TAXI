@@ -9,7 +9,7 @@ import {
   saveContactMessageToMySQL,
   expandBidirectionalRoutes
 } from '../../services/mysqlService';
-import { notifyAdmin } from '../../services/notificationEngine';
+import { notifyAdmin, syncNativeCustomerTrip } from '../../services/notificationEngine';
 import { 
   Navigation, 
   MapPin, 
@@ -504,6 +504,7 @@ export default function SelectLocationScreen({
         }
       });
 
+      syncNativeCustomerTrip(inqId, cleanPhone, 'emperialcabsbhavnagar@gmail.com').catch(() => {});
       window.dispatchEvent(new Event('storage'));
       window.dispatchEvent(new CustomEvent('EMPERIAL CABS_ride_booked', { detail: inquiryPayload }));
 
@@ -563,14 +564,19 @@ export default function SelectLocationScreen({
       {/* Header Bar */}
       <div 
         style={{ 
+          boxSizing: 'border-box',
           boxShadow: '0 2px 10px rgba(0,0,0,0.03)', 
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'space-between', 
-          padding: '12px 16px', 
+          padding: '10px 16px 12px 16px', 
+          paddingTop: 'calc(max(var(--android-status-bar-height, 38px), env(safe-area-inset-top, 0px)) + 10px)',
           background: '#FFFFFF',
-          minHeight: '56px',
-          borderBottom: '1px solid #F1F5F9'
+          minHeight: 'calc(max(var(--android-status-bar-height, 38px), env(safe-area-inset-top, 0px)) + 58px)',
+          borderBottom: '1px solid #F1F5F9',
+          position: 'sticky',
+          top: 0,
+          zIndex: 100
         }}
       >
         <button 

@@ -68,11 +68,20 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
       });
     };
 
+    const sortByLatest = (arr) => {
+      if (!Array.isArray(arr)) return [];
+      return [...arr].sort((a, b) => {
+        const tA = new Date(a.created_at || a.timestamp || 0).getTime();
+        const tB = new Date(b.created_at || b.timestamp || 0).getTime();
+        return tB - tA;
+      });
+    };
+
     // ── 1. INSTANT PASS (< 1ms): Display cached local inquiries immediately ──
     try {
       const localRaw = localStorage.getItem('cabsy_inquiries');
       const localList = localRaw ? JSON.parse(localRaw) : [];
-      const instantRides = filterUserRides(localList);
+      const instantRides = sortByLatest(filterUserRides(localList));
       if (instantRides.length > 0) {
         setInquiries(instantRides);
       }
@@ -102,7 +111,7 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
         localStorage.setItem('cabsy_inquiries', JSON.stringify(mergedList));
       } catch (e) {}
 
-      const freshUserRides = filterUserRides(mergedList);
+      const freshUserRides = sortByLatest(filterUserRides(mergedList));
       setInquiries(freshUserRides);
       return;
     } catch (e) {
@@ -432,7 +441,7 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
   return (
     <div className="real-mobile-app">
       {/* Header Nav */}
-      <div className="white-header-nav" style={{ padding: '16px 20px', borderBottom: '1px solid #E2E8F0', background: '#FFFFFF' }}>
+      <div className="white-header-nav">
         <h2 className="white-header-title" style={{ fontFamily: 'League Spartan', fontSize: '22px', fontWeight: '800', color: '#0F172A', margin: 0 }}>
           My Rides & Inquiries
         </h2>

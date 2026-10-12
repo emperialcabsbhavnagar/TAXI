@@ -1,22 +1,15 @@
 // Hostinger Remote MySQL Database Service Engine for EMPERIAL CABS Ecosystem
 // Host: srv1671.hstgr.io | Database: u889282535_taxi | Central Backend API: taxii-yth5.vercel.app
 
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
+
 const getApiEndpoints = () => {
   const primaryApi = 'https://emperialcabs.com/api/db.php';
   const secondaryApi = 'https://emperialcabs.com/api/db';
 
   // On native Capacitor app (Android/iOS APK), ALWAYS use absolute URLs.
-  // The embedded WebView serves static files — relative paths like /api/db.php
-  // resolve to capacitor://localhost/api/db.php (a static file, not a PHP server).
   if (typeof window !== 'undefined') {
-    const isNative = (
-      window.Capacitor?.isNativePlatform?.() ||
-      window.Capacitor?.isNative ||
-      window.Capacitor?.platform === 'android' ||
-      window.Capacitor?.platform === 'ios' ||
-      window.location?.protocol === 'capacitor:' ||
-      window.location?.protocol === 'ionic:'
-    );
+    const isNative = Capacitor.isNativePlatform();
     if (isNative) {
       return [primaryApi, secondaryApi];
     }
@@ -37,15 +30,46 @@ const getApiEndpoints = () => {
 };
 
 const sendRequest = async (action, data = {}) => {
+  // On native Android / iOS app, use CapacitorHttp native requests.
+  // This completely eliminates WebView CORS errors and connects directly to Hostinger MySQL PHP API!
+  if (typeof window !== 'undefined' && Capacitor.isNativePlatform()) {
+    try {
+      const targetUrl = `https://emperialcabs.com/api/db.php?action=${encodeURIComponent(action)}`;
+      const nativeRes = await CapacitorHttp.request({
+        url: targetUrl,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json, text/plain, */*',
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36 EmperialCabsApp/1.1'
+        },
+        data: { action, data }
+      });
+      if (nativeRes && nativeRes.data) {
+        let payload = nativeRes.data;
+        if (typeof payload === 'string') {
+          try { payload = JSON.parse(payload); } catch (e) {}
+        }
+        if (payload && typeof payload === 'object' && payload.success) {
+          return payload;
+        }
+      }
+    } catch (nativeErr) {
+      console.warn('[CapacitorHttp Native Error]', nativeErr);
+    }
+  }
+
   const endpoints = getApiEndpoints();
   let lastError = null;
 
   for (const endpoint of endpoints) {
     try {
-      const res = await fetch(endpoint, {
+      const url = `${endpoint}${endpoint.includes('?') ? '&' : '?'}action=${encodeURIComponent(action)}`;
+      const res = await fetch(url, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         cache: 'no-store',
         body: JSON.stringify({ action, data })
