@@ -164,21 +164,24 @@ export default function RouteLandingPage({ onOpenBooking }) {
         return Number(val);
       }
     }
-    // 4. Fallback to baseFare with capacity logic if available
-    if (baseFare && baseFare > 0) {
+    // 4. Fallback to baseFare with capacity logic only if NO individual car prices are configured on this route
+    const hasConfiguredCarPrices = Object.values(cp).some(v => Number(v) > 0);
+    if (!hasConfiguredCarPrices && baseFare && baseFare > 0) {
       const isSevenSeater = (veh?.passengers && veh.passengers.includes('7')) || (veh?.name && (veh.name.toLowerCase().includes('ertiga') || veh.name.toLowerCase().includes('eartice')));
       const isLuxury = veh?.name && (veh.name.toLowerCase().includes('innova') || veh.name.toLowerCase().includes('crysta'));
       const multiplier = isLuxury ? 1.75 : (isSevenSeater ? 1.35 : 1.0);
       return Math.round(baseFare * multiplier);
     }
-    return baseFare || 0;
+    return 0;
   };
 
   const displayVehicles = useMemo(() => {
-    return activeFleet.map(veh => ({
-      ...veh,
-      resolvedPrice: resolveCarPrice(veh)
-    }));
+    return activeFleet
+      .map(veh => ({
+        ...veh,
+        resolvedPrice: resolveCarPrice(veh)
+      }))
+      .filter(v => v.resolvedPrice && v.resolvedPrice > 0);
   }, [activeFleet, car_prices, baseFare, isDirect]);
 
   const minPrice = useMemo(() => {

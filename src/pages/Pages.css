@@ -1926,6 +1926,19 @@
   width: fit-content;
 }
 
+.trip-type-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 680px) {
+  .trip-type-selector-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+
 .vehicle-light-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

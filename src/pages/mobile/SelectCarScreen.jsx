@@ -190,19 +190,24 @@ export default function SelectCarScreen({
         }
       }
 
+      const hasSpecificCarPrices = matchedRoute?.car_prices && typeof matchedRoute.car_prices === 'object' && Object.values(matchedRoute.car_prices).some(p => Number(p) > 0);
+
       if (directCarPrice !== null && directCarPrice !== undefined && directCarPrice !== '' && !isNaN(Number(directCarPrice)) && Number(directCarPrice) > 0) {
         const numP = Number(directCarPrice);
         totalFare = tripType === 'round-trip' ? numP * 2 : numP;
         isVehicleFixed = true;
-      } else if (hasFixedPrice && fixedPriceNum > 0) {
+      } else if (!hasSpecificCarPrices && hasFixedPrice && fixedPriceNum > 0) {
         const isSevenSeater = (v.passengers && v.passengers.includes('7')) || (v.name && (v.name.toLowerCase().includes('ertiga') || v.name.toLowerCase().includes('innova')));
         const isLuxury = v.name && (v.name.toLowerCase().includes('innova') || v.name.toLowerCase().includes('crysta'));
         const multiplier = isLuxury ? 1.7 : (isSevenSeater ? 1.35 : 1.0);
         const oneWayFare = Math.round(fixedPriceNum * multiplier);
         totalFare = tripType === 'round-trip' ? oneWayFare * 2 : oneWayFare;
         isVehicleFixed = true;
-      } else {
+      } else if (tripType === 'custom-trip' || tripType === 'round-trip') {
         totalFare = Math.round(effectiveDistanceKm * ratePerKm);
+        isVehicleFixed = false;
+      } else {
+        totalFare = 0;
         isVehicleFixed = false;
       }
 
@@ -225,6 +230,9 @@ export default function SelectCarScreen({
         price: formattedPrice,
         isFixedPrice: !isCustomTrip && isVehicleFixed
       };
+    }).filter(car => {
+      if (tripType === 'custom-trip' || tripType === 'round-trip') return true;
+      return car.totalFareNum > 0;
     });
   };
 
