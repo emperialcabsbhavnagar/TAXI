@@ -614,6 +614,14 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
     localStorage.setItem('cabsy_admin_notifications', JSON.stringify(updated));
   } catch (e) {}
 
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      const bc = new BroadcastChannel('emperial_cabs_channel');
+      bc.postMessage({ type: 'ADMIN_NOTIF', notif: notifObj });
+      bc.close();
+    }
+  } catch (e) {}
+
   const targetTab = extraData?.tab || (type === 'short_trip' ? 'short_trips' : (type === 'custom' || type === 'custom-trip' ? 'custom_inquiries' : 'inquiries'));
   const targetUrl = `/admin?tab=${targetTab}`;
 

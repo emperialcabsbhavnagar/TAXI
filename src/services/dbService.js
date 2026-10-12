@@ -115,6 +115,13 @@ class DatabaseService {
 
     // Dispatch real-time cross-platform event
     window.dispatchEvent(new CustomEvent('EMPERIAL CABS_db_sync', { detail: { type: 'INQUIRY_ADDED', data: newInquiry } }));
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('emperial_cabs_channel');
+        bc.postMessage({ type: 'NEW_INQUIRY', data: newInquiry });
+        bc.close();
+      }
+    } catch (e) {}
     return newInquiry;
   }
 
@@ -122,6 +129,13 @@ class DatabaseService {
     const inquiries = this.getInquiries().filter(i => i.id !== id);
     localStorage.setItem(STORAGE_KEYS.INQUIRIES, JSON.stringify(inquiries));
     window.dispatchEvent(new CustomEvent('EMPERIAL CABS_db_sync', { detail: { type: 'INQUIRY_DELETED', id } }));
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('emperial_cabs_channel');
+        bc.postMessage({ type: 'INQUIRY_DELETED', id });
+        bc.close();
+      }
+    } catch (e) {}
   }
 
   // Customers API

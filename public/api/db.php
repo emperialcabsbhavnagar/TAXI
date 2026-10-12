@@ -12,6 +12,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit();
 }
 
+// Read raw POST body first
+$input = json_decode(file_get_contents('php://input'), true) ?: [];
+$action = $input['action'] ?? ($_GET['action'] ?? 'init');
+$data = $input['data'] ?? $input;
+
+// High-Performance Server-Side Cache directory
+$cache_dir = __DIR__ . '/cache';
+if (!is_dir($cache_dir)) {
+    @mkdir($cache_dir, 0755, true);
+}
+$admin_cache_file = $cache_dir . '/admin_sync.json';
+
+function getCachedAdminSync($file) {
+    if (file_exists($file)) {
+        $content = @file_get_contents($file);
+        if ($content) {
+            $json = json_decode($content, true);
+            if (is_array($json) && !empty($json['success'])) {
+                return $json;
+            }
+        }
+    }
+    return null;
+}
+
+function saveCachedAdminSync($file, $syncData) {
+    @file_put_contents($file, json_encode($syncData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), LOCK_EX);
+}
+
+// 0-CONNECTION SHORT-CIRCUIT: If polling getAdminLiveSync and cache is < 4s old, return instantly without touching MySQL!
+if ($action === 'getAdminLiveSync') {
+    $cached = getCachedAdminSync($admin_cache_file);
+    $cache_age = file_exists($admin_cache_file) ? (time() - filemtime($admin_cache_file)) : 9999;
+    if ($cached && $cache_age < 4) {
+        echo json_encode($cached);
+        exit();
+    }
+}
+
 $db_configs = [
     ['host' => 'localhost', 'user' => 'u217835086_TAXI', 'pass' => 'Mahadev@0963', 'name' => 'u217835086_TAXI', 'port' => '3306'],
     ['host' => 'srv2213.hstgr.io', 'user' => 'u217835086_TAXI', 'pass' => 'Mahadev@0963', 'name' => 'u217835086_TAXI', 'port' => '3306']
@@ -26,7 +65,8 @@ foreach ($db_configs as $cfg) {
         $pdo = new PDO($dsn, $cfg['user'], $cfg['pass'], [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES => false
+            PDO::ATTR_EMULATE_PREPARES => false,
+            PDO::ATTR_PERSISTENT => true // Reuses worker connections so max_connections_per_hour limit is never exhausted
         ]);
         if ($pdo) break;
     } catch (PDOException $e) {
@@ -34,15 +74,22 @@ foreach ($db_configs as $cfg) {
     }
 }
 
+// If MySQL temporarily hit rate limit, gracefully fallback to server-side cache so app/admin NEVER crash!
 if (!$pdo) {
+    if ($action === 'getAdminLiveSync' || $action === 'getInquiries') {
+        $cached = getCachedAdminSync($admin_cache_file);
+        if ($cached) {
+            if ($action === 'getInquiries') {
+                echo json_encode(['success' => true, 'inquiries' => $cached['inquiries'] ?? [], 'cached' => true]);
+            } else {
+                echo json_encode($cached);
+            }
+            exit();
+        }
+    }
     echo json_encode(['success' => false, 'error' => 'Database connection failed: ' . $last_error, 'inquiries' => [], 'customers' => []]);
     exit();
 }
-
-// Read raw POST body
-$input = json_decode(file_get_contents('php://input'), true) ?: [];
-$action = $input['action'] ?? ($_GET['action'] ?? 'init');
-$data = $input['data'] ?? $input;
 
 // Helper functions for Dynamic SEO & Sitemap Sync
 function slugifyText($text) {
@@ -53,6 +100,33 @@ function slugifyText($text) {
     $text = preg_replace('~-+~', '-', $text);
     $text = strtolower($text);
     return empty($text) ? 'n-a' : $text;
+}
+
+function refreshAdminSyncCache($pdo, $cache_file) {
+    if (!$pdo) return;
+    try {
+        $inqStmt = $pdo->query("SELECT * FROM inquiries ORDER BY created_at DESC LIMIT 100");
+        $inquiries = $inqStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $msgStmt = $pdo->query("SELECT * FROM contact_messages ORDER BY created_at DESC LIMIT 100");
+        $messages = $msgStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $notifStmt = $pdo->prepare("SELECT * FROM customer_notifications 
+                                    WHERE UPPER(TRIM(target_phone)) = 'ADMIN' 
+                                      AND created_at >= NOW() - INTERVAL 48 HOUR 
+                                    ORDER BY created_at DESC LIMIT 50");
+        $notifStmt->execute();
+        $adminNotifs = $notifStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $syncResult = [
+            'success' => true,
+            'inquiries' => $inquiries,
+            'messages' => $messages,
+            'notifications' => $adminNotifs,
+            'cached_at' => time()
+        ];
+        saveCachedAdminSync($cache_file, $syncResult);
+    } catch (Exception $e) {}
 }
 
 function dispatchNativeWebPush($pdo, $title, $body, $url = '/admin?tab=inquiries', $tag = null, $userType = 'admin', $targetPhone = '', $targetEmail = '') {
@@ -96,7 +170,7 @@ function dispatchNativeWebPush($pdo, $title, $body, $url = '/admin?tab=inquiries
                                           OR RIGHT(customer_phone, 10) = :p10 
                                           OR customer_phone LIKE :plike 
                                           OR LOWER(customer_email) = :cem)
-                                   GROUP BY p256dh ORDER BY id DESC LIMIT 50");
+                                   GROUP BY p256dh ORDER BY updated_at DESC, id DESC LIMIT 20");
             $stmt->execute([
                 ':p10' => $p10,
                 ':plike' => '%' . $p10 . '%',
@@ -104,7 +178,7 @@ function dispatchNativeWebPush($pdo, $title, $body, $url = '/admin?tab=inquiries
             ]);
             $subs = $stmt->fetchAll(PDO::FETCH_ASSOC);
         } else {
-            $stmt = $pdo->prepare("SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_type = :ut GROUP BY p256dh ORDER BY id DESC LIMIT 50");
+            $stmt = $pdo->prepare("SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_type = :ut GROUP BY p256dh ORDER BY updated_at DESC, id DESC LIMIT 15");
             $stmt->execute([':ut' => $userType]);
             $subs = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
@@ -141,6 +215,11 @@ function dispatchNativeWebPush($pdo, $title, $body, $url = '/admin?tab=inquiries
 
     $sentCount = 0;
     $expiredIds = [];
+    $results = [];
+
+    $mh = curl_multi_init();
+    $curl_map = [];
+    $jwtCache = [];
 
     foreach ($subs as $sub) {
         $endpoint = $sub['endpoint'];
@@ -196,34 +275,37 @@ function dispatchNativeWebPush($pdo, $title, $body, $url = '/admin?tab=inquiries
             $bodyBinary = $salt . $recordSize . $idLen . $localPubRaw . $ciphertext . $tagBin;
 
             $urlParts = parse_url($endpoint);
-            $audience = $urlParts['scheme'] . '://' . $urlParts['host'];
+            $audience = ($urlParts['scheme'] ?? 'https') . '://' . ($urlParts['host'] ?? 'fcm.googleapis.com');
 
-            $jwtHeader = $b64u_encode(json_encode(['typ' => 'JWT', 'alg' => 'ES256']));
-            $jwtPayload = $b64u_encode(json_encode([
-                'aud' => $audience,
-                'exp' => time() + 86400,
-                'sub' => $vapidSubject
-            ]));
+            if (!isset($jwtCache[$audience])) {
+                $jwtHeader = $b64u_encode(json_encode(['typ' => 'JWT', 'alg' => 'ES256']));
+                $jwtPayload = $b64u_encode(json_encode([
+                    'aud' => $audience,
+                    'exp' => time() + 86400,
+                    'sub' => $vapidSubject
+                ]));
 
-            $jwtMsg = $jwtHeader . '.' . $jwtPayload;
-            $derSig = '';
-            openssl_sign($jwtMsg, $derSig, $vapidPrivPem, OPENSSL_ALGO_SHA256);
+                $jwtMsg = $jwtHeader . '.' . $jwtPayload;
+                $derSig = '';
+                openssl_sign($jwtMsg, $derSig, $vapidPrivPem, OPENSSL_ALGO_SHA256);
 
-            $offset = 2;
-            if (ord($derSig[1]) & 0x80) $offset += (ord($derSig[1]) & 0x7f);
-            $offset += 1; $rLen = ord($derSig[$offset++]);
-            $r = substr($derSig, $offset, $rLen); $offset += $rLen;
-            $offset += 1; $sLen = ord($derSig[$offset++]);
-            $s = substr($derSig, $offset, $sLen);
-            $rawSig = str_pad(ltrim($r, "\x00"), 32, "\x00", STR_PAD_LEFT) . str_pad(ltrim($s, "\x00"), 32, "\x00", STR_PAD_LEFT);
-            $jwtToken = $jwtMsg . '.' . $b64u_encode($rawSig);
+                $offset = 2;
+                if (ord($derSig[1]) & 0x80) $offset += (ord($derSig[1]) & 0x7f);
+                $offset += 1; $rLen = ord($derSig[$offset++]);
+                $r = substr($derSig, $offset, $rLen); $offset += $rLen;
+                $offset += 1; $sLen = ord($derSig[$offset++]);
+                $s = substr($derSig, $offset, $sLen);
+                $rawSig = str_pad(ltrim($r, "\x00"), 32, "\x00", STR_PAD_LEFT) . str_pad(ltrim($s, "\x00"), 32, "\x00", STR_PAD_LEFT);
+                $jwtCache[$audience] = $jwtMsg . '.' . $b64u_encode($rawSig);
+            }
+            $jwtToken = $jwtCache[$audience];
 
             $ch = curl_init($endpoint);
             curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
             curl_setopt($ch, CURLOPT_POSTFIELDS, $bodyBinary);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 6);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 2);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 1);
             $headers = [
                 'Content-Type: application/octet-stream',
                 'Content-Encoding: aes128gcm',
@@ -238,30 +320,48 @@ function dispatchNativeWebPush($pdo, $title, $body, $url = '/admin?tab=inquiries
             }
             curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 
-            $resp = curl_exec($ch);
-            $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-
-            $results[] = [
-                'id' => $sub['id'],
-                'host' => parse_url($endpoint, PHP_URL_HOST),
-                'status' => $status,
-                'resp' => substr(strip_tags((string)$resp), 0, 100)
-            ];
-
-            if ($status === 200 || $status === 201) {
-                $sentCount++;
-            } elseif ($status === 404 || $status === 410) {
-                $expiredIds[] = $sub['id'];
-            }
+            curl_multi_add_handle($mh, $ch);
+            $curl_map[(int)$ch] = ['sub_id' => $sub['id'], 'endpoint' => $endpoint, 'ch' => $ch];
         } catch (Exception $e) {
             $results[] = ['id' => $sub['id'], 'error' => $e->getMessage()];
         }
     }
 
-    try {
-        $pdo->exec("DELETE FROM push_subscriptions WHERE endpoint LIKE '%test%'");
-    } catch (Exception $e) {}
+    if (!empty($curl_map)) {
+        $active = null;
+        do {
+            $mrc = curl_multi_exec($mh, $active);
+        } while ($mrc == CURLM_CALL_MULTI_PERFORM);
+
+        while ($active && $mrc == CURLM_OK) {
+            if (curl_multi_select($mh, 0.05) === -1) {
+                usleep(5000);
+            }
+            do {
+                $mrc = curl_multi_exec($mh, $active);
+            } while ($mrc == CURLM_CALL_MULTI_PERFORM);
+        }
+
+        foreach ($curl_map as $item) {
+            $ch = $item['ch'];
+            $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $resp = curl_multi_getcontent($ch);
+            $results[] = [
+                'id' => $item['sub_id'],
+                'host' => parse_url($item['endpoint'], PHP_URL_HOST),
+                'status' => $status,
+                'resp' => substr(strip_tags((string)$resp), 0, 100)
+            ];
+            if ($status === 200 || $status === 201) {
+                $sentCount++;
+            } elseif ($status === 404 || $status === 410) {
+                $expiredIds[] = $item['sub_id'];
+            }
+            curl_multi_remove_handle($mh, $ch);
+            curl_close($ch);
+        }
+    }
+    curl_multi_close($mh);
 
     if (!empty($expiredIds)) {
         try {
@@ -609,6 +709,17 @@ switch ($action) {
             ':date' => $data['date'] ?? date('Y-m-d')
         ]);
         
+        refreshAdminSyncCache($pdo, $admin_cache_file);
+
+        if (strtolower($data['status'] ?? 'pending') === 'pending') {
+            $isCust = (stripos($data['tripType'] ?? '', 'custom') !== false);
+            $isShort = (stripos($data['tripType'] ?? '', 'short') !== false);
+            $pTitle = $isShort ? "New Short Trip Booking #{$id}" : ($isCust ? "New Custom Route Inquiry #{$id}" : "New Customer Ride Booking #{$id}");
+            $pBody = ($data['customerName'] ?? 'Customer') . " (" . ($data['customerPhone'] ?? 'Direct') . "): " . ($data['pickup'] ?? '') . " ➔ " . ($data['dropoff'] ?? '');
+            $pTab = $isShort ? '/admin?tab=short_trips' : ($isCust ? '/admin?tab=custom_inquiries' : '/admin?tab=inquiries');
+            triggerServerPushNotification($pTitle, $pBody, $pTab, 'disp-inq_' . $id);
+        }
+
         echo json_encode(['success' => true, 'id' => $id]);
         break;
 
@@ -746,6 +857,7 @@ switch ($action) {
             }
         } catch (Exception $e) {}
 
+        refreshAdminSyncCache($pdo, $admin_cache_file);
         echo json_encode(['success' => true]);
         break;
 
@@ -754,6 +866,7 @@ switch ($action) {
         if (!$id) { echo json_encode(['success' => false, 'error' => 'Missing inquiry ID']); exit(); }
         $stmt = $pdo->prepare("DELETE FROM inquiries WHERE id = ?");
         $stmt->execute([$id]);
+        refreshAdminSyncCache($pdo, $admin_cache_file);
         echo json_encode(['success' => true]);
         break;
 
@@ -1374,6 +1487,10 @@ switch ($action) {
                 );
             }
         } catch (Exception $e) {}
+
+        if (strtoupper($target_phone) === 'ADMIN') {
+            refreshAdminSyncCache($pdo, $admin_cache_file);
+        }
 
         echo json_encode(['success' => true, 'id' => $id]);
         break;

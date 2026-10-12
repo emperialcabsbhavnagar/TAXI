@@ -22,7 +22,8 @@ foreach ($db_configs as $cfg) {
         $dsn = "mysql:host={$cfg['host']};port={$cfg['port']};dbname={$cfg['name']};charset=utf8mb4";
         $pdo = new PDO($dsn, $cfg['user'], $cfg['pass'], [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_PERSISTENT => true
         ]);
         if ($pdo) break;
     } catch (Exception $e) {}
@@ -81,7 +82,7 @@ try {
 } catch (Exception $e) {}
 
 // Fetch active subscriptions deduplicated by device key (p256dh)
-$stmt = $pdo->prepare("SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_type = :ut GROUP BY p256dh ORDER BY id DESC LIMIT 50");
+$stmt = $pdo->prepare("SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_type = :ut GROUP BY p256dh ORDER BY updated_at DESC, id DESC LIMIT 15");
 $stmt->execute([':ut' => $userType]);
 $subs = $stmt->fetchAll();
 
@@ -158,6 +159,9 @@ $payloadJson = json_encode([
 
 $sentCount = 0;
 $expiredIds = [];
+$mh = curl_multi_init();
+$curl_map = [];
+$jwtCache = [];
 
 foreach ($subs as $sub) {
     $endpoint = $sub['endpoint'];
@@ -212,30 +216,33 @@ foreach ($subs as $sub) {
         $idLen = chr(strlen($localPubRaw));
         $bodyBinary = $salt . $recordSize . $idLen . $localPubRaw . $ciphertext . $tagBin;
 
-        // 7. VAPID JWT generation (RFC 8292)
+        // 7. VAPID JWT generation (RFC 8292) with per-audience caching
         $urlParts = parse_url($endpoint);
-        $audience = $urlParts['scheme'] . '://' . $urlParts['host'];
+        $audience = ($urlParts['scheme'] ?? 'https') . '://' . ($urlParts['host'] ?? 'fcm.googleapis.com');
 
-        $jwtHeader = base64url_encode(json_encode(['typ' => 'JWT', 'alg' => 'ES256']));
-        $jwtPayload = base64url_encode(json_encode([
-            'aud' => $audience,
-            'exp' => time() + 86400,
-            'sub' => $vapidSubject
-        ]));
+        if (!isset($jwtCache[$audience])) {
+            $jwtHeader = base64url_encode(json_encode(['typ' => 'JWT', 'alg' => 'ES256']));
+            $jwtPayload = base64url_encode(json_encode([
+                'aud' => $audience,
+                'exp' => time() + 86400,
+                'sub' => $vapidSubject
+            ]));
 
-        $jwtMsg = $jwtHeader . '.' . $jwtPayload;
-        $derSig = '';
-        openssl_sign($jwtMsg, $derSig, $vapidPrivPem, OPENSSL_ALGO_SHA256);
-        $rawSig = derToRawSignature($derSig);
-        $jwtToken = $jwtMsg . '.' . base64url_encode($rawSig);
+            $jwtMsg = $jwtHeader . '.' . $jwtPayload;
+            $derSig = '';
+            openssl_sign($jwtMsg, $derSig, $vapidPrivPem, OPENSSL_ALGO_SHA256);
+            $rawSig = derToRawSignature($derSig);
+            $jwtCache[$audience] = $jwtMsg . '.' . base64url_encode($rawSig);
+        }
+        $jwtToken = $jwtCache[$audience];
 
-        // 8. Dispatch via cURL HTTP/2 to Apple APNs / Google FCM
+        // 8. Queue via cURL multi handle for simultaneous concurrent dispatch (<300ms)
         $ch = curl_init($endpoint);
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
         curl_setopt($ch, CURLOPT_POSTFIELDS, $bodyBinary);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 6);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 2);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 1);
         $headers = [
             'Content-Type: application/octet-stream',
             'Content-Encoding: aes128gcm',
@@ -250,19 +257,39 @@ foreach ($subs as $sub) {
         }
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 
-        $resp = curl_exec($ch);
-        $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        curl_multi_add_handle($mh, $ch);
+        $curl_map[(int)$ch] = ['sub_id' => $sub['id'], 'ch' => $ch];
+    } catch (Exception $ex) {}
+}
 
+if (!empty($curl_map)) {
+    $active = null;
+    do {
+        $mrc = curl_multi_exec($mh, $active);
+    } while ($mrc == CURLM_CALL_MULTI_PERFORM);
+
+    while ($active && $mrc == CURLM_OK) {
+        if (curl_multi_select($mh, 0.05) === -1) {
+            usleep(5000);
+        }
+        do {
+            $mrc = curl_multi_exec($mh, $active);
+        } while ($mrc == CURLM_CALL_MULTI_PERFORM);
+    }
+
+    foreach ($curl_map as $item) {
+        $ch = $item['ch'];
+        $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         if ($status === 200 || $status === 201) {
             $sentCount++;
         } elseif ($status === 404 || $status === 410) {
-            $expiredIds[] = $sub['id'];
+            $expiredIds[] = $item['sub_id'];
         }
-    } catch (Exception $ex) {
-        // Skip failed device
+        curl_multi_remove_handle($mh, $ch);
+        curl_close($ch);
     }
 }
+curl_multi_close($mh);
 
 // Clean up expired devices
 if (!empty($expiredIds)) {

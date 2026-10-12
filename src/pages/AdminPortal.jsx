@@ -1528,7 +1528,7 @@ export default function AdminPortal() {
         });
 
         // 3. Fetch Customers only periodically / on initial load
-        if (isInitial || Math.random() < 0.25) {
+        if (isInitial || Math.random() < 0.05) {
           const mysqlCustomers = await loadAllCustomersFromMySQL();
           const currentInqs = inquiries || [];
           const consolidated = consolidateCustomers(mysqlCustomers, currentInqs);
@@ -1546,11 +1546,21 @@ export default function AdminPortal() {
 
     fetchAllData(true);
 
-    // BroadcastChannel and localStorage event listeners removed:
-    // notifyAdmin() no longer fires these events; the polling diff is the single source of truth.
-    
-    // Poll Hostinger MySQL safely (every 3.5 seconds) for real-time customer alerts!
-    const interval = setInterval(() => fetchAllData(false), 3500);
+    // Instant 0ms cross-tab real-time sync channel
+    let bc = null;
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        bc = new BroadcastChannel('emperial_cabs_channel');
+        bc.onmessage = (event) => {
+          if (event?.data?.type === 'NEW_INQUIRY' || event?.data?.type === 'STATUS_UPDATE' || event?.data?.type === 'ADMIN_NOTIF') {
+            fetchAllData(false);
+          }
+        };
+      }
+    } catch (e) {}
+
+    // Poll Hostinger MySQL safely (every 2.5 seconds, cached with 0 DB connections) for real-time customer alerts!
+    const interval = setInterval(() => fetchAllData(false), 2500);
 
     // Instant sync when Admin switches back to tab or unlocks phone
     const handleVisibilityOrFocus = () => {
@@ -1586,6 +1596,9 @@ export default function AdminPortal() {
       window.removeEventListener('focus', handleVisibilityOrFocus);
       window.removeEventListener('touchstart', handleGestureUnlock);
       window.removeEventListener('click', handleGestureUnlock);
+      if (bc) {
+        try { bc.close(); } catch(e) {}
+      }
       clearInterval(interval);
     };
   }, []);
@@ -2879,6 +2892,71 @@ export default function AdminPortal() {
     setTimeout(() => {
       setActionLoadingId(null);
     }, 300);
+  };
+
+  const handleDirectStatusChange = (inq, newStatus) => {
+    if (!inq || !inq.id) return;
+    const inqId = inq.id;
+    // 1. Instant optimistic state update
+    setInquiries(prev => {
+      const updated = prev.map(item => String(item.id) === String(inqId) ? { ...item, status: newStatus } : item);
+      try { localStorage.setItem('cabsy_inquiries', JSON.stringify(updated)); } catch(e) {}
+      return updated;
+    });
+    knownInquiryStatusRef.current.set(String(inqId), newStatus);
+
+    // 2. Broadcast immediately over cross-tab channel
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('emperial_cabs_channel');
+        bc.postMessage({ type: 'STATUS_UPDATE', inquiryId: inqId, status: newStatus });
+        bc.close();
+      }
+    } catch(e) {}
+
+    // 3. Sync to MySQL asynchronously
+    updateInquiryStatusInMySQL(
+      inqId,
+      newStatus,
+      inq.driver || null,
+      inq.vehicle || null,
+      inq.fare || null,
+      0,
+      0,
+      inq.driverPhone || inq.driverNumber || null,
+      inq.plate || null,
+      'admin'
+    ).catch(() => {});
+
+    // 4. Notify customer
+    if (newStatus === 'Rejected') {
+      notifyCustomer({
+        type: 'rejected',
+        title: `Booking Request #${inqId} Rejected`,
+        body: `Your booking request #${inqId} could not be accepted at this time.`,
+        customerPhone: inq.customerPhone || inq.phone,
+        customerEmail: inq.customerEmail || inq.email,
+        extraData: { inquiryId: inqId, status: 'Rejected', adminTriggered: true }
+      });
+    } else if (newStatus === 'Cancelled') {
+      notifyCustomer({
+        type: 'cancelled',
+        title: `Booking #${inqId} Cancelled`,
+        body: `Your booking #${inqId} was cancelled by EMPERIAL CABS dispatch.`,
+        customerPhone: inq.customerPhone || inq.phone,
+        customerEmail: inq.customerEmail || inq.email,
+        extraData: { inquiryId: inqId, status: 'Cancelled', adminTriggered: true }
+      });
+    } else if (newStatus === 'Completed') {
+      notifyCustomer({
+        type: 'trip_completed',
+        title: '🏁 Trip Completed Successfully!',
+        body: `Your trip (${inq.pickup} → ${inq.dropoff}) is completed! Total Fare: ₹${inq.fare || 0}. Thank you for riding with EMPERIAL CABS!`,
+        customerPhone: inq.customerPhone || inq.phone,
+        customerEmail: inq.customerEmail || inq.email,
+        extraData: { inquiryId: inqId, status: 'Completed', adminTriggered: true }
+      });
+    }
   };
 
   const handleDeleteInquiry = (inquiryId) => {
@@ -5354,7 +5432,7 @@ export default function AdminPortal() {
                                   type="button"
                                   className="btn btn-sm btn-danger"
                                   style={{ padding: '9px 12px', borderRadius: '10px', fontWeight: 700, fontSize: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
-                                  onClick={() => updateInquiryStatusInMySQL(inq.id, 'Rejected', null, null, null, null, null, null, null, 'admin')}
+                                  onClick={() => handleDirectStatusChange(inq, 'Rejected')}
                                 >
                                   <XCircle size={14} />
                                   <span>Reject</span>
@@ -5387,7 +5465,7 @@ export default function AdminPortal() {
                                     type="button"
                                     className="btn btn-sm btn-danger"
                                     style={{ padding: '8px 10px', borderRadius: '10px', fontWeight: 700, fontSize: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}
-                                    onClick={() => updateInquiryStatusInMySQL(inq.id, 'Cancelled', null, null, null, null, null, null, null, 'admin')}
+                                    onClick={() => handleDirectStatusChange(inq, 'Cancelled')}
                                   >
                                     <XCircle size={13} />
                                     <span>Cancel</span>
@@ -5397,7 +5475,7 @@ export default function AdminPortal() {
                                   type="button"
                                   className="btn btn-sm btn-primary"
                                   style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', fontWeight: 800, fontSize: '13px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: 'linear-gradient(135deg, #00B87C, #059669)', color: '#FFFFFF', boxShadow: '0 2px 10px rgba(0, 184, 124, 0.25)' }}
-                                  onClick={() => updateInquiryStatusInMySQL(inq.id, 'Completed', inq.driver, inq.vehicle, inq.fare, 0, 0, inq.driverPhone, inq.plate, 'admin')}
+                                  onClick={() => handleDirectStatusChange(inq, 'Completed')}
                                 >
                                   <CheckCircle size={15} />
                                   <span>Mark Trip Completed</span>
