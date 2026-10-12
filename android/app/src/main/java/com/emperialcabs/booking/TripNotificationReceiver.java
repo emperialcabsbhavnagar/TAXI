@@ -317,29 +317,11 @@ public class TripNotificationReceiver extends BroadcastReceiver {
             PendingIntent pi = PendingIntent.getBroadcast(context, 8881, intent, flags);
             long triggerAt = System.currentTimeMillis() + (delaySeconds * 1000L);
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // Android 12+ (API 31+): Check if exact alarm permission is granted
-                if (am.canScheduleExactAlarms()) {
-                    try {
-                        am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
-                        Log.d(TAG, "Scheduled exact alarm in " + delaySeconds + "s");
-                    } catch (SecurityException se) {
-                        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
-                        Log.d(TAG, "Fallback to inexact alarm (SecurityException) in " + delaySeconds + "s");
-                    }
-                } else {
-                    // Exact alarm not permitted — use inexact alarm that still wakes device
-                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
-                    Log.d(TAG, "Scheduled inexact alarm (no exact perm) in " + delaySeconds + "s");
-                }
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                try {
-                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
-                } catch (SecurityException se) {
-                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
-                }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
+                Log.d(TAG, "Scheduled background check in " + delaySeconds + "s via setAndAllowWhileIdle");
             } else {
-                am.setExact(AlarmManager.RTC_WAKEUP, triggerAt, pi);
+                am.set(AlarmManager.RTC_WAKEUP, triggerAt, pi);
             }
         } catch (Exception e) {
             Log.e(TAG, "scheduleNextCheck error", e);
