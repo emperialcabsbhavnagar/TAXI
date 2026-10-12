@@ -62,25 +62,37 @@ const isNativeApp = () => {
  * Returns { name, email, photoURL, uid } or null if cancelled/failed.
  * On native: triggers Android system account picker (real phone accounts).
  */
-// Initialize GoogleAuth once for native platform
-if (typeof window !== 'undefined' && isNativeApp()) {
+let isGoogleAuthReady = false;
+
+export const ensureGoogleAuthInitialized = async () => {
+  if (typeof window === 'undefined' || !isNativeApp()) return;
   try {
-    GoogleAuth.initialize({
+    await GoogleAuth.initialize({
       clientId: '555496247847-mhki7n17mv041nogm83nd51qqldp9vbl.apps.googleusercontent.com',
       serverClientId: '555496247847-mhki7n17mv041nogm83nd51qqldp9vbl.apps.googleusercontent.com',
-      scopes: ['profile', 'email']
+      scopes: ['profile', 'email'],
+      grantOfflineAccess: false
     });
-  } catch (e) {}
+    isGoogleAuthReady = true;
+  } catch (e) {
+    console.warn('[GoogleAuth] Native init notice:', e);
+  }
+};
+
+// Initial trigger on script evaluation
+if (typeof window !== 'undefined' && isNativeApp()) {
+  ensureGoogleAuthInitialized().catch(() => {});
 }
 
 export const signInWithGoogle = async () => {
-  // ── 1. Native Android/iOS: Strictly Native Google Account bottom sheet (In-App Only) ──
+  // ── 1. Native Android/iOS: Native Google Account sheet (In-App) ──
   if (isNativeApp()) {
     try {
-      // Sign out first to ensure Google Play Services ALWAYS shows the account picker sheet with all email accounts on device
-      await GoogleAuth.signOut().catch(() => {});
+      if (!isGoogleAuthReady) {
+        await ensureGoogleAuthInitialized();
+      }
 
-      // Triggers native Android Google Account bottom sheet picker (all phone accounts)
+      // Triggers native Android Google Account picker sheet
       const googleUser = await GoogleAuth.signIn();
 
       if (googleUser) {
@@ -125,14 +137,36 @@ export const signInWithGoogle = async () => {
       }
     } catch (nativeErr) {
       console.warn('[GoogleAuth] Native sign-in error:', nativeErr?.message || nativeErr);
-      return { error: nativeErr?.message || String(nativeErr) || 'BadAuthentication' };
+      const errMsg = String(nativeErr?.message || nativeErr || '');
+
+      // User closed/cancelled the Google sheet
+      if (errMsg.includes('12501') || errMsg.toLowerCase().includes('cancel') || errMsg.toLowerCase().includes('closed')) {
+        return { cancelled: true };
+      }
+
+      // Fallback: If native Play Services rejected with code 10 or developer error, attempt web popup OAuth
+      try {
+        const webResult = await signInWithPopup(auth, googleProvider);
+        if (webResult && webResult.user) {
+          const u = webResult.user;
+          return {
+            name: u.displayName || (u.email ? u.email.split('@')[0] : 'Empire Rider'),
+            email: u.email || '',
+            photoURL: u.photoURL || null,
+            uid: u.uid || ('goog_' + Date.now())
+          };
+        }
+      } catch (webFallbackErr) {
+        console.warn('[GoogleAuth] Web popup fallback error:', webFallbackErr?.message || webFallbackErr);
+      }
+
+      return { error: errMsg || 'GoogleAuthFailed' };
     }
 
-    // ON NATIVE APP: Strictly DO NOT open external Chrome browser!
     return null;
   }
 
-  // ── 2. Web Browser Only: Firebase Web OAuth Popup ──
+  // ── 2. Web Browser: Firebase Web OAuth Popup ──
   try {
     const result = await signInWithPopup(auth, googleProvider);
     if (result && result.user) {
@@ -146,6 +180,10 @@ export const signInWithGoogle = async () => {
     }
   } catch (webAuthErr) {
     console.warn('[GoogleAuth] Web popup sign-in error:', webAuthErr?.message || webAuthErr);
+    if (webAuthErr?.code === 'auth/popup-closed-by-user') {
+      return { cancelled: true };
+    }
+    return { error: webAuthErr?.message || String(webAuthErr) };
   }
 
   return null;

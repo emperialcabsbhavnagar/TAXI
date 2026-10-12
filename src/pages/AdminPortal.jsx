@@ -1393,11 +1393,8 @@ export default function AdminPortal() {
               const notifBody = `${newInq.customerName || 'Customer'} (${newInq.customerPhone || 'Direct'}): ${newInq.pickup} ➔ ${newInq.dropoff}${newInq.fare ? ` · ₹${newInq.fare}` : ''}`;
               const alertKey = `inq_${inqIdStr}`;
 
-              // Trigger audio & popup alert only for inquiries that arrived in the last 90 seconds
-              const inqCreatedTs = newInq.timestamp ? new Date(newInq.timestamp).getTime() : (newInq.created_at ? new Date(newInq.created_at).getTime() : 0);
-              const isTrulyRecent = inqCreatedTs > 0 ? (Date.now() - inqCreatedTs < 90 * 1000) : false;
-
-              if (isTrulyRecent && !alreadyAlerted && !isDuplicatePushAlert('adm_chime_' + alertKey, 15000)) {
+              // Trigger audio chime, system push & popup alert for newly arrived booking
+              if (!alreadyAlerted && !isDuplicatePushAlert('adm_chime_' + alertKey, 15000)) {
                 sendSystemPushNotification(notifTitle, notifBody, 'disp-' + alertKey, { tab: notifTab, inquiryId: inqIdStr, canonicalKey: alertKey });
                 triggerLiveAlertBanner({ title: notifTitle, body: notifBody, tab: notifTab, inquiryId: inqIdStr });
               }
@@ -1493,11 +1490,8 @@ export default function AdminPortal() {
                 const nTitle = notifRow.title || (isShortTrip ? 'New Short Trip Booking' : 'Dispatch Update');
                 const nBody = notifRow.body || 'You have an update from a customer.';
                 
-                // Only fire live audio/banner alert if notification arrived within the last 90 seconds
-                const notifCreatedTs = notifRow.created_at ? new Date(notifRow.created_at).getTime() : 0;
-                const isRowTrulyRecent = notifCreatedTs > 0 ? (Date.now() - notifCreatedTs < 90 * 1000) : false;
-                
-                if (isRowTrulyRecent && !alreadyAlertedInq && !isDuplicatePushAlert('adm_chime_' + alertKey, 15000)) {
+                // Fire live audio chime & system push & banner alert for newly arrived notification
+                if (!alreadyAlertedInq && !isDuplicatePushAlert('adm_chime_' + alertKey, 15000)) {
                   sendSystemPushNotification(nTitle, nBody, 'disp-' + alertKey, { tab: targetTab, inquiryId: rowInqId, messageId: rowMsgId, canonicalKey: alertKey });
                   triggerLiveAlertBanner({ title: nTitle, body: nBody, tab: targetTab, inquiryId: rowInqId });
                 }
@@ -3385,6 +3379,45 @@ export default function AdminPortal() {
               <X size={16} />
             </button>
           </div>
+        </div>
+      )}
+
+      {/* DISPATCH SOUND & PUSH ALERTS STATUS BANNER */}
+      {(!isPushRegistered || notifPermissionState !== 'granted') && (
+        <div style={{
+          backgroundColor: '#FFFBEB',
+          borderBottom: '1px solid #FCD34D',
+          padding: '10px 18px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px',
+          flexWrap: 'wrap',
+          zIndex: 9998
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Bell size={16} color="#D97706" />
+            <span style={{ fontSize: '13px', fontWeight: 600, color: '#92400E' }}>
+              Dispatch sound chime & live push alerts are not active on this device. Click to link so you hear when customer bookings arrive.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleEnableNotifications}
+            style={{
+              backgroundColor: '#D97706',
+              color: '#FFFFFF',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '6px 14px',
+              fontSize: '12px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            🔔 Enable Sound & Push Alerts
+          </button>
         </div>
       )}
 

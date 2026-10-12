@@ -19,8 +19,11 @@
     public *;
 }
 
-# Keep Google Auth plugin
+# Keep Google Auth plugin and Play Services Auth classes
 -keep class com.codetrixstudio.capacitor.GoogleAuth.** { *; }
+-keep class com.google.android.gms.auth.api.signin.** { *; }
+-keep class com.google.android.gms.common.api.** { *; }
+-keep class com.google.android.gms.common.internal.safeparcel.** { *; }
 
 # Keep AndroidX classes used by Capacitor
 -keep class androidx.** { *; }

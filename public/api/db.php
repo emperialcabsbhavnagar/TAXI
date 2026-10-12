@@ -304,8 +304,9 @@ function dispatchNativeWebPush($pdo, $title, $body, $url = '/admin?tab=inquiries
             curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
             curl_setopt($ch, CURLOPT_POSTFIELDS, $bodyBinary);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 2);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 1);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 8);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
             $headers = [
                 'Content-Type: application/octet-stream',
                 'Content-Encoding: aes128gcm',
@@ -612,6 +613,18 @@ switch ($action) {
                     maps_link TEXT DEFAULT NULL,
                     requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     responded_at TIMESTAMP NULL DEFAULT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS push_subscriptions (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    endpoint VARCHAR(500) NOT NULL UNIQUE,
+                    p256dh VARCHAR(255) NOT NULL,
+                    auth VARCHAR(255) NOT NULL,
+                    user_type VARCHAR(50) DEFAULT 'customer',
+                    customer_phone VARCHAR(50) DEFAULT NULL,
+                    customer_email VARCHAR(100) DEFAULT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                 );
             ");
@@ -1747,10 +1760,19 @@ switch ($action) {
         $cust_email = trim($data['customer_email'] ?? ($data['customerEmail'] ?? ''));
 
         if (!empty($endpoint) && !empty($p256dh) && !empty($auth)) {
-            // When an admin registers/links their device, clean any prior stale endpoints for admin
-            if ($user_type === 'admin') {
-                $pdo->exec("DELETE FROM push_subscriptions WHERE user_type = 'admin' AND endpoint != " . $pdo->quote($endpoint));
-            }
+            try {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS push_subscriptions (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    endpoint VARCHAR(500) NOT NULL UNIQUE,
+                    p256dh VARCHAR(255) NOT NULL,
+                    auth VARCHAR(255) NOT NULL,
+                    user_type VARCHAR(50) DEFAULT 'customer',
+                    customer_phone VARCHAR(50) DEFAULT NULL,
+                    customer_email VARCHAR(100) DEFAULT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                )");
+            } catch (Exception $e) {}
 
             try {
                 $pdo->exec("ALTER TABLE push_subscriptions ADD COLUMN customer_phone VARCHAR(50) DEFAULT NULL");
@@ -1775,13 +1797,11 @@ switch ($action) {
         break;
 
     case 'cleanOldPushSubscriptions':
-        $stmt = $pdo->query("SELECT MAX(id) as max_id FROM push_subscriptions WHERE user_type = 'admin'");
-        $row = $stmt->fetch();
-        if (!empty($row['max_id'])) {
-            $maxId = intval($row['max_id']);
-            $pdo->exec("DELETE FROM push_subscriptions WHERE user_type = 'admin' AND id < {$maxId}");
-        }
-        echo json_encode(['success' => true, 'kept_id' => $maxId ?? null]);
+        // Clean only stale duplicate records or subscriptions older than 90 days
+        try {
+            $pdo->exec("DELETE FROM push_subscriptions WHERE updated_at < NOW() - INTERVAL 90 DAY");
+        } catch (Exception $e) {}
+        echo json_encode(['success' => true]);
         break;
 
     case 'sendPushNotification':
