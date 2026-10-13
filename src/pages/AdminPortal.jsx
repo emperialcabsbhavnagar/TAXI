@@ -612,6 +612,24 @@ export default function AdminPortal() {
     return 'dashboard';
   });
 
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // State — initialize with localStorage or empty array (no hardcoded fallback)
+  const [inquiries, setInquiries] = useState(() => {
+    const saved = localStorage.getItem('cabsy_inquiries') || localStorage.getItem('emperial_cabs_inquiries');
+    if (saved !== null) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {}
+    }
+    return [];
+  });
+  const inquiriesRef = React.useRef(inquiries);
+  useEffect(() => {
+    inquiriesRef.current = inquiries;
+  }, [inquiries]);
+
   const [highlightedItemId, setHighlightedItemId] = useState(() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -653,7 +671,7 @@ export default function AdminPortal() {
 
     // Smart section resolution: if cleanId is an inquiry, find its current section
     if (cleanId && (!resolvedTab || resolvedTab === 'inquiries' || resolvedTab === 'dashboard')) {
-      const allInqs = inquiries || [];
+      const allInqs = inquiriesRef.current || inquiries || [];
       const found = allInqs.find(i => String(i?.id) === cleanId);
       if (found) {
         if (found.isShortTrip || found.tripType === 'Short Trip' || found.tripType === 'short-trip') {
@@ -770,19 +788,6 @@ export default function AdminPortal() {
     };
   }, [activeTab, inquiries]);
 
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  
-  // State — initialize with localStorage or empty array (no hardcoded fallback)
-  const [inquiries, setInquiries] = useState(() => {
-    const saved = localStorage.getItem('cabsy_inquiries') || localStorage.getItem('emperial_cabs_inquiries');
-    if (saved !== null) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      } catch (e) {}
-    }
-    return [];
-  });
   const [firestoreLoading, setFirestoreLoading] = useState(true);
   const [customers, setCustomers] = useState(() => {
     const saved = localStorage.getItem('cabsy_customers') || localStorage.getItem('emperial_cabs_customers');
