@@ -58,24 +58,25 @@ self.addEventListener('push', (event) => {
   );
 });
 
-// Handle notification click with direct tab navigation support
+// Handle notification click with direct tab navigation and card highlight support
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const rawData = event.notification.data;
   let targetTab = 'inquiries';
+  let targetHighlight = null;
   let targetUrl = '/admin?tab=inquiries';
 
   if (typeof rawData === 'string') {
-    if (rawData.includes('tab=')) {
-      try {
-        const urlObj = new URL(rawData, self.location.origin);
-        targetTab = urlObj.searchParams.get('tab') || 'inquiries';
-      } catch (e) {}
-    }
     targetUrl = rawData;
+    try {
+      const urlObj = new URL(rawData, self.location.origin);
+      targetTab = urlObj.searchParams.get('tab') || 'inquiries';
+      targetHighlight = urlObj.searchParams.get('highlight') || null;
+    } catch (e) {}
   } else if (rawData && typeof rawData === 'object') {
     targetTab = rawData.tab || 'inquiries';
-    targetUrl = rawData.url || `/admin?tab=${targetTab}`;
+    targetHighlight = rawData.highlight || rawData.inquiryId || rawData.messageId || null;
+    targetUrl = rawData.url || `/admin?tab=${targetTab}${targetHighlight ? `&highlight=${targetHighlight}` : ''}`;
   }
 
   event.waitUntil(
@@ -88,6 +89,7 @@ self.addEventListener('notificationclick', (event) => {
             client.postMessage({
               type: 'NAVIGATE_ADMIN_TAB',
               tab: targetTab,
+              highlight: targetHighlight,
               url: targetUrl
             });
             return client.focus();
@@ -95,13 +97,14 @@ self.addEventListener('notificationclick', (event) => {
             client.postMessage({
               type: 'NAVIGATE_CUSTOMER_TAB',
               tab: targetTab,
+              highlight: targetHighlight,
               url: targetUrl
             });
             return client.focus();
           }
         }
       }
-      // 2. Otherwise open fresh window directly to target tab
+      // 2. Otherwise open fresh window directly to target tab & specific card
       if (self.clients.openWindow) {
         return self.clients.openWindow(targetUrl);
       }

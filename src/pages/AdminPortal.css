@@ -3168,5 +3168,55 @@
   cursor: pointer !important;
 }
 
+/* Real-time Notification Target Card Highlighting & Animated Pulse */
+@keyframes cardPulseNotification {
+  0% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7), 0 10px 25px rgba(0, 0, 0, 0.4);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(245, 158, 11, 0), 0 16px 36px rgba(245, 158, 11, 0.45);
+    transform: scale(1.018);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7), 0 10px 25px rgba(0, 0, 0, 0.4);
+    transform: scale(1);
+  }
+}
+
+.highlighted-notification-card {
+  border: 3px solid #F59E0B !important;
+  animation: cardPulseNotification 1.8s ease-in-out infinite !important;
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  position: relative !important;
+  z-index: 10 !important;
+  background-color: #FFFDF5 !important;
+}
+
+.highlighted-notification-row {
+  background-color: #FEF3C7 !important;
+  outline: 3px solid #F59E0B !important;
+  outline-offset: -2px !important;
+  transition: all 0.35s ease !important;
+}
+
+.target-notif-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.4);
+  width: fit-content;
+  text-transform: uppercase;
+  animation: cardPulseNotification 2s ease-in-out infinite;
+}
+
 
 

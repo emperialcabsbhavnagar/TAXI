@@ -612,6 +612,90 @@ export default function AdminPortal() {
     return 'dashboard';
   });
 
+  const [highlightedItemId, setHighlightedItemId] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('highlight') || null;
+    } catch (e) {
+      return null;
+    }
+  });
+  const highlightTimerRef = React.useRef(null);
+
+  // Smoothly scroll to the target notification card or row in viewport
+  const scrollToItemCard = (itemId) => {
+    if (!itemId || typeof document === 'undefined') return false;
+    const cleanId = String(itemId).replace(/^msg_/, '');
+    const selectors = [
+      `#inquiry-card-${cleanId}`,
+      `#inquiry-row-${cleanId}`,
+      `#short-trip-card-${cleanId}`,
+      `#custom-inq-card-${cleanId}`,
+      `#message-card-${cleanId}`,
+      `#message-row-${cleanId}`,
+      `[data-card-id="${cleanId}"]`,
+      `[data-item-id="${cleanId}"]`
+    ];
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Master navigation handler: opens exact section and focuses & highlights the specific card
+  const navigateToItem = (targetTab, itemId) => {
+    let resolvedTab = targetTab;
+    const cleanId = itemId ? String(itemId).replace(/^msg_/, '') : null;
+
+    // Smart section resolution: if cleanId is an inquiry, find its current section
+    if (cleanId && (!resolvedTab || resolvedTab === 'inquiries' || resolvedTab === 'dashboard')) {
+      const allInqs = inquiries || [];
+      const found = allInqs.find(i => String(i?.id) === cleanId);
+      if (found) {
+        if (found.isShortTrip || found.tripType === 'Short Trip' || found.tripType === 'short-trip') {
+          resolvedTab = 'short_trips';
+        } else if (found.isCustom || found.tripType === 'Custom Trip' || found.tripType === 'custom-trip') {
+          resolvedTab = 'custom_inquiries';
+        } else if (found.status === 'Confirmed' || found.status === 'In Progress' || found.status === 'On Ride') {
+          resolvedTab = 'final_trips';
+        } else if (found.status === 'Completed') {
+          resolvedTab = 'success_trips';
+        } else {
+          resolvedTab = 'inquiries';
+        }
+      }
+    }
+
+    if (resolvedTab) {
+      setActiveTab(resolvedTab);
+    }
+    setIsMobileMenuOpen(false);
+
+    if (cleanId) {
+      setHighlightedItemId(cleanId);
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = setTimeout(() => {
+        setHighlightedItemId(null);
+      }, 7000);
+
+      try {
+        const url = new URL(window.location.href);
+        if (resolvedTab) url.searchParams.set('tab', resolvedTab);
+        url.searchParams.set('highlight', cleanId);
+        window.history.replaceState(null, '', url.toString());
+      } catch (e) {}
+
+      // Staggered scroll attempts to guarantee scrolling after React DOM paint
+      setTimeout(() => scrollToItemCard(cleanId), 100);
+      setTimeout(() => scrollToItemCard(cleanId), 300);
+      setTimeout(() => scrollToItemCard(cleanId), 600);
+    }
+  };
+
   // Keep URL query synchronized when activeTab updates
   useEffect(() => {
     try {
@@ -626,33 +710,32 @@ export default function AdminPortal() {
   // Real-time tab navigation handler for PWA push notifications on iPhone / Desktop
   useEffect(() => {
     const handleTabNav = (event) => {
-      if (event && event.data && event.data.type === 'NAVIGATE_ADMIN_TAB' && event.data.tab) {
-        setActiveTab(event.data.tab);
-        setIsMobileMenuOpen(false);
+      if (event && event.data && event.data.type === 'NAVIGATE_ADMIN_TAB') {
+        navigateToItem(event.data.tab, event.data.highlight);
       }
     };
 
     const handleLocalClick = (event) => {
-      if (event && event.detail && event.detail.tab) {
-        setActiveTab(event.detail.tab);
-        setIsMobileMenuOpen(false);
+      if (event && event.detail) {
+        navigateToItem(event.detail.tab, event.detail.highlight);
       }
     };
 
     const handleWindowFocus = () => {
       try {
         const pendingNav = localStorage.getItem('cabsy_admin_navigate_tab');
-        if (pendingNav) {
+        const pendingHighlight = localStorage.getItem('cabsy_admin_navigate_highlight');
+        if (pendingNav || pendingHighlight) {
           localStorage.removeItem('cabsy_admin_navigate_tab');
-          setActiveTab(pendingNav);
-          setIsMobileMenuOpen(false);
+          localStorage.removeItem('cabsy_admin_navigate_highlight');
+          navigateToItem(pendingNav || activeTab, pendingHighlight);
           return;
         }
         const params = new URLSearchParams(window.location.search);
         const tabParam = params.get('tab');
-        if (tabParam && tabParam !== activeTab) {
-          setActiveTab(tabParam);
-          setIsMobileMenuOpen(false);
+        const highlightParam = params.get('highlight');
+        if (highlightParam || (tabParam && tabParam !== activeTab)) {
+          navigateToItem(tabParam || activeTab, highlightParam);
         }
       } catch (e) {}
     };
@@ -668,6 +751,14 @@ export default function AdminPortal() {
       if (document.visibilityState === 'visible') handleWindowFocus();
     });
 
+    // Check on initial mount if a highlight parameter is present in URL
+    const initialParams = new URLSearchParams(window.location.search);
+    const initialHighlight = initialParams.get('highlight');
+    if (initialHighlight) {
+      setTimeout(() => scrollToItemCard(initialHighlight), 200);
+      setTimeout(() => scrollToItemCard(initialHighlight), 500);
+    }
+
     return () => {
       window.removeEventListener('message', handleTabNav);
       window.removeEventListener('notificationclick_local', handleLocalClick);
@@ -677,7 +768,7 @@ export default function AdminPortal() {
       window.removeEventListener('focus', handleWindowFocus);
       window.removeEventListener('popstate', handleWindowFocus);
     };
-  }, [activeTab]);
+  }, [activeTab, inquiries]);
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
@@ -3337,6 +3428,10 @@ export default function AdminPortal() {
       {/* FLOATING REAL-TIME BOOKING ALERT BANNER */}
       {liveAlertBanner && (
         <div 
+          onClick={() => {
+            navigateToItem(liveAlertBanner.tab, liveAlertBanner.inquiryId || liveAlertBanner.messageId);
+            setLiveAlertBanner(null);
+          }}
           style={{
             position: 'fixed',
             top: '16px',
@@ -3354,7 +3449,8 @@ export default function AdminPortal() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: '12px'
+            gap: '12px',
+            cursor: 'pointer'
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
@@ -3373,8 +3469,9 @@ export default function AdminPortal() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
             <button
               type="button"
-              onClick={() => {
-                if (liveAlertBanner.tab) setActiveTab(liveAlertBanner.tab);
+              onClick={(e) => {
+                e.stopPropagation();
+                navigateToItem(liveAlertBanner.tab, liveAlertBanner.inquiryId || liveAlertBanner.messageId);
                 setLiveAlertBanner(null);
               }}
               style={{
@@ -3393,7 +3490,10 @@ export default function AdminPortal() {
             </button>
             <button
               type="button"
-              onClick={() => setLiveAlertBanner(null)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setLiveAlertBanner(null);
+              }}
               style={{
                 background: 'transparent',
                 border: 'none',
@@ -3848,7 +3948,8 @@ export default function AdminPortal() {
                         <div
                           key={inq.id}
                           onClick={() => {
-                            setActiveTab(inq.isCustom ? 'custom_inquiries' : 'inquiries');
+                            const target = inq.isCustom ? 'custom_inquiries' : (inq.isShortTrip || inq.tripType === 'Short Trip' || inq.tripType === 'short-trip' ? 'short_trips' : 'inquiries');
+                            navigateToItem(target, inq.id);
                             setShowNotifDropdown(false);
                           }}
                           style={{
@@ -4281,7 +4382,12 @@ export default function AdminPortal() {
                   </thead>
                   <tbody>
                     {sortedInquiries.filter(i => !i.isCustom && i.tripType !== 'Custom Trip' && i.tripType !== 'custom-trip').map(inq => (
-                      <tr key={inq.id}>
+                      <tr 
+                        key={inq.id}
+                        id={`inquiry-row-${inq.id}`}
+                        data-card-id={inq.id}
+                        className={highlightedItemId === String(inq.id) ? 'highlighted-notification-row' : ''}
+                      >
                         <td data-label="Inquiry ID">
                           <strong style={{ color: '#0F172A' }}>{inq.id}</strong>
                           <div className="text-muted text-xs" style={{ marginTop: '2px' }}>{inq.date}</div>
@@ -4438,7 +4544,15 @@ export default function AdminPortal() {
               {/* HOSTINGER ALIGNED MOBILE CARDS */}
               <div className="admin-mobile-card-list">
                 {sortedInquiries.filter(i => !i.isCustom && i.tripType !== 'Custom Trip' && i.tripType !== 'custom-trip').map(inq => (
-                  <div key={inq.id} className="hostinger-admin-card">
+                  <div 
+                    key={inq.id} 
+                    id={`inquiry-card-${inq.id}`}
+                    data-card-id={inq.id}
+                    className={`hostinger-admin-card ${highlightedItemId === String(inq.id) ? 'highlighted-notification-card' : ''}`}
+                  >
+                    {highlightedItemId === String(inq.id) && (
+                      <div className="target-notif-badge">🔔 SELECTED BOOKING #{inq.id}</div>
+                    )}
                     {/* Header Bar */}
                     <div className="hostinger-card-top">
                       <div className="hostinger-card-id-group">
@@ -4621,7 +4735,12 @@ export default function AdminPortal() {
                       const isInProgress = inq.status === 'In Progress' || inq.status === 'On Ride';
 
                       return (
-                        <tr key={inq.id}>
+                        <tr 
+                          key={inq.id}
+                          id={`inquiry-row-${inq.id}`}
+                          data-card-id={inq.id}
+                          className={highlightedItemId === String(inq.id) ? 'highlighted-notification-row' : ''}
+                        >
                           <td><strong style={{ color: '#0F172A', fontSize: '0.9rem' }}>{inq.id}</strong></td>
                           <td>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
@@ -4799,7 +4918,16 @@ export default function AdminPortal() {
                   const isInProgress = inq.status === 'In Progress' || inq.status === 'On Ride';
 
                   return (
-                    <div key={inq.id} className="hostinger-admin-card" style={{ background: isInProgress ? '#ECFDF5' : '#FFFFFF' }}>
+                    <div 
+                      key={inq.id} 
+                      id={`inquiry-card-${inq.id}`}
+                      data-card-id={inq.id}
+                      className={`hostinger-admin-card ${highlightedItemId === String(inq.id) ? 'highlighted-notification-card' : ''}`} 
+                      style={{ background: isInProgress ? '#ECFDF5' : '#FFFFFF' }}
+                    >
+                      {highlightedItemId === String(inq.id) && (
+                        <div className="target-notif-badge">🔔 SELECTED TRIP #{inq.id}</div>
+                      )}
                       <div className="hostinger-card-top">
                         <div className="hostinger-card-id-group">
                           <span className="hostinger-card-id">{inq.id}</span>
@@ -4963,7 +5091,12 @@ export default function AdminPortal() {
                   </thead>
                   <tbody>
                     {sortedInquiries.filter(i => !i.isCustom && i.tripType !== 'Custom Trip' && i.tripType !== 'custom-trip' && i.status === 'Completed').map((inq) => (
-                      <tr key={inq.id}>
+                      <tr 
+                        key={inq.id}
+                        id={`inquiry-row-${inq.id}`}
+                        data-card-id={inq.id}
+                        className={highlightedItemId === String(inq.id) ? 'highlighted-notification-row' : ''}
+                      >
                         <td><strong>{inq.id}</strong></td>
                         <td>
                           <div>
@@ -5016,7 +5149,16 @@ export default function AdminPortal() {
               {/* HOSTINGER ALIGNED MOBILE CARDS FOR SUCCESS TRIPS */}
               <div className="admin-mobile-card-list">
                 {sortedInquiries.filter(i => !i.isCustom && i.tripType !== 'Custom Trip' && i.tripType !== 'custom-trip' && i.status === 'Completed').map((inq) => (
-                  <div key={inq.id} className="hostinger-admin-card" style={{ background: '#ECFDF5' }}>
+                  <div 
+                    key={inq.id} 
+                    id={`inquiry-card-${inq.id}`}
+                    data-card-id={inq.id}
+                    className={`hostinger-admin-card ${highlightedItemId === String(inq.id) ? 'highlighted-notification-card' : ''}`} 
+                    style={{ background: '#ECFDF5' }}
+                  >
+                    {highlightedItemId === String(inq.id) && (
+                      <div className="target-notif-badge">🔔 SELECTED COMPLETED TRIP #{inq.id}</div>
+                    )}
                     <div className="hostinger-card-top">
                       <div className="hostinger-card-id-group">
                         <span className="hostinger-card-id">{inq.id}</span>
@@ -5106,7 +5248,13 @@ export default function AdminPortal() {
                       const isConfirmed = inq.status === 'Confirmed' || inq.status === 'In Progress';
 
                       return (
-                        <tr key={inq.id} style={{ background: isPending ? '#FFFBEB' : '#F0FDF4' }}>
+                        <tr 
+                          key={inq.id} 
+                          id={`custom-inq-row-${inq.id}`}
+                          data-card-id={inq.id}
+                          className={highlightedItemId === String(inq.id) ? 'highlighted-notification-row' : ''}
+                          style={{ background: isPending ? '#FFFBEB' : '#F0FDF4' }}
+                        >
                           <td><strong style={{ color: '#0F172A' }}>{inq.id}</strong></td>
                           <td>
                             <div>
@@ -5230,7 +5378,16 @@ export default function AdminPortal() {
                   const isConfirmed = inq.status === 'Confirmed' || inq.status === 'In Progress';
 
                   return (
-                    <div key={inq.id} className="hostinger-admin-card" style={{ background: isPending ? '#FFFBEB' : '#F0FDF4' }}>
+                    <div 
+                      key={inq.id} 
+                      id={`custom-inq-card-${inq.id}`}
+                      data-card-id={inq.id}
+                      className={`hostinger-admin-card ${highlightedItemId === String(inq.id) ? 'highlighted-notification-card' : ''}`} 
+                      style={{ background: isPending ? '#FFFBEB' : '#F0FDF4' }}
+                    >
+                      {highlightedItemId === String(inq.id) && (
+                        <div className="target-notif-badge">🔔 SELECTED CUSTOM INQUIRY #{inq.id}</div>
+                      )}
                       <div className="hostinger-card-top">
                         <div className="hostinger-card-id-group">
                           <span className="hostinger-card-id">{inq.id}</span>
@@ -5357,7 +5514,13 @@ export default function AdminPortal() {
                       (i.isCustom || i.tripType === 'Custom Trip' || i.tripType === 'custom-trip') && 
                       (i.status === 'Completed' || i.status === 'Rejected' || i.status === 'Cancelled')
                     ).map((inq) => (
-                      <tr key={inq.id} style={{ opacity: 0.85 }}>
+                      <tr 
+                        key={inq.id} 
+                        id={`custom-inq-row-arch-${inq.id}`}
+                        data-card-id={inq.id}
+                        className={highlightedItemId === String(inq.id) ? 'highlighted-notification-row' : ''}
+                        style={{ opacity: 0.85 }}
+                      >
                         <td><strong>{inq.id}</strong></td>
                         <td>
                           <strong>{resolveCustomerName(inq)}</strong>
@@ -5581,6 +5744,9 @@ export default function AdminPortal() {
                       return (
                         <div 
                           key={inq.id}
+                          id={`short-trip-card-${inq.id}`}
+                          data-card-id={inq.id}
+                          className={highlightedItemId === String(inq.id) ? 'highlighted-notification-card' : ''}
                           style={{
                             width: '100%',
                             maxWidth: '100%',
@@ -5597,6 +5763,9 @@ export default function AdminPortal() {
                             overflow: 'hidden'
                           }}
                         >
+                          {highlightedItemId === String(inq.id) && (
+                            <div className="target-notif-badge">🔔 SELECTED SHORT TRIP #{inq.id}</div>
+                          )}
                           {/* Top Row: ID, Badges, Date */}
                           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', paddingBottom: '10px', borderBottom: '1px solid #F1F5F9' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: 0 }}>
@@ -6663,7 +6832,13 @@ export default function AdminPortal() {
                       }
 
                       return filtered.map(msg => (
-                        <tr key={msg.id} style={{ background: msg.status === 'Unread' ? '#FFF5F5' : 'transparent' }}>
+                        <tr 
+                          key={msg.id} 
+                          id={`message-row-${msg.id}`}
+                          data-card-id={msg.id}
+                          className={highlightedItemId === String(msg.id) ? 'highlighted-notification-row' : ''}
+                          style={{ background: msg.status === 'Unread' ? '#FFF5F5' : 'transparent' }}
+                        >
                           <td><strong>{msg.id}</strong></td>
                           <td><small className="text-muted">{msg.date}</small></td>
                           <td><strong>{msg.name}</strong></td>
@@ -6758,7 +6933,16 @@ export default function AdminPortal() {
                   }
 
                   return filtered.map(msg => (
-                    <div key={msg.id} className="hostinger-admin-card" style={{ background: msg.status === 'Unread' ? '#FFF5F5' : '#FFFFFF' }}>
+                    <div 
+                      key={msg.id} 
+                      id={`message-card-${msg.id}`}
+                      data-card-id={msg.id}
+                      className={`hostinger-admin-card ${highlightedItemId === String(msg.id) ? 'highlighted-notification-card' : ''}`} 
+                      style={{ background: msg.status === 'Unread' ? '#FFF5F5' : '#FFFFFF' }}
+                    >
+                      {highlightedItemId === String(msg.id) && (
+                        <div className="target-notif-badge">🔔 SELECTED MESSAGE #{msg.id}</div>
+                      )}
                       <div className="hostinger-card-top">
                         <div className="hostinger-card-id-group">
                           <span className="hostinger-card-id">{msg.id}</span>

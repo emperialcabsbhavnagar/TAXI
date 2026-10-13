@@ -565,8 +565,9 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
 
   if (typeof window === 'undefined' || !('Notification' in window)) return;
 
+  const highlightId = inqId || msgId || extraData?.highlight || null;
   const targetTab = extraData?.tab || 'inquiries';
-  const targetUrl = extraData?.url || `/admin?tab=${targetTab}`;
+  const targetUrl = extraData?.url || `/admin?tab=${targetTab}${highlightId ? `&highlight=${highlightId}` : ''}`;
 
   const notifOptions = {
     body: body,
@@ -577,6 +578,7 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
     vibrate: [200, 100, 200, 100, 200],
     data: {
       tab: targetTab,
+      highlight: highlightId,
       url: targetUrl,
       ...extraData
     }
@@ -591,7 +593,7 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
           const n = new Notification(title, notifOptions);
           n.onclick = () => {
             window.focus();
-            window.dispatchEvent(new CustomEvent('notificationclick_local', { detail: { tab: targetTab, url: targetUrl } }));
+            window.dispatchEvent(new CustomEvent('notificationclick_local', { detail: { tab: targetTab, highlight: highlightId, url: targetUrl } }));
           };
         } catch (e) {}
       });
@@ -600,7 +602,7 @@ export const sendSystemPushNotification = async (title, body, tag = 'EMPERIAL CA
         const n = new Notification(title, notifOptions);
         n.onclick = () => {
           window.focus();
-          window.dispatchEvent(new CustomEvent('notificationclick_local', { detail: { tab: targetTab, url: targetUrl } }));
+          window.dispatchEvent(new CustomEvent('notificationclick_local', { detail: { tab: targetTab, highlight: highlightId, url: targetUrl } }));
         };
       } catch (e) {}
     }
@@ -695,7 +697,8 @@ export const notifyAdmin = ({ type = 'inquiry', title, body, extraData = {} }) =
   } catch (e) {}
 
   const targetTab = extraData?.tab || (type === 'short_trip' ? 'short_trips' : (type === 'custom' || type === 'custom-trip' ? 'custom_inquiries' : 'inquiries'));
-  const targetUrl = `/admin?tab=${targetTab}`;
+  const highlightId = inqId || extraData?.messageId || extraData?.highlight || '';
+  const targetUrl = `/admin?tab=${targetTab}${highlightId ? `&highlight=${highlightId}` : ''}`;
 
   // 1. Save to Remote MySQL for Admin alerts so remote and local Admin live sync always receives it.
   // Note: saveCustomerNotification in db.php already triggers native WebPush to all Admin devices.

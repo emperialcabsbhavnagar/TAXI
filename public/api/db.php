@@ -734,7 +734,7 @@ switch ($action) {
             $isShort = (stripos($data['tripType'] ?? '', 'short') !== false);
             $pTitle = $isShort ? "New Short Trip Booking #{$id}" : ($isCust ? "New Custom Route Inquiry #{$id}" : "New Customer Ride Booking #{$id}");
             $pBody = ($data['customerName'] ?? 'Customer') . " (" . ($data['customerPhone'] ?? 'Direct') . "): " . ($data['pickup'] ?? '') . " ➔ " . ($data['dropoff'] ?? '');
-            $pTab = $isShort ? '/admin?tab=short_trips' : ($isCust ? '/admin?tab=custom_inquiries' : '/admin?tab=inquiries');
+            $pTab = ($isShort ? '/admin?tab=short_trips' : ($isCust ? '/admin?tab=custom_inquiries' : '/admin?tab=inquiries')) . '&highlight=' . urlencode($id);
             triggerServerPushNotification($pTitle, $pBody, $pTab, 'disp-inq_' . $id);
         }
 
@@ -1401,7 +1401,7 @@ switch ($action) {
         triggerServerPushNotification(
             "New Message: " . ($name ?: 'Visitor'),
             substr($message, 0, 100),
-            "/admin?tab=messages",
+            "/admin?tab=messages&highlight=" . urlencode($id),
             "msg-" . $id
         );
 
@@ -1481,6 +1481,11 @@ switch ($action) {
         try {
             if (strtoupper($target_phone) === 'ADMIN') {
                 $adminTab = ($type === 'short_trip') ? '/admin?tab=short_trips' : ($isCust ? '/admin?tab=custom_inquiries' : '/admin?tab=inquiries');
+                if (!empty($notifInqId)) {
+                    $adminTab .= '&highlight=' . urlencode($notifInqId);
+                } elseif (!empty($parsedForTag['messageId'])) {
+                    $adminTab .= '&highlight=' . urlencode($parsedForTag['messageId']);
+                }
                 // Use the same canonical tag as the booking push (disp-inq_<id>) so the dedupe gate
                 // and the browser collapse them into ONE notification instead of stacking duplicates
                 $parsedForTag = !empty($extra_data) ? json_decode($extra_data, true) : [];
