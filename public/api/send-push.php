@@ -254,6 +254,11 @@ foreach ($subs as $sub) {
             $headers[] = 'apns-push-type: alert';
             $headers[] = 'apns-priority: 10';
             $headers[] = 'apns-expiration: ' . (time() + 86400);
+            if (defined('CURL_HTTP_VERSION_2_0')) {
+                curl_setopt($ch, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
+            } elseif (defined('CURL_HTTP_VERSION_2TLS')) {
+                curl_setopt($ch, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
+            }
         }
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 

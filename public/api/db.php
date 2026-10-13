@@ -318,6 +318,11 @@ function dispatchNativeWebPush($pdo, $title, $body, $url = '/admin?tab=inquiries
                 $headers[] = 'apns-push-type: alert';
                 $headers[] = 'apns-priority: 10';
                 $headers[] = 'apns-expiration: ' . (time() + 86400);
+                if (defined('CURL_HTTP_VERSION_2_0')) {
+                    curl_setopt($ch, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
+                } elseif (defined('CURL_HTTP_VERSION_2TLS')) {
+                    curl_setopt($ch, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
+                }
             }
             curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 
@@ -1797,10 +1802,19 @@ switch ($action) {
         break;
 
     case 'cleanOldPushSubscriptions':
-        // Clean only stale duplicate records or subscriptions older than 90 days
+        // Clean only stale duplicate records or subscriptions older than 90 days, plus test endpoints
         try {
-            $pdo->exec("DELETE FROM push_subscriptions WHERE updated_at < NOW() - INTERVAL 90 DAY");
+            $pdo->exec("DELETE FROM push_subscriptions WHERE updated_at < NOW() - INTERVAL 90 DAY OR endpoint LIKE 'test:%'");
         } catch (Exception $e) {}
+        echo json_encode(['success' => true]);
+        break;
+
+    case 'deletePushSubscription':
+        $delEndpoint = trim($data['endpoint'] ?? '');
+        if (!empty($delEndpoint)) {
+            $delStmt = $pdo->prepare("DELETE FROM push_subscriptions WHERE endpoint = ?");
+            $delStmt->execute([$delEndpoint]);
+        }
         echo json_encode(['success' => true]);
         break;
 

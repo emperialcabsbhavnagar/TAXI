@@ -54,7 +54,9 @@ import {
   triggerRemoteServerPush,
   sendSystemPushNotification,
   playChimeSound,
-  unlockAudio
+  unlockAudio,
+  isIosDevice,
+  isIosStandalone
 } from '../services/notificationEngine';
 import db from '../services/dbService';
 import { 
@@ -1187,11 +1189,28 @@ export default function AdminPortal() {
     }
   });
 
+  const [showIosGuideModal, setShowIosGuideModal] = useState(false);
+  const [notificationToast, setNotificationToast] = useState(null);
+
+  const showNotifToast = (msg, type = 'success') => {
+    setNotificationToast({ msg, type, id: Date.now() });
+    setTimeout(() => setNotificationToast(null), 6000);
+  };
+
   // Manual trigger for user to grant notification permission via gesture & unlock audio
   const handleEnableNotifications = async () => {
     try {
       unlockAudio();
       playChimeSound();
+
+      // On iPhone in regular Safari: Web Push is only supported if added to Home Screen!
+      const isIos = isIosDevice();
+      const isStand = isIosStandalone();
+      if (isIos && !isStand) {
+        setShowIosGuideModal(true);
+        return;
+      }
+
       const granted = await requestNotificationPermission();
       if (typeof window !== 'undefined' && 'Notification' in window) {
         setNotifPermissionState(Notification.permission);
@@ -1204,6 +1223,13 @@ export default function AdminPortal() {
       const pushRes = await registerWebPushSubscription('admin');
       if (pushRes && pushRes.success) {
         setIsPushRegistered(true);
+        showNotifToast('✅ Live dispatch chimes & lock-screen push alerts successfully linked to this device!', 'success');
+      } else {
+        if (isIos && !isStand) {
+          setShowIosGuideModal(true);
+        } else if (pushRes?.error) {
+          showNotifToast(pushRes.error, 'warning');
+        }
       }
 
       sendSystemPushNotification(
@@ -1222,6 +1248,7 @@ export default function AdminPortal() {
       }).catch(() => {});
     } catch (e) {
       console.warn('Notification permission error:', e);
+      showNotifToast('Failed to enable notifications: ' + (e?.message || String(e)), 'error');
     }
   };
 
@@ -1231,6 +1258,7 @@ export default function AdminPortal() {
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       navigator.vibrate([200, 100, 200, 100, 200]);
     }
+    showNotifToast('🔔 Dispatch chime played & test lock-screen push sent to server!', 'info');
     sendSystemPushNotification(
       'Test Dispatch Alert',
       'Audio chime, phone vibration, and push notifications are working properly.',
@@ -3387,7 +3415,7 @@ export default function AdminPortal() {
         <div style={{
           backgroundColor: '#FFFBEB',
           borderBottom: '1px solid #FCD34D',
-          padding: '10px 18px',
+          padding: '12px 18px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -3395,28 +3423,321 @@ export default function AdminPortal() {
           flexWrap: 'wrap',
           zIndex: 9998
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Bell size={16} color="#D97706" />
-            <span style={{ fontSize: '13px', fontWeight: 600, color: '#92400E' }}>
-              Dispatch sound chime & live push alerts are not active on this device. Click to link so you hear when customer bookings arrive.
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: '260px' }}>
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              backgroundColor: '#FEF3C7',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              <Bell size={18} color="#D97706" />
+            </div>
+            <div>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: '#92400E' }}>
+                {isIosDevice() && !isIosStandalone()
+                  ? '📱 iPhone Admin: Enable Lock-Screen Dispatch Alerts'
+                  : 'Dispatch Sound Chime & Live Push Alerts Not Active'}
+              </div>
+              <div style={{ fontSize: '12px', fontWeight: 500, color: '#B45309', marginTop: '2px' }}>
+                {isIosDevice() && !isIosStandalone()
+                  ? 'On iPhone, Apple requires adding this portal to your Home Screen to receive lock-screen push notifications & chimes.'
+                  : 'Link this device so you hear audible chimes and receive background push alerts when customer bookings arrive.'}
+              </div>
+            </div>
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {isIosDevice() && !isIosStandalone() ? (
+              <button
+                type="button"
+                onClick={() => setShowIosGuideModal(true)}
+                style={{
+                  backgroundColor: '#D97706',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '7px 15px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 2px 4px rgba(217,119,6,0.25)'
+                }}
+              >
+                📲 iPhone Setup Guide (2 Steps)
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleEnableNotifications}
+                style={{
+                  backgroundColor: '#D97706',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '7px 15px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 2px 4px rgba(217,119,6,0.25)'
+                }}
+              >
+                🔔 Enable Sound & Push Alerts
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleTestAlertSound}
+              style={{
+                backgroundColor: 'transparent',
+                color: '#92400E',
+                border: '1px solid #D97706',
+                borderRadius: '8px',
+                padding: '6px 12px',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              Test Chime 🔊
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* IPHONE PWA SETUP GUIDE MODAL */}
+      {showIosGuideModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(6px)',
+          zIndex: 99999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '16px'
+        }}>
+          <div style={{
+            backgroundColor: '#1E293B',
+            color: '#FFFFFF',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '20px',
+            maxWidth: '480px',
+            width: '100%',
+            padding: '24px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+            position: 'relative'
+          }}>
+            <button
+              type="button"
+              onClick={() => setShowIosGuideModal(false)}
+              style={{
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                background: 'rgba(255, 255, 255, 0.1)',
+                border: 'none',
+                borderRadius: '50%',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#94A3B8',
+                cursor: 'pointer'
+              }}
+            >
+              <X size={18} />
+            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <div style={{
+                width: '44px',
+                height: '44px',
+                borderRadius: '12px',
+                backgroundColor: 'rgba(217, 119, 6, 0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#F59E0B'
+              }}>
+                <Bell size={24} />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '17px', fontWeight: 800, margin: 0, color: '#FFFFFF' }}>
+                  Enable iPhone Lock-Screen Alerts
+                </h3>
+                <p style={{ fontSize: '12px', color: '#94A3B8', margin: '2px 0 0 0' }}>
+                  Apple iOS Requirement for Web Push & Audible Chimes
+                </p>
+              </div>
+            </div>
+
+            <p style={{ fontSize: '13px', lineHeight: '1.5', color: '#CBD5E1', marginBottom: '20px' }}>
+              Apple requires Safari websites to be added to the iPhone Home Screen before they are allowed to play background chimes and receive lock-screen push notifications.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '24px' }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px',
+                backgroundColor: 'rgba(15, 23, 42, 0.6)',
+                padding: '12px 14px',
+                borderRadius: '12px',
+                border: '1px solid rgba(255, 255, 255, 0.06)'
+              }}>
+                <div style={{
+                  width: '26px',
+                  height: '26px',
+                  borderRadius: '50%',
+                  backgroundColor: '#3B82F6',
+                  color: '#FFFFFF',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  flexShrink: 0
+                }}>
+                  1
+                </div>
+                <div style={{ fontSize: '13px', color: '#E2E8F0', lineHeight: '1.4' }}>
+                  In Safari, tap the <strong>Share button</strong> at the bottom of the screen (the square icon with an arrow pointing up: <strong>⎋</strong>).
+                </div>
+              </div>
+
+              <div style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px',
+                backgroundColor: 'rgba(15, 23, 42, 0.6)',
+                padding: '12px 14px',
+                borderRadius: '12px',
+                border: '1px solid rgba(255, 255, 255, 0.06)'
+              }}>
+                <div style={{
+                  width: '26px',
+                  height: '26px',
+                  borderRadius: '50%',
+                  backgroundColor: '#3B82F6',
+                  color: '#FFFFFF',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  flexShrink: 0
+                }}>
+                  2
+                </div>
+                <div style={{ fontSize: '13px', color: '#E2E8F0', lineHeight: '1.4' }}>
+                  Scroll down and tap <strong>"Add to Home Screen"</strong> (➕), then tap <strong>Add</strong> at top right.
+                </div>
+              </div>
+
+              <div style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px',
+                backgroundColor: 'rgba(15, 23, 42, 0.6)',
+                padding: '12px 14px',
+                borderRadius: '12px',
+                border: '1px solid rgba(255, 255, 255, 0.06)'
+              }}>
+                <div style={{
+                  width: '26px',
+                  height: '26px',
+                  borderRadius: '50%',
+                  backgroundColor: '#10B981',
+                  color: '#FFFFFF',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  flexShrink: 0
+                }}>
+                  3
+                </div>
+                <div style={{ fontSize: '13px', color: '#E2E8F0', lineHeight: '1.4' }}>
+                  Open <strong>Emperial Admin</strong> from your iPhone Home Screen and tap <strong>"Enable Sound & Push Alerts"</strong>!
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  unlockAudio();
+                  playChimeSound();
+                  setShowIosGuideModal(false);
+                }}
+                style={{
+                  flex: 1,
+                  backgroundColor: '#D97706',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: '10px',
+                  padding: '12px',
+                  fontSize: '14px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                Understood — Add to Home Screen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NOTIFICATION TOAST FEEDBACK */}
+      {notificationToast && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          zIndex: 999999,
+          backgroundColor: notificationToast.type === 'error' ? '#EF4444' : (notificationToast.type === 'warning' ? '#F59E0B' : '#10B981'),
+          color: '#FFFFFF',
+          padding: '12px 20px',
+          borderRadius: '12px',
+          boxShadow: '0 10px 25px rgba(0,0,0,0.4)',
+          fontSize: '13px',
+          fontWeight: 700,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          maxWidth: '420px',
+          animation: 'fadeIn 0.2s ease-out'
+        }}>
+          <span>{notificationToast.msg}</span>
           <button
             type="button"
-            onClick={handleEnableNotifications}
+            onClick={() => setNotificationToast(null)}
             style={{
-              backgroundColor: '#D97706',
-              color: '#FFFFFF',
+              background: 'transparent',
               border: 'none',
-              borderRadius: '8px',
-              padding: '6px 14px',
-              fontSize: '12px',
-              fontWeight: 700,
+              color: '#FFFFFF',
               cursor: 'pointer',
-              whiteSpace: 'nowrap'
+              padding: 0,
+              marginLeft: '8px',
+              display: 'flex',
+              alignItems: 'center'
             }}
           >
-            🔔 Enable Sound & Push Alerts
+            <X size={16} />
           </button>
         </div>
       )}

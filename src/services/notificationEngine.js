@@ -142,13 +142,30 @@ export const registerWebPushSubscription = async (userType = 'customer', custome
   if (typeof window === 'undefined') return { success: false, error: 'No window context' };
   
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    return { success: false, error: 'Web Push is not supported by this browser/OS.' };
+    const isIos = isIosDevice();
+    const isStand = isIosStandalone();
+    let msg = 'Web Push is not supported by this browser/OS.';
+    if (isIos && !isStand) {
+      msg = 'On iPhone, Web Push requires adding the portal to Home Screen (Safari Share ➔ Add to Home Screen).';
+    }
+    return { success: false, error: msg, isIos, isStandalone: isStand };
   }
 
   try {
-    let permission = Notification.permission;
-    if (permission !== 'granted') {
-      permission = await Notification.requestPermission();
+    let permission = typeof Notification !== 'undefined' ? Notification.permission : 'default';
+    if (permission !== 'granted' && typeof Notification !== 'undefined') {
+      try {
+        const p = Notification.requestPermission();
+        if (p && typeof p.then === 'function') {
+          permission = await p;
+        } else {
+          permission = await new Promise(resolve => Notification.requestPermission(resolve));
+        }
+      } catch (pe) {
+        permission = await new Promise(resolve => {
+          try { Notification.requestPermission(resolve); } catch (e) { resolve('denied'); }
+        });
+      }
     }
     if (permission !== 'granted') {
       return { success: false, error: 'Notification permission not granted' };
@@ -289,19 +306,63 @@ export const requestNotificationPermission = async () => {
   return false;
 };
 
-// Global AudioContext cache with user gesture unlocking
+// iOS WebKit & Standalone Detection Helpers
+export const isIosDevice = () => {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const isIosUa = /iPad|iPhone|iPod/.test(ua);
+  const isIpadOs = (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1);
+  return isIosUa || isIpadOs;
+};
+
+export const isIosStandalone = () => {
+  if (typeof window === 'undefined') return false;
+  return Boolean(
+    window.navigator?.standalone ||
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+  );
+};
+
+// Global AudioContext cache with user gesture unlocking & HTML5 audio fallback
 let globalAudioCtx = null;
+let html5AudioChime = null;
 
 export const unlockAudio = () => {
   try {
     if (typeof window === 'undefined') return;
+
+    // 1. Web Audio Context Unlock (iOS WebKit requires starting a buffer source in a user gesture)
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) return;
-    if (!globalAudioCtx) {
-      globalAudioCtx = new AudioContextClass();
+    if (AudioContextClass) {
+      if (!globalAudioCtx) {
+        globalAudioCtx = new AudioContextClass();
+      }
+      if (globalAudioCtx.state === 'suspended') {
+        globalAudioCtx.resume().catch(() => {});
+      }
+      try {
+        const buffer = globalAudioCtx.createBuffer(1, 1, 22050);
+        const source = globalAudioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(globalAudioCtx.destination);
+        source.start(0);
+      } catch (be) {}
     }
-    if (globalAudioCtx.state === 'suspended') {
-      globalAudioCtx.resume().catch(() => {});
+
+    // 2. HTML5 Audio Element Unlock for iPhone / Safari fallback
+    if (!html5AudioChime && typeof Audio !== 'undefined') {
+      try {
+        html5AudioChime = new Audio('/chime.wav');
+        html5AudioChime.volume = 1.0;
+        // Prime audio element on user gesture
+        const p = html5AudioChime.play();
+        if (p && typeof p.then === 'function') {
+          p.then(() => {
+            html5AudioChime.pause();
+            html5AudioChime.currentTime = 0;
+          }).catch(() => {});
+        }
+      } catch (ae) {}
     }
   } catch (e) {}
 };
@@ -316,41 +377,52 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// Play audible chime for dispatch & booking notifications
+// Play audible chime for dispatch & booking notifications (Dual Web Audio + HTML5 fallback)
 export const playChimeSound = () => {
   try {
     unlockAudio();
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) return;
-    const audioCtx = globalAudioCtx || new AudioContextClass();
-    if (audioCtx.state === 'suspended') {
-      audioCtx.resume().catch(() => {});
+
+    // Strategy A: HTML5 Audio fallback (particularly resilient across iOS Safari versions)
+    if (html5AudioChime) {
+      try {
+        html5AudioChime.currentTime = 0;
+        html5AudioChime.play().catch(() => {});
+      } catch (e) {}
     }
 
-    const t = audioCtx.currentTime;
-    // Tone 1: D5 (587.33 Hz)
-    const osc1 = audioCtx.createOscillator();
-    const gain1 = audioCtx.createGain();
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(587.33, t);
-    gain1.gain.setValueAtTime(0.6, t);
-    gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
-    osc1.connect(gain1);
-    gain1.connect(audioCtx.destination);
-    osc1.start(t);
-    osc1.stop(t + 0.22);
+    // Strategy B: Web Audio Synthesizer Oscillators (High-fidelity D5 & A5 tones)
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (AudioContextClass) {
+      const audioCtx = globalAudioCtx || new AudioContextClass();
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+      }
 
-    // Tone 2: A5 (880 Hz) - higher attention chime
-    const osc2 = audioCtx.createOscillator();
-    const gain2 = audioCtx.createGain();
-    osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(880, t + 0.16);
-    gain2.gain.setValueAtTime(0.6, t + 0.16);
-    gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
-    osc2.connect(gain2);
-    gain2.connect(audioCtx.destination);
-    osc2.start(t + 0.16);
-    osc2.stop(t + 0.45);
+      const t = audioCtx.currentTime;
+      // Tone 1: D5 (587.33 Hz)
+      const osc1 = audioCtx.createOscillator();
+      const gain1 = audioCtx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(587.33, t);
+      gain1.gain.setValueAtTime(0.7, t);
+      gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+      osc1.connect(gain1);
+      gain1.connect(audioCtx.destination);
+      osc1.start(t);
+      osc1.stop(t + 0.25);
+
+      // Tone 2: A5 (880 Hz) - higher attention chime
+      const osc2 = audioCtx.createOscillator();
+      const gain2 = audioCtx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(880, t + 0.16);
+      gain2.gain.setValueAtTime(0.7, t + 0.16);
+      gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.50);
+      osc2.connect(gain2);
+      gain2.connect(audioCtx.destination);
+      osc2.start(t + 0.16);
+      osc2.stop(t + 0.50);
+    }
   } catch (e) {
     // If Web Audio blocked, silent fallback
   }
@@ -790,5 +862,7 @@ export default {
   getAdminNotifications,
   getCustomerNotifications,
   runEcosystemSchedulerCheck,
-  initEcosystemScheduler
+  initEcosystemScheduler,
+  isIosDevice,
+  isIosStandalone
 };
