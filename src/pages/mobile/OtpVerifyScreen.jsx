@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { verifyPhoneOTP, verifyEmailOTP, sendPhoneOTP, sendEmailOTP } from '../../services/firebaseService';
+import { verifyEmailOTP, sendEmailOTP } from '../../services/firebaseService';
 import { ArrowLeft, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 const OtpVerifyGraphic = () => (
@@ -59,11 +59,6 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
   const [code, setCode] = useState(Array(codeLength).fill(''));
 
   const targetEmail = authEmail || localStorage.getItem('cabsy_user_email_otp_target') || '';
-  const cleanPhone = (phoneNumber || localStorage.getItem('cabsy_user_phone') || '').replace(/\D/g, '').slice(-10);
-
-  const displayTarget = authMethod === 'email'
-    ? (targetEmail || 'your email')
-    : `+91 ${cleanPhone}`;
 
   const handleResendOTP = async () => {
     if (countdown > 0 || resending) return;
@@ -72,12 +67,10 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
     setResendSuccess('');
 
     try {
-      if (authMethod === 'email') {
+      if (targetEmail) {
         await sendEmailOTP(targetEmail);
-      } else {
-        await sendPhoneOTP('+91' + cleanPhone);
       }
-      setResendSuccess('A fresh 6-digit verification code has been sent.');
+      setResendSuccess('A fresh 6-digit verification code has been sent to your email.');
       setCountdown(60);
       setCode(Array(codeLength).fill(''));
       if (inputRefs.current[0]) inputRefs.current[0].focus();
@@ -156,35 +149,17 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
     setError('');
 
     try {
-      if (authMethod === 'phone') {
-        const formatted = '+91' + cleanPhone;
-        const result = await verifyPhoneOTP(otp, formatted);
-        if (result.success) {
-          if (onNext) {
-            onNext({
-              phone: formatted,
-              authMethod: 'phone',
-              uid: result.user?.uid || 'phone_' + Date.now()
-            });
-          }
-        } else {
-          setError(result.error || 'Invalid OTP. Please check the code and try again.');
-        }
-      } else if (authMethod === 'email') {
-        const result = verifyEmailOTP(targetEmail, otp);
-        if (result.success) {
-          if (onNext) {
-            onNext({
-              email: targetEmail,
-              authMethod: 'email',
-              uid: 'email_' + Date.now()
-            });
-          }
-        } else {
-          setError(result.error || 'Invalid verification code. Please check your email.');
+      const result = verifyEmailOTP(targetEmail, otp);
+      if (result.success) {
+        if (onNext) {
+          onNext({
+            email: targetEmail,
+            authMethod: 'email',
+            uid: 'email_' + Date.now()
+          });
         }
       } else {
-        if (onNext) onNext();
+        setError(result.error || 'Invalid verification code. Please check your email.');
       }
     } catch (e) {
       setError(e?.message || 'Verification failed. Please try again.');
@@ -204,7 +179,7 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
         >
           <ArrowLeft size={18} />
         </button>
-        <h2 className="white-header-title">OTP Verification</h2>
+        <h2 className="white-header-title">Email Verification</h2>
       </div>
 
       <div className="verify-screen-body" style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
@@ -222,7 +197,7 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
             <p style={{ fontFamily: 'Space Grotesk', fontSize: '14px', color: '#64748B', margin: 0, lineHeight: '1.5' }}>
               We've sent a 6-digit code to<br/>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
-                <strong style={{ color: '#0F172A', fontSize: '15px' }}>{displayTarget}</strong>
+                <strong style={{ color: '#0F172A', fontSize: '15px' }}>{targetEmail || 'your email'}</strong>
                 <button
                   type="button"
                   onClick={onBack}

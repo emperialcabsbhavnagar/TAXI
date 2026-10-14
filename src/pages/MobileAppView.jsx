@@ -857,8 +857,8 @@ export default function MobileAppView() {
 
   // Dynamic Authentication Resolution: Check if user exists in Database or local storage
   const proceedAfterAuth = async (authInfo = {}) => {
-    const currentMethod = authInfo.authMethod || (selectedGoogleAccount ? 'google' : (authInfo.phone ? 'phone' : (phoneNumber ? 'phone' : 'email')));
-    const isPhoneAuth = currentMethod === 'phone' || Boolean(authInfo.phone);
+    const currentMethod = authInfo.authMethod || (selectedGoogleAccount ? 'google' : (authInfo.phone ? (authInfo.authMethod || 'whatsapp') : (phoneNumber ? 'whatsapp' : 'email')));
+    const isPhoneAuth = currentMethod === 'phone' || currentMethod === 'whatsapp' || Boolean(authInfo.phone);
     const activePhone = isPhoneAuth ? (authInfo.phone || phoneNumber || '') : (authInfo.phone || '');
     const cleanPhone = activePhone.replace(/\D/g, '').slice(-10);
     const activeEmail = (authInfo.email || (currentMethod === 'email' ? authEmail : '') || '').toLowerCase().trim();
@@ -867,7 +867,7 @@ export default function MobileAppView() {
     try {
       registerPushNotifications('customer', activePhone, activeEmail).catch(() => {});
       localStorage.setItem('cabsy_auth_method', currentMethod);
-      if (currentMethod === 'phone' && cleanPhone) {
+      if ((currentMethod === 'phone' || currentMethod === 'whatsapp') && cleanPhone) {
         localStorage.setItem('cabsy_user_phone_verified', 'true');
         const formatted = activePhone.startsWith('+') ? activePhone : `+91 ${cleanPhone}`;
         localStorage.setItem('cabsy_user_phone', formatted);
@@ -1315,6 +1315,17 @@ export default function MobileAppView() {
                 photoURL: googleUser.photoURL,
                 uid: googleUser.uid,
                 authMethod: googleUser.authMethod || 'google'
+              });
+            }
+          }}
+          onWhatsAppSignIn={(waUser) => {
+            if (waUser) {
+              setPhoneNumber(waUser.phone);
+              if (setAuthMethod) setAuthMethod('whatsapp');
+              proceedAfterAuth({
+                phone: waUser.phone,
+                authMethod: 'whatsapp',
+                uid: 'wa_' + Date.now()
               });
             }
           }}

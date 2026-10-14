@@ -379,202 +379,25 @@ export const deleteInquiryFromFirestore = async (firestoreId) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Initialize invisible reCAPTCHA verifier for Firebase Phone Auth.
- * Must be called before sendPhoneOTP. The container element must exist in DOM.
+ * DEPRECATED: Phone SMS OTP has been removed to avoid telecom SMS charges and DLT dependencies.
+ * Authentication is powered by Google Sign-In, WhatsApp (+91 72268 44108), and Email OTP.
  */
-export const setupRecaptcha = (containerId = 'recaptcha-container') => {
-  try {
-    // Clear any existing verifier
-    if (window.recaptchaVerifier) {
-      try { window.recaptchaVerifier.clear(); } catch (e) {}
-      window.recaptchaVerifier = null;
-    }
-    window.recaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
-      size: 'invisible',
-      callback: () => {
-        console.log('[Firebase Phone Auth] reCAPTCHA solved');
-      },
-      'expired-callback': () => {
-        console.warn('[Firebase Phone Auth] reCAPTCHA expired, re-render needed');
-      }
-    });
-    return window.recaptchaVerifier;
-  } catch (e) {
-    console.warn('[Firebase Phone Auth] reCAPTCHA setup failed:', e);
-    return null;
-  }
-};
+export const setupRecaptcha = () => null;
 
-/**
- * Send Fast2SMS OTP (India +91)
- */
-export const sendFast2SMSOTP = async (phoneNumber, code) => {
-  const cleanDigits = phoneNumber.replace(/\D/g, '').slice(-10);
+export const sendFast2SMSOTP = async () => ({
+  success: false,
+  error: 'Phone SMS OTP has been deprecated in favor of WhatsApp and Email OTP.'
+});
 
-  // 1. Try serverless backend API proxy endpoint (/api/send-otp)
-  try {
-    const apiEndpoint = '/api/send-otp';
+export const sendPhoneOTP = async () => ({
+  success: false,
+  error: 'Phone SMS OTP has been deprecated. Please log in using Google, WhatsApp, or Email.'
+});
 
-    const response = await fetch(apiEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: cleanDigits, code })
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      if (data && data.success) {
-        console.log('[Fast2SMS Backend Proxy] Real SMS sent successfully to:', cleanDigits);
-        return { success: true };
-      } else {
-        console.warn('[Fast2SMS Backend Proxy] API returned failure:', data?.error);
-      }
-    }
-  } catch (err) {
-    console.warn('[Fast2SMS Backend Proxy] Exception:', err);
-  }
-
-  // 2. Direct client fetch fallback
-  const apiKey = (
-    import.meta.env.VITE_FAST2SMS_API_KEY ||
-    localStorage.getItem('fast2sms_api_key') ||
-    '5S9P6LKf8qzDT0tRkhu7HbGUcBX2rVOFjpAnodmEegCaNI3MwZckRFTr8SAhdOMwEt1CPlaugnUqZmX4'
-  ).trim();
-
-  try {
-    const msg = encodeURIComponent(`Your EMPERIAL CABS verification code is ${code}`);
-    const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${msg}&language=english&flash=0&numbers=${cleanDigits}`;
-    const response = await fetch(url);
-    const data = await response.json();
-    if (data && data.return) {
-      return { success: true };
-    }
-  } catch (err) {}
-
-  return { success: false, error: 'SMS delivery failed' };
-};
-
-/**
- * Send OTP SMS to phone number via Fast2SMS / Firebase Phone Auth.
- * Phone number must include country code (e.g. +919876543210).
- * Returns { success, error? }
- */
-export const sendPhoneOTP = async (phoneNumber) => {
-  let formatted = phoneNumber.replace(/[\s\-()]/g, '');
-  if (!formatted.startsWith('+')) {
-    formatted = '+91' + formatted.replace(/^0+/, '');
-  }
-
-  const code = String(Math.floor(100000 + Math.random() * 900000));
-
-  // 1. Try Fast2SMS API
-  try {
-    const fastRes = await sendFast2SMSOTP(formatted, code);
-    if (fastRes.success) {
-      sessionStorage.setItem('EMPERIAL CABS_phone_otp', JSON.stringify({
-        phone: formatted,
-        code,
-        expiry: Date.now() + 5 * 60 * 1000
-      }));
-      console.log('[Fast2SMS] Real SMS sent to', formatted);
-      return { success: true, via: 'fast2sms' };
-    } else {
-      console.warn('[Fast2SMS] Delivery did not succeed, engaging fallback:', fastRes.error || fastRes.reason);
-    }
-  } catch (err) {
-    console.warn('[Fast2SMS] Exception, engaging fallback:', err);
-  }
-
-  // 2. Try Firebase Phone Auth
-  try {
-    const appVerifier = window.recaptchaVerifier;
-    if (appVerifier) {
-      const confirmationResult = await signInWithPhoneNumber(auth, formatted, appVerifier);
-      window.firebaseConfirmationResult = confirmationResult;
-      return { success: true, fallback: false };
-    }
-  } catch (e) {
-    console.warn('[Firebase Phone Auth] Send OTP failed, engaging fallback:', e);
-    try { if (window.recaptchaVerifier) window.recaptchaVerifier.clear(); } catch (x) {}
-    window.recaptchaVerifier = null;
-  }
-
-  // 3. Fallback code generation (Guaranteed to ask for OTP and navigate to OtpVerifyScreen)
-  try {
-    sessionStorage.setItem('EMPERIAL CABS_phone_otp', JSON.stringify({
-      phone: formatted,
-      code,
-      expiry: Date.now() + 5 * 60 * 1000
-    }));
-  } catch (err) {}
-  console.log(`[Phone OTP Fallback] 6-digit code for ${formatted}: ${code}`);
-  return { success: true, code, fallback: true };
-};
-
-/**
- * Verify 6-digit SMS OTP code.
- * Returns { success, user?, error? }
- */
-export const verifyPhoneOTP = async (otpCode, phoneNumber) => {
-  // 1. Try Firebase confirmation result
-  if (window.firebaseConfirmationResult) {
-    try {
-      const result = await window.firebaseConfirmationResult.confirm(otpCode);
-      window.firebaseConfirmationResult = null;
-      return {
-        success: true,
-        user: {
-          uid: result.user.uid,
-          phone: result.user.phoneNumber,
-          name: '',
-          email: ''
-        }
-      };
-    } catch (e) {
-      console.warn('[Firebase Phone Auth] Real verify failed, trying fallback:', e);
-    }
-  }
-
-  // 2. Try fallback session storage
-  try {
-    const raw = sessionStorage.getItem('EMPERIAL CABS_phone_otp');
-    if (raw) {
-      const stored = JSON.parse(raw);
-      if (Date.now() > stored.expiry) {
-        sessionStorage.removeItem('EMPERIAL CABS_phone_otp');
-        return { success: false, error: 'OTP expired. Please request a new one.' };
-      }
-      sessionStorage.removeItem('EMPERIAL CABS_phone_otp');
-      let phone = stored.phone || phoneNumber || '';
-      if (!phone.startsWith('+')) phone = '+91 ' + phone;
-      return {
-        success: true,
-        user: {
-          uid: 'phone_' + Date.now(),
-          phone: phone,
-          name: '',
-          email: ''
-        }
-      };
-    }
-  } catch (err) {}
-
-  if (String(otpCode).trim().length === 6) {
-    let phone = phoneNumber || localStorage.getItem('cabsy_user_phone') || '+91 72268 44108';
-    if (!phone.startsWith('+')) phone = '+91 ' + phone;
-    return {
-      success: true,
-      user: {
-        uid: 'phone_' + Date.now(),
-        phone: phone,
-        name: '',
-        email: ''
-      }
-    };
-  }
-
-  return { success: true };
-};
+export const verifyPhoneOTP = async () => ({
+  success: false,
+  error: 'Phone SMS OTP has been deprecated.'
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EMAIL OTP — Client-side 6-digit code generation & verification

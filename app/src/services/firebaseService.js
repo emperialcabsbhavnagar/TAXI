@@ -1,3 +1,4 @@
+/** EMPERIAL CABS — Service Engine v1.0.5 [2026-08-17] */
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
@@ -15,18 +16,18 @@ import {
   orderBy,
   updateDoc,
   deleteDoc,
+  onSnapshot,
   serverTimestamp
 } from 'firebase/firestore';
 
-// Firebase Credentials for Project: taxi-c2ef8 (Verified from Project Settings)
+// Firebase Credentials matching android/app/google-services.json (Project: taxibhavnagar)
 export const firebaseConfig = {
-  apiKey: "AIzaSyC0cdfnTx4EZvPLZQPLdpwEbr_DkDKgvl4",
-  authDomain: "taxi-c2ef8.firebaseapp.com",
-  projectId: "taxi-c2ef8",
-  storageBucket: "taxi-c2ef8.firebasestorage.app",
-  messagingSenderId: "256291841083",
-  appId: "1:256291841083:web:c518df88b67dd86172a81e",
-  measurementId: "G-9LR4KLNPNY"
+  apiKey: "AIzaSyCBdaPXLUsaxtYRXXv8_EKQ5K-BKIlqguQ",
+  authDomain: "taxibhavnagar.firebaseapp.com",
+  projectId: "taxibhavnagar",
+  storageBucket: "taxibhavnagar.firebasestorage.app",
+  messagingSenderId: "555496247847",
+  appId: "1:555496247847:android:9dfc9a7a7595b7ddb8b402"
 };
 
 // Initialize Firebase App & Auth Services
@@ -60,52 +61,131 @@ const isNativeApp = () => {
  * Attempt native Google Sign-In on Android/iOS.
  * Returns { name, email, photoURL, uid } or null if cancelled/failed.
  * On native: triggers Android system account picker (real phone accounts).
- * Falls through to in-app fallback modal if native fails.
  */
+let isGoogleAuthReady = false;
+
+export const ensureGoogleAuthInitialized = async () => {
+  if (typeof window === 'undefined' || !isNativeApp()) return;
+  try {
+    await GoogleAuth.initialize({
+      clientId: '555496247847-mhki7n17mv041nogm83nd51qqldp9vbl.apps.googleusercontent.com',
+      serverClientId: '555496247847-mhki7n17mv041nogm83nd51qqldp9vbl.apps.googleusercontent.com',
+      scopes: ['profile', 'email'],
+      grantOfflineAccess: false
+    });
+    isGoogleAuthReady = true;
+  } catch (e) {
+    console.warn('[GoogleAuth] Native init notice:', e);
+  }
+};
+
+// Initial trigger on script evaluation
+if (typeof window !== 'undefined' && isNativeApp()) {
+  ensureGoogleAuthInitialized().catch(() => {});
+}
+
 export const signInWithGoogle = async () => {
-  // ── Native Android/iOS: Real device account picker ──
+  // ── 1. Native Android/iOS: Native Google Account sheet (In-App) ──
   if (isNativeApp()) {
     try {
-      // Initialize the native plugin (safe to call multiple times)
-      try {
-        GoogleAuth.initialize({
-          clientId: '256291841083-ueibs1i67ue9dbpjas60ak2vbn37ubc2.apps.googleusercontent.com',
-          scopes: ['profile', 'email'],
-          grantOfflineAccess: true,
-        });
-      } catch (initErr) {
-        console.log('[GoogleAuth] init note:', initErr?.message || initErr);
+      if (!isGoogleAuthReady) {
+        await ensureGoogleAuthInitialized();
       }
 
-      // This triggers the native Android system bottom-sheet account picker
-      // showing all real Google accounts logged into the phone.
-      // Requires SHA-1 registered in Firebase Console to work natively.
+      // Triggers native Android Google Account picker sheet
       const googleUser = await GoogleAuth.signIn();
 
       if (googleUser) {
-        const email = (
-          googleUser.email ||
-          googleUser.authentication?.email ||
-          (googleUser.id ? `user_${googleUser.id.slice(-6)}@gmail.com` : null)
-        );
-        const name = (
-          googleUser.displayName ||
-          googleUser.name ||
-          (googleUser.givenName ? `${googleUser.givenName} ${googleUser.familyName || ''}`.trim() : '') ||
-          (email ? email.split('@')[0] : 'Google User')
-        );
-        const photoURL = googleUser.imageUrl || googleUser.photoUrl || null;
-        const uid = googleUser.id || googleUser.userId || 'goog_' + Date.now();
+        let email = googleUser.email || googleUser.authentication?.email || '';
+        let name = googleUser.displayName || googleUser.name || (googleUser.givenName ? `${googleUser.givenName} ${googleUser.familyName || ''}`.trim() : '');
+        let photoURL = googleUser.imageUrl || googleUser.photoUrl || null;
+        let uid = googleUser.id || googleUser.userId || null;
 
-        return { name, email: email || '', photoURL, uid };
+        // Decode JWT idToken if present to extract verified Google profile fields
+        const idToken = googleUser.authentication?.idToken || googleUser.idToken;
+        if (idToken && typeof idToken === 'string') {
+          try {
+            const parts = idToken.split('.');
+            if (parts.length === 3) {
+              const base64Url = parts[1];
+              const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+              const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+              const decoded = JSON.parse(jsonPayload);
+              if (decoded.email && !email) email = decoded.email;
+              if (decoded.name && !name) name = decoded.name;
+              if (decoded.picture && !photoURL) photoURL = decoded.picture;
+              if (decoded.sub && !uid) uid = decoded.sub;
+            }
+          } catch (jwtErr) {
+            console.log('[GoogleAuth] idToken decode note:', jwtErr);
+          }
+        }
+
+        // Final fallback if email is still missing but account selected
+        if (!email) {
+          const rawId = uid || googleUser.id || Date.now();
+          email = `user_${String(rawId).slice(-6)}@gmail.com`;
+        }
+        if (!name) {
+          name = email.split('@')[0];
+        }
+        if (!uid) {
+          uid = 'goog_' + Date.now();
+        }
+
+        return { name: name || 'Empire Rider', email, photoURL, uid };
       }
     } catch (nativeErr) {
-      // User cancelled the picker, or SHA-1 not registered (will fall through)
-      console.warn('[GoogleAuth] Native sign-in failed:', nativeErr?.message || nativeErr);
+      console.warn('[GoogleAuth] Native sign-in error:', nativeErr?.message || nativeErr);
+      const errMsg = String(nativeErr?.message || nativeErr || '');
+
+      // User closed/cancelled the Google sheet
+      if (errMsg.includes('12501') || errMsg.toLowerCase().includes('cancel') || errMsg.toLowerCase().includes('closed')) {
+        return { cancelled: true };
+      }
+
+      // Fallback: If native Play Services rejected with code 10 or developer error, attempt web popup OAuth
+      try {
+        const webResult = await signInWithPopup(auth, googleProvider);
+        if (webResult && webResult.user) {
+          const u = webResult.user;
+          return {
+            name: u.displayName || (u.email ? u.email.split('@')[0] : 'Empire Rider'),
+            email: u.email || '',
+            photoURL: u.photoURL || null,
+            uid: u.uid || ('goog_' + Date.now())
+          };
+        }
+      } catch (webFallbackErr) {
+        console.warn('[GoogleAuth] Web popup fallback error:', webFallbackErr?.message || webFallbackErr);
+      }
+
+      return { error: errMsg || 'GoogleAuthFailed' };
     }
+
+    return null;
   }
 
-  // ── Return null: LetsYouInScreen will show the in-app fallback picker ──
+  // ── 2. Web Browser: Firebase Web OAuth Popup ──
+  try {
+    const result = await signInWithPopup(auth, googleProvider);
+    if (result && result.user) {
+      const user = result.user;
+      return {
+        name: user.displayName || (user.email ? user.email.split('@')[0] : 'Google User'),
+        email: user.email || '',
+        photoURL: user.photoURL || null,
+        uid: user.uid || ('goog_' + Date.now())
+      };
+    }
+  } catch (webAuthErr) {
+    console.warn('[GoogleAuth] Web popup sign-in error:', webAuthErr?.message || webAuthErr);
+    if (webAuthErr?.code === 'auth/popup-closed-by-user') {
+      return { cancelled: true };
+    }
+    return { error: webAuthErr?.message || String(webAuthErr) };
+  }
+
   return null;
 };
 
@@ -135,16 +215,27 @@ export const saveCustomerToFirestore = async (profile) => {
   }).catch(() => {});
 
   try {
-    const docId = (profile.email || profile.phone).toLowerCase().replace(/[^a-z0-9]/g, '_');
-    const ref = doc(db, 'cabsy_customers', docId);
     const payload = {
       ...profile,
       updatedAt: serverTimestamp(),
       lastLogin: new Date().toISOString()
     };
-    // Use merge so we don't overwrite trip history fields
-    await setDoc(ref, payload, { merge: true });
-    return docId;
+
+    const keys = [];
+    if (profile.email) {
+      keys.push(profile.email.toLowerCase().replace(/[^a-z0-9]/g, '_'));
+    }
+    if (profile.phone) {
+      const cleanPhone = String(profile.phone).replace(/\D/g, '').slice(-10);
+      if (cleanPhone) keys.push(cleanPhone);
+    }
+
+    await Promise.all(keys.map(k => {
+      const ref = doc(db, 'cabsy_customers', k);
+      return setDoc(ref, payload, { merge: true });
+    }));
+
+    return keys[0] || null;
   } catch (e) {
     console.warn('Firestore saveCustomer failed (offline?):', e);
     return null;
@@ -158,10 +249,18 @@ export const saveCustomerToFirestore = async (profile) => {
 export const loadCustomerFromFirestore = async (email, phone) => {
   if (!email && !phone) return null;
   try {
-    const key = (email || phone).toLowerCase().replace(/[^a-z0-9]/g, '_');
-    const ref = doc(db, 'cabsy_customers', key);
-    const snap = await getDoc(ref);
-    if (snap.exists()) return { id: snap.id, ...snap.data() };
+    const keysToCheck = [];
+    if (email) keysToCheck.push(email.toLowerCase().replace(/[^a-z0-9]/g, '_'));
+    if (phone) {
+      const cleanPhone = String(phone).replace(/\D/g, '').slice(-10);
+      if (cleanPhone) keysToCheck.push(cleanPhone);
+    }
+
+    for (const key of keysToCheck) {
+      const ref = doc(db, 'cabsy_customers', key);
+      const snap = await getDoc(ref);
+      if (snap.exists()) return { id: snap.id, ...snap.data() };
+    }
     return null;
   } catch (e) {
     console.warn('Firestore loadCustomer failed (offline?):', e);
@@ -178,24 +277,27 @@ export const loadCustomerFromFirestore = async (email, phone) => {
  * Also stores a copy under the user's sub-collection for fast per-user history lookup.
  */
 export const saveInquiryToFirestore = async (inquiry) => {
-  if (!inquiry) return null;
+  if (!inquiry || !db) return null;
   try {
+    const inqId = String(inquiry.id || ('INQ-' + Math.floor(1000 + Math.random() * 9000)));
     // 1. Global admin collection
     const globalRef = collection(db, 'cabsy_inquiries');
-    const docRef = await addDoc(globalRef, {
+    const docRef = doc(globalRef, inqId);
+    await setDoc(docRef, {
       ...inquiry,
-      createdAt: serverTimestamp()
-    });
+      id: inqId,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
 
     // 2. Per-user sub-collection (keyed by phone or email)
     const userKey = inquiry.customerPhone || inquiry.customerEmail || inquiry.customerName;
     if (userKey) {
       const userDocId = String(userKey).toLowerCase().replace(/[^a-z0-9]/g, '_');
-      const userInqRef = doc(db, 'cabsy_customers', userDocId, 'inquiries', docRef.id);
-      await setDoc(userInqRef, { ...inquiry, firestoreId: docRef.id, createdAt: serverTimestamp() });
+      const userInqRef = doc(db, 'cabsy_customers', userDocId, 'inquiries', inqId);
+      await setDoc(userInqRef, { ...inquiry, id: inqId, firestoreId: inqId }, { merge: true });
     }
 
-    return docRef.id;
+    return inqId;
   } catch (e) {
     console.warn('Firestore saveInquiry failed (offline?):', e);
     return null;
@@ -213,6 +315,20 @@ export const loadAllInquiriesFromFirestore = async () => {
   } catch (e) {
     console.warn('Firestore loadAllInquiries failed:', e);
     return [];
+  }
+};
+
+export const subscribeToInquiriesFirestore = (onUpdate) => {
+  if (!db) return () => {};
+  try {
+    const ref = collection(db, 'cabsy_inquiries');
+    return onSnapshot(ref, (snapshot) => {
+      const list = snapshot.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
+      onUpdate(list);
+    }, (err) => console.warn('Firestore onSnapshot error:', err));
+  } catch (e) {
+    console.warn('Firestore subscribe failed:', e);
+    return () => {};
   }
 };
 
@@ -263,202 +379,25 @@ export const deleteInquiryFromFirestore = async (firestoreId) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Initialize invisible reCAPTCHA verifier for Firebase Phone Auth.
- * Must be called before sendPhoneOTP. The container element must exist in DOM.
+ * DEPRECATED: Phone SMS OTP has been removed to avoid telecom SMS charges and DLT dependencies.
+ * Authentication is powered by Google Sign-In, WhatsApp (+91 72268 44108), and Email OTP.
  */
-export const setupRecaptcha = (containerId = 'recaptcha-container') => {
-  try {
-    // Clear any existing verifier
-    if (window.recaptchaVerifier) {
-      try { window.recaptchaVerifier.clear(); } catch (e) {}
-      window.recaptchaVerifier = null;
-    }
-    window.recaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
-      size: 'invisible',
-      callback: () => {
-        console.log('[Firebase Phone Auth] reCAPTCHA solved');
-      },
-      'expired-callback': () => {
-        console.warn('[Firebase Phone Auth] reCAPTCHA expired, re-render needed');
-      }
-    });
-    return window.recaptchaVerifier;
-  } catch (e) {
-    console.warn('[Firebase Phone Auth] reCAPTCHA setup failed:', e);
-    return null;
-  }
-};
+export const setupRecaptcha = () => null;
 
-/**
- * Send Fast2SMS OTP (India +91)
- */
-export const sendFast2SMSOTP = async (phoneNumber, code) => {
-  const cleanDigits = phoneNumber.replace(/\D/g, '').slice(-10);
+export const sendFast2SMSOTP = async () => ({
+  success: false,
+  error: 'Phone SMS OTP has been deprecated in favor of WhatsApp and Email OTP.'
+});
 
-  // 1. Try serverless backend API proxy endpoint (/api/send-otp)
-  try {
-    const apiEndpoint = '/api/send-otp';
+export const sendPhoneOTP = async () => ({
+  success: false,
+  error: 'Phone SMS OTP has been deprecated. Please log in using Google, WhatsApp, or Email.'
+});
 
-    const response = await fetch(apiEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: cleanDigits, code })
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      if (data && data.success) {
-        console.log('[Fast2SMS Backend Proxy] Real SMS sent successfully to:', cleanDigits);
-        return { success: true };
-      } else {
-        console.warn('[Fast2SMS Backend Proxy] API returned failure:', data?.error);
-      }
-    }
-  } catch (err) {
-    console.warn('[Fast2SMS Backend Proxy] Exception:', err);
-  }
-
-  // 2. Direct client fetch fallback
-  const apiKey = (
-    import.meta.env.VITE_FAST2SMS_API_KEY ||
-    localStorage.getItem('fast2sms_api_key') ||
-    '5S9P6LKf8qzDT0tRkhu7HbGUcBX2rVOFjpAnodmEegCaNI3MwZckRFTr8SAhdOMwEt1CPlaugnUqZmX4'
-  ).trim();
-
-  try {
-    const msg = encodeURIComponent(`Your Empire Cab verification code is ${code}`);
-    const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${msg}&language=english&flash=0&numbers=${cleanDigits}`;
-    const response = await fetch(url);
-    const data = await response.json();
-    if (data && data.return) {
-      return { success: true };
-    }
-  } catch (err) {}
-
-  return { success: false, error: 'SMS delivery failed' };
-};
-
-/**
- * Send OTP SMS to phone number via Fast2SMS / Firebase Phone Auth.
- * Phone number must include country code (e.g. +919876543210).
- * Returns { success, error? }
- */
-export const sendPhoneOTP = async (phoneNumber) => {
-  let formatted = phoneNumber.replace(/[\s\-()]/g, '');
-  if (!formatted.startsWith('+')) {
-    formatted = '+91' + formatted.replace(/^0+/, '');
-  }
-
-  const code = String(Math.floor(100000 + Math.random() * 900000));
-
-  // 1. Try Fast2SMS API
-  try {
-    const fastRes = await sendFast2SMSOTP(formatted, code);
-    if (fastRes.success) {
-      sessionStorage.setItem('taxigo_phone_otp', JSON.stringify({
-        phone: formatted,
-        code,
-        expiry: Date.now() + 5 * 60 * 1000
-      }));
-      console.log('[Fast2SMS] Real SMS sent to', formatted);
-      return { success: true, via: 'fast2sms' };
-    } else {
-      console.warn('[Fast2SMS] Delivery did not succeed, engaging fallback:', fastRes.error || fastRes.reason);
-    }
-  } catch (err) {
-    console.warn('[Fast2SMS] Exception, engaging fallback:', err);
-  }
-
-  // 2. Try Firebase Phone Auth
-  try {
-    const appVerifier = window.recaptchaVerifier;
-    if (appVerifier) {
-      const confirmationResult = await signInWithPhoneNumber(auth, formatted, appVerifier);
-      window.firebaseConfirmationResult = confirmationResult;
-      return { success: true, fallback: false };
-    }
-  } catch (e) {
-    console.warn('[Firebase Phone Auth] Send OTP failed, engaging fallback:', e);
-    try { if (window.recaptchaVerifier) window.recaptchaVerifier.clear(); } catch (x) {}
-    window.recaptchaVerifier = null;
-  }
-
-  // 3. Fallback code generation (Guaranteed to ask for OTP and navigate to OtpVerifyScreen)
-  try {
-    sessionStorage.setItem('taxigo_phone_otp', JSON.stringify({
-      phone: formatted,
-      code,
-      expiry: Date.now() + 5 * 60 * 1000
-    }));
-  } catch (err) {}
-  console.log(`[Phone OTP Fallback] 6-digit code for ${formatted}: ${code}`);
-  return { success: true, code, fallback: true };
-};
-
-/**
- * Verify 6-digit SMS OTP code.
- * Returns { success, user?, error? }
- */
-export const verifyPhoneOTP = async (otpCode, phoneNumber) => {
-  // 1. Try Firebase confirmation result
-  if (window.firebaseConfirmationResult) {
-    try {
-      const result = await window.firebaseConfirmationResult.confirm(otpCode);
-      window.firebaseConfirmationResult = null;
-      return {
-        success: true,
-        user: {
-          uid: result.user.uid,
-          phone: result.user.phoneNumber,
-          name: '',
-          email: ''
-        }
-      };
-    } catch (e) {
-      console.warn('[Firebase Phone Auth] Real verify failed, trying fallback:', e);
-    }
-  }
-
-  // 2. Try fallback session storage
-  try {
-    const raw = sessionStorage.getItem('taxigo_phone_otp');
-    if (raw) {
-      const stored = JSON.parse(raw);
-      if (Date.now() > stored.expiry) {
-        sessionStorage.removeItem('taxigo_phone_otp');
-        return { success: false, error: 'OTP expired. Please request a new one.' };
-      }
-      sessionStorage.removeItem('taxigo_phone_otp');
-      let phone = stored.phone || phoneNumber || '';
-      if (!phone.startsWith('+')) phone = '+91 ' + phone;
-      return {
-        success: true,
-        user: {
-          uid: 'phone_' + Date.now(),
-          phone: phone,
-          name: '',
-          email: ''
-        }
-      };
-    }
-  } catch (err) {}
-
-  if (String(otpCode).trim().length === 6) {
-    let phone = phoneNumber || localStorage.getItem('cabsy_user_phone') || '+91 98765 43210';
-    if (!phone.startsWith('+')) phone = '+91 ' + phone;
-    return {
-      success: true,
-      user: {
-        uid: 'phone_' + Date.now(),
-        phone: phone,
-        name: '',
-        email: ''
-      }
-    };
-  }
-
-  return { success: true };
-};
+export const verifyPhoneOTP = async () => ({
+  success: false,
+  error: 'Phone SMS OTP has been deprecated.'
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EMAIL OTP — Client-side 6-digit code generation & verification
@@ -480,32 +419,39 @@ export const sendEmailOTP = async (email) => {
   const expiry = Date.now() + 5 * 60 * 1000; // 5 minutes
 
   try {
-    sessionStorage.setItem('taxigo_email_otp', JSON.stringify({
+    sessionStorage.setItem('EMPERIAL CABS_email_otp', JSON.stringify({
       email: cleanEmail,
       code,
       expiry
     }));
   } catch (e) {}
 
-  // Serverless Backend Proxy (/api/send-email-otp)
-  try {
-    const apiEndpoint = '/api/send-email-otp';
-    const resp = await fetch(apiEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: cleanEmail, code })
-    });
-    const result = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-      console.warn('[Email OTP Backend] API error:', result);
-    } else {
-      console.log('[Email OTP Backend] Sent successfully via:', result.via);
+  const payload = { email: cleanEmail, code };
+
+  // Single-delivery: try primary endpoint, fall back only if it fails (prevents duplicate OTP emails)
+  const endpoints = [
+    'https://emperialcabs.com/api/send-email-otp.php',
+    'https://emperialcabs.com/api/db.php?action=sendEmailOTP'
+  ];
+
+  for (const ep of endpoints) {
+    try {
+      const res = await fetch(ep, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, action: 'sendEmailOTP' })
+      });
+      const data = await res.json().catch(() => null);
+      if (data && data.success) {
+        console.log('[Email OTP] Delivered via', data.via || ep);
+        break;
+      }
+    } catch (e) {
+      console.warn('[Email OTP] Endpoint failed:', ep, e);
     }
-  } catch (err) {
-    console.warn('[Email OTP Backend Proxy] Exception:', err);
   }
 
-  return { success: true };
+  return { success: true, code };
 };
 
 /**
@@ -514,16 +460,16 @@ export const sendEmailOTP = async (email) => {
  */
 export const verifyEmailOTP = (email, inputCode) => {
   try {
-    const raw = sessionStorage.getItem('taxigo_email_otp');
+    const raw = sessionStorage.getItem('EMPERIAL CABS_email_otp');
     if (!raw) return { success: true };
     const stored = JSON.parse(raw);
     const cleanInput = String(inputCode).trim();
     if (Date.now() > stored.expiry) {
-      sessionStorage.removeItem('taxigo_email_otp');
+      sessionStorage.removeItem('EMPERIAL CABS_email_otp');
       return { success: true };
     }
     if (cleanInput === String(stored.code) || cleanInput.length === 6) {
-      sessionStorage.removeItem('taxigo_email_otp');
+      sessionStorage.removeItem('EMPERIAL CABS_email_otp');
       return { success: true };
     }
     return { success: false, error: 'Please enter a valid 6-digit verification code.' };
