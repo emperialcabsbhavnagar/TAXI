@@ -1318,17 +1318,6 @@ export default function MobileAppView() {
               });
             }
           }}
-          onWhatsAppSignIn={(waUser) => {
-            if (waUser) {
-              setPhoneNumber(waUser.phone);
-              if (setAuthMethod) setAuthMethod('whatsapp');
-              proceedAfterAuth({
-                phone: waUser.phone,
-                authMethod: 'whatsapp',
-                uid: 'wa_' + Date.now()
-              });
-            }
-          }}
           onBack={() => setAppStage('ONBOARDING')}
         />
       );
