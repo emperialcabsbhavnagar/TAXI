@@ -1,7 +1,7 @@
 /** EMPERIAL CABS — Service Engine v1.0.5 [2026-08-17] */
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 import {
   getFirestore,
@@ -420,15 +420,40 @@ export const sendEmailOTP = async (email) => {
   const endpoint = 'https://emperialcabs.com/api/db.php?action=sendEmailOTP';
 
   try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({ action: 'sendEmailOTP', data: { email: cleanEmail } })
-    });
-    const data = await res.json().catch(() => null);
+    let data = null;
+    if (typeof window !== 'undefined' && Capacitor.isNativePlatform()) {
+      try {
+        const nativeRes = await CapacitorHttp.request({
+          url: endpoint,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          data: { action: 'sendEmailOTP', data: { email: cleanEmail } }
+        });
+        let payload = nativeRes?.data;
+        if (typeof payload === 'string') {
+          try { payload = JSON.parse(payload); } catch (e) {}
+        }
+        data = payload;
+      } catch (nativeErr) {
+        console.warn('[CapacitorHttp sendEmailOTP error]', nativeErr);
+      }
+    }
+
+    if (!data) {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ action: 'sendEmailOTP', data: { email: cleanEmail } })
+      });
+      data = await res.json().catch(() => null);
+    }
+
     if (data && data.success) {
       return {
         success: true,
@@ -469,18 +494,46 @@ export const verifyEmailOTP = async (email, inputCode) => {
   const endpoint = 'https://emperialcabs.com/api/db.php?action=verifyEmailOTP';
 
   try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({
-        action: 'verifyEmailOTP',
-        data: { email: cleanEmail, code: cleanCode }
-      })
-    });
-    const data = await res.json().catch(() => null);
+    let data = null;
+    if (typeof window !== 'undefined' && Capacitor.isNativePlatform()) {
+      try {
+        const nativeRes = await CapacitorHttp.request({
+          url: endpoint,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          data: {
+            action: 'verifyEmailOTP',
+            data: { email: cleanEmail, code: cleanCode }
+          }
+        });
+        let payload = nativeRes?.data;
+        if (typeof payload === 'string') {
+          try { payload = JSON.parse(payload); } catch (e) {}
+        }
+        data = payload;
+      } catch (nativeErr) {
+        console.warn('[CapacitorHttp verifyEmailOTP error]', nativeErr);
+      }
+    }
+
+    if (!data) {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          action: 'verifyEmailOTP',
+          data: { email: cleanEmail, code: cleanCode }
+        })
+      });
+      data = await res.json().catch(() => null);
+    }
+
     if (data && data.success) {
       return { success: true, email: cleanEmail };
     }

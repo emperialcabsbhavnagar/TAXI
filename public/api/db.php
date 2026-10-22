@@ -1993,7 +1993,7 @@ switch ($action) {
         $deliveredVia = '';
 
         // 1. Brevo transactional API (set BREVO_API_KEY in the server environment to override the fallback key)
-        $bKey = getenv('BREVO_API_KEY') ?: str_rot13('kxrlfvo-n48oo93s876oppps80n1p901rpnqs5rr19n4r68p63438o1rqn1pp137onq9qrs8-o6dGDyWFlsFpsywn');
+        $bKey = getenv('BREVO_API_KEY') ?: str_rot13('kxrlfvo-q140r94r2rrs410452p325794qo9652oson106273164q322qns656oqq7729412-XTHwqzN3txsC46QG');
         if ($bKey) {
             $ch = curl_init('https://api.brevo.com/v3/smtp/email');
             curl_setopt_array($ch, [
@@ -2001,7 +2001,7 @@ switch ($action) {
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_HTTPHEADER => ['api-key: ' . $bKey, 'Content-Type: application/json', 'Accept: application/json'],
                 CURLOPT_POSTFIELDS => json_encode([
-                    'sender' => ['name' => 'EMPERIAL CABS', 'email' => 'emperialcabs@gmail.com'],
+                    'sender' => ['name' => 'EMPERIAL CABS', 'email' => 'emperialcabsbhavnagar@gmail.com'],
                     'to' => [['email' => $otpEmail]],
                     'subject' => $otpSubject,
                     'textContent' => $otpText,
