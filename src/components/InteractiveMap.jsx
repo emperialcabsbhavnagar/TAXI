@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { getCachedRoutePolyline, calculateBearing, calculateDistanceKm, estimateEtaMins } from '../utils/locationCoords';
+import { getCachedRoutePolyline, fetchRoadPolyline, calculateBearing, calculateDistanceKm, estimateEtaMins } from '../utils/locationCoords';
 
 // Safely patch Leaflet DomUtil to prevent uncaught TypeError: Cannot read properties of undefined (reading '_leaflet_pos')
 if (typeof L !== 'undefined' && L.DomUtil && !L.DomUtil._patchedLeafletPos) {
@@ -19,7 +19,8 @@ if (typeof L !== 'undefined' && L.DomUtil && !L.DomUtil._patchedLeafletPos) {
 }
 
 // 1. High-Visibility Google Maps Style Live Navigation Start Arrow + 3D Going Car with Pulsing Radar
-const createStartNavArrowIcon = (heading = 0, label = "Start Location") => {
+// The car on phone screen ALWAYS faces the TOP side (forward direction)
+const createStartNavArrowIcon = (heading = 0, label = "Start Location", counterRotation = 0) => {
   return L.divIcon({
     className: 'google-nav-live-arrow',
     html: `
@@ -28,8 +29,8 @@ const createStartNavArrowIcon = (heading = 0, label = "Start Location") => {
         <div style="position: absolute; width: 56px; height: 56px; border-radius: 50%; background: rgba(59, 130, 246, 0.22); border: 2px solid rgba(59, 130, 246, 0.65); animation: navPulse 2s infinite ease-out;"></div>
         <div style="position: absolute; width: 36px; height: 36px; border-radius: 50%; background: rgba(37, 99, 235, 0.35); filter: blur(3px);"></div>
         
-        <!-- Directional 3D Going Car / Navigation Arrow rotated to heading -->
-        <div style="position: absolute; transform: rotate(${heading}deg); transition: transform 0.35s ease-out; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 6px 14px rgba(0,0,0,0.5));">
+        <!-- Directional 3D Going Car: Counter-rotated so it ALWAYS faces the TOP SIDE of mobile device screen -->
+        <div style="position: absolute; transform: rotate(${counterRotation}deg); transition: transform 0.35s ease-out; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 6px 14px rgba(0,0,0,0.5));">
           <svg width="34" height="46" viewBox="0 0 40 54" fill="none" xmlns="http://www.w3.org/2000/svg">
             <!-- 4 Tires / Wheels -->
             <rect x="2" y="10" width="5" height="11" rx="2" fill="#0F172A"/>
@@ -50,17 +51,17 @@ const createStartNavArrowIcon = (heading = 0, label = "Start Location") => {
             <rect x="16" y="28" width="8" height="2.5" rx="0.5" fill="#FFFFFF"/>
             <!-- Rear Windshield Glass -->
             <path d="M11 39H29L28 42C28 43 27 44 25 44H15C13 44 12 43 12 42L11 39Z" fill="#1E293B"/>
-            <!-- Dual Headlights Beam -->
+            <!-- Dual Headlights Beam at top -->
             <circle cx="11" cy="7" r="2.8" fill="#FEF08A"/>
             <circle cx="29" cy="7" r="2.8" fill="#FEF08A"/>
-            <!-- Dual Taillights -->
+            <!-- Dual Taillights at bottom -->
             <circle cx="11" cy="47" r="2.4" fill="#EF4444"/>
             <circle cx="29" cy="47" r="2.4" fill="#EF4444"/>
           </svg>
         </div>
 
-        <!-- Start Location Badge Pill (Clean White Theme) -->
-        <div style="position: absolute; top: -14px; left: 50%; transform: translateX(-50%); background: #FFFFFF; color: #0F172A; padding: 3px 9px; border-radius: 12px; font-family: 'Space Grotesk', sans-serif; font-size: 11px; font-weight: 800; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 1.5px solid #CBD5E1; pointer-events: none;">
+        <!-- Start Location Badge Pill (Clean White Theme, always upright) -->
+        <div style="position: absolute; top: -14px; left: 50%; transform: translateX(-50%) rotate(${counterRotation}deg); background: #FFFFFF; color: #0F172A; padding: 3px 9px; border-radius: 12px; font-family: 'Space Grotesk', sans-serif; font-size: 11px; font-weight: 800; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 1.5px solid #CBD5E1; pointer-events: none;">
           <span style="color: #16A34A; margin-right: 3px;">●</span> ${label}
         </div>
       </div>
@@ -121,7 +122,7 @@ const createDestinationPinIcon = (label = "Dropoff") => {
 };
 
 /**
- * Controller: Handles Route Auto-Fitting (Google Maps style), Focus on Live Arrow, and 10s Inactivity Auto-Recenter
+ * Controller: Keeps Camera Focused on Live Car (Google Maps style) and Handles 10s Inactivity Auto-Recenter
  */
 function MapNavigationController({
   center,
@@ -136,13 +137,13 @@ function MapNavigationController({
 }) {
   const map = useMap();
 
-  // Recenter smoothly onto the live arrow at navigation zoom
+  // Recenter smoothly onto the live arrow at navigation zoom (16)
   const recenterToLiveArrow = useCallback(() => {
     if (!map || !map._container) return;
     if (center && typeof center.lat === 'number' && typeof center.lng === 'number') {
-      map.flyTo([center.lat, center.lng], 15.2, {
+      map.flyTo([center.lat, center.lng], 16, {
         animate: true,
-        duration: 0.9,
+        duration: 0.8,
         easeLinearity: 0.25
       });
     }
@@ -154,39 +155,15 @@ function MapNavigationController({
     }
   }, [registerRecenter, recenterToLiveArrow]);
 
-  // Google Maps Style Route Auto-Fit: When trip has a destination, fit bounds so whole route is visible
+  // Normal Screen View: Always keep camera focused on the live car / start location at navigation zoom 16
   useEffect(() => {
     if (!map || !map._container) return;
-    if (destination && typeof destination.lat === 'number' && typeof destination.lng === 'number') {
-      const startLat = (center && typeof center.lat === 'number') ? center.lat : 21.7645;
-      const startLng = (center && typeof center.lng === 'number') ? center.lng : 72.1519;
-
-      const bounds = L.latLngBounds([
-        [startLat, startLng],
-        [destination.lat, destination.lng]
-      ]);
-
-      if (Array.isArray(stablePositions) && stablePositions.length >= 2) {
-        stablePositions.forEach(pt => {
-          if (Array.isArray(pt) && pt.length === 2) bounds.extend(pt);
-        });
-      }
-
-      try {
-        map.fitBounds(bounds, {
-          paddingTopLeft: [130, 45],
-          paddingBottomRight: [45, 230],
-          maxZoom: 14.5,
-          animate: true,
-          duration: 0.9
-        });
-      } catch (e) {}
-    } else {
-      if (center && typeof center.lat === 'number' && typeof center.lng === 'number') {
-        map.setView([center.lat, center.lng], 15.5);
-      }
+    if (!isFreeMode && center && typeof center.lat === 'number' && typeof center.lng === 'number') {
+      const curZoom = map.getZoom();
+      const targetZoom = (!curZoom || curZoom < 14) ? 16 : curZoom;
+      map.setView([center.lat, center.lng], targetZoom);
     }
-  }, [map, destination?.lat, destination?.lng, center?.lat, center?.lng, stablePositions]);
+  }, [map, center?.lat, center?.lng, isFreeMode]);
 
   useEffect(() => {
     if (!map || !map._container) return;
@@ -275,14 +252,35 @@ export default function InteractiveMap({
   const safeLng = (center && typeof center.lng === 'number' && !isNaN(center.lng)) ? center.lng : 72.1519;
   const mapCenter = [safeLat, safeLng];
 
-  // 1. Rock-Solid, Permanently Memoized Polyline (NEVER FLICKERS, PROPERLY SMOOTH)
+  // 1. Dynamic Highway & Live Road Routing (Adapts automatically as driver moves or changes route)
   const stableRouteKey = useMemo(() => {
     if (!destination || typeof destination.lat !== 'number' || typeof destination.lng !== 'number') return null;
     return `${safeLat.toFixed(3)},${safeLng.toFixed(3)}->${destination.lat.toFixed(3)},${destination.lng.toFixed(3)}`;
   }, [safeLat, safeLng, destination]);
 
+  const [liveRoadCoords, setLiveRoadCoords] = useState(null);
+
+  // Dynamic reroute listener: When driver position changes or reroutes, fetch real road geometry in background
+  useEffect(() => {
+    if (!destination || typeof destination.lat !== 'number' || typeof destination.lng !== 'number') {
+      setLiveRoadCoords(null);
+      return;
+    }
+    let isCancelled = false;
+    fetchRoadPolyline({ lat: safeLat, lng: safeLng }, destination).then(pts => {
+      if (!isCancelled && Array.isArray(pts) && pts.length >= 2) {
+        setLiveRoadCoords(pts.map(p => [p.lat, p.lng]));
+      }
+    }).catch(() => {});
+
+    return () => { isCancelled = true; };
+  }, [stableRouteKey]);
+
   const stablePositions = useMemo(() => {
     if (!destination || typeof destination.lat !== 'number' || typeof destination.lng !== 'number') return [];
+    if (liveRoadCoords && liveRoadCoords.length >= 2) {
+      return liveRoadCoords;
+    }
     if (Array.isArray(routePolyline) && routePolyline.length >= 2) {
       return routePolyline
         .map(p => {
@@ -298,7 +296,7 @@ export default function InteractiveMap({
     }
     const pts = getCachedRoutePolyline({ lat: safeLat, lng: safeLng }, destination);
     return pts.map(p => [p.lat, p.lng]);
-  }, [stableRouteKey, routePolyline, safeLat, safeLng, destination]);
+  }, [stableRouteKey, liveRoadCoords, routePolyline, safeLat, safeLng, destination]);
 
   // 2. Navigation Heading: Direction of travel along the highway
   const navHeading = useMemo(() => {
@@ -515,7 +513,7 @@ export default function InteractiveMap({
             {showUserPin && (
               <Marker 
                 position={[safeLat, safeLng]} 
-                icon={createStartNavArrowIcon(navHeading, userLabel || "Start Location")}
+                icon={createStartNavArrowIcon(navHeading, userLabel || "Start Location", -currentRotation)}
                 draggable={false}
                 zIndexOffset={1000}
               >
@@ -580,133 +578,48 @@ export default function InteractiveMap({
       </div>
 
       {/* 
-        FIXED OVERLAYS (STAY HORIZONTAL & ALIGNED ON PHONE SCREEN)
+        GOOGLE MAPS STYLE MINIMAL COMPASS (Only shows when map is turned or rotated)
+        Tapping it smoothly resets the map orientation to True North / Straight Ahead
       */}
-
-      {/* MAP ROTATION & COMPASS CONTROLS (Positioned comfortably below header bar) */}
-      <div 
-        style={{ 
-          position: 'absolute', 
-          top: '110px', 
-          right: '14px', 
-          zIndex: 1000, 
-          display: 'flex', 
-          flexDirection: 'column', 
-          gap: '8px', 
-          alignItems: 'center' 
-        }}
-      >
-        {/* Real 3D Compass Needle Button */}
-        <button
-          type="button"
-          onClick={handleCompassClick}
-          title="Compass: Tap to align Straight-Ahead / North-Up"
-          style={{
-            width: '44px',
-            height: '44px',
-            borderRadius: '50%',
-            background: '#FFFFFF',
-            border: '1.5px solid #CBD5E1',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 4px 14px rgba(0,0,0,0.12)',
-            cursor: 'pointer',
-            position: 'relative',
-            padding: 0
+      {Math.abs(currentRotation) > 1 && (
+        <div 
+          style={{ 
+            position: 'absolute', 
+            top: '110px', 
+            right: '16px', 
+            zIndex: 1000 
           }}
         >
-          {/* Compass Needle pointing to True North */}
-          <div style={{ transform: `rotate(${-currentRotation}deg)`, transition: isInteracting ? 'none' : 'transform 0.4s ease-out', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-              {/* North Needle (Red) */}
-              <polygon points="12,3 15.5,12 12,9.5" fill="#EF4444" />
-              <polygon points="12,3 8.5,12 12,9.5" fill="#DC2626" />
-              {/* South Needle (Silver Slate) */}
-              <polygon points="12,21 15.5,12 12,14.5" fill="#64748B" />
-              <polygon points="12,21 8.5,12 12,14.5" fill="#94A3B8" />
-              {/* Pivot */}
-              <circle cx="12" cy="12" r="2.2" fill="#0F172A" />
-            </svg>
-          </div>
-          <span style={{ position: 'absolute', top: '1px', fontSize: '9px', fontWeight: '900', color: '#EF4444', fontFamily: 'Space Grotesk, sans-serif' }}>N</span>
-        </button>
-
-        {/* Turn Left Button (↺ 30°) */}
-        <button
-          type="button"
-          onClick={() => handleManualRotate(-30)}
-          title="Turn Map Left 30°"
-          style={{
-            width: '38px',
-            height: '38px',
-            borderRadius: '50%',
-            background: '#FFFFFF',
-            border: '1.5px solid #CBD5E1',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 3px 10px rgba(0,0,0,0.08)',
-            cursor: 'pointer',
-            color: '#0F172A',
-            fontWeight: '900',
-            fontSize: '17px',
-            padding: 0
-          }}
-        >
-          ↺
-        </button>
-
-        {/* Turn Right Button (↻ 30°) */}
-        <button
-          type="button"
-          onClick={() => handleManualRotate(+30)}
-          title="Turn Map Right 30°"
-          style={{
-            width: '38px',
-            height: '38px',
-            borderRadius: '50%',
-            background: '#FFFFFF',
-            border: '1.5px solid #CBD5E1',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 3px 10px rgba(0,0,0,0.08)',
-            cursor: 'pointer',
-            color: '#0F172A',
-            fontWeight: '900',
-            fontSize: '17px',
-            padding: 0
-          }}
-        >
-          ↻
-        </button>
-      </div>
-
-      {/* TOP LEFT: FREE VIEW BADGE (Positioned below header, tap to align) */}
-      {isFreeMode && (
-        <div style={{ position: 'absolute', top: '110px', left: '14px', zIndex: 1000 }}>
           <button
             type="button"
-            onClick={alignStraightAhead}
+            onClick={handleCompassClick}
+            title="Reset Orientation"
             style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '50%',
               background: '#FFFFFF',
-              color: '#0F172A',
               border: '1.5px solid #CBD5E1',
-              padding: '7px 12px',
-              borderRadius: '20px',
-              fontSize: '11.5px',
-              fontWeight: '800',
-              fontFamily: 'Space Grotesk, sans-serif',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              boxShadow: '0 4px 14px rgba(0,0,0,0.10)',
-              cursor: 'pointer'
+              justifyContent: 'center',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.12)',
+              cursor: 'pointer',
+              position: 'relative',
+              padding: 0
             }}
           >
-            <span style={{ color: '#2563EB', fontSize: '13px' }}>🧭</span>
-            <span>Free View ({countdown}s)</span>
+            {/* Minimal Compass Needle */}
+            <div style={{ transform: `rotate(${-currentRotation}deg)`, transition: isInteracting ? 'none' : 'transform 0.4s ease-out', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <polygon points="12,3 15.5,12 12,9.5" fill="#EF4444" />
+                <polygon points="12,3 8.5,12 12,9.5" fill="#DC2626" />
+                <polygon points="12,21 15.5,12 12,14.5" fill="#64748B" />
+                <polygon points="12,21 8.5,12 12,14.5" fill="#94A3B8" />
+                <circle cx="12" cy="12" r="2" fill="#0F172A" />
+              </svg>
+            </div>
+            <span style={{ position: 'absolute', top: '1px', fontSize: '8px', fontWeight: '900', color: '#EF4444', fontFamily: 'Space Grotesk, sans-serif' }}>N</span>
           </button>
         </div>
       )}

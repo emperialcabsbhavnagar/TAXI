@@ -172,7 +172,63 @@ export function calculateBearing(start, end) {
 }
 
 /**
- * Generates accurate highway route polyline connecting Gujarat cities & districts
+ * Major Highway Corridors for dynamic real-time Gujarat routing
+ */
+const HIGHWAY_CORRIDORS = {
+  ahmedabad: [
+    { lat: 21.7645, lng: 72.1519 }, // Bhavnagar
+    { lat: 21.8000, lng: 72.0900 }, // Nari Chokdi
+    { lat: 21.9500, lng: 72.0500 }, // Vallabhipur
+    { lat: 22.2500, lng: 72.1800 }, // Dholera Expressway
+    { lat: 22.4000, lng: 72.1900 }, // Fedra Junction
+    { lat: 22.5400, lng: 72.2800 }, // Bavla Link
+    { lat: 22.7200, lng: 72.4400 }, // Dholka
+    { lat: 22.9800, lng: 72.5000 }, // Sarkhej Ring Road
+    { lat: 23.0225, lng: 72.5714 }  // Ahmedabad
+  ],
+  rajkot: [
+    { lat: 21.7645, lng: 72.1519 }, // Bhavnagar
+    { lat: 21.7450, lng: 72.0670 }, // Vartej
+    { lat: 21.7042, lng: 71.9616 }, // Sihor
+    { lat: 21.6883, lng: 71.8492 }, // Songadh
+    { lat: 21.8200, lng: 71.5500 }, // Dhola Junction
+    { lat: 21.8465, lng: 71.3040 }, // Babra
+    { lat: 21.9800, lng: 71.1800 }, // Atkot / Jasdan
+    { lat: 22.1800, lng: 70.8900 }, // Tramba
+    { lat: 22.3039, lng: 70.8022 }  // Rajkot
+  ],
+  vadodara: [
+    { lat: 21.7645, lng: 72.1519 }, // Bhavnagar
+    { lat: 21.8000, lng: 72.0900 }, // Nari
+    { lat: 22.2500, lng: 72.1800 }, // Dholera
+    { lat: 22.4300, lng: 72.2200 }, // Vataman Circle
+    { lat: 22.4900, lng: 72.7000 }, // Tarapur Cross Road
+    { lat: 22.5500, lng: 72.9500 }, // Anand Bypass
+    { lat: 22.3072, lng: 73.1812 }  // Vadodara
+  ],
+  surat: [
+    { lat: 21.7645, lng: 72.1519 }, // Bhavnagar
+    { lat: 21.8000, lng: 72.0900 }, // Nari
+    { lat: 22.2500, lng: 72.1800 }, // Dholera
+    { lat: 22.4300, lng: 72.2200 }, // Vataman Circle
+    { lat: 22.4900, lng: 72.7000 }, // Tarapur Cross Road
+    { lat: 22.3100, lng: 73.0500 }, // Vasad Bridge / NH 48
+    { lat: 21.7051, lng: 72.9959 }, // Bharuch
+    { lat: 21.6264, lng: 73.0034 }, // Ankleshwar
+    { lat: 21.1702, lng: 72.8311 }  // Surat
+  ],
+  botad: [
+    { lat: 21.7645, lng: 72.1519 }, // Bhavnagar
+    { lat: 21.8000, lng: 72.0900 }, // Nari
+    { lat: 21.9500, lng: 72.0500 }, // Vallabhipur
+    { lat: 22.1695, lng: 71.6664 }, // Botad
+    { lat: 22.1466, lng: 71.7644 }  // Salangpur
+  ]
+};
+
+/**
+ * Generates accurate highway route polyline connecting Gujarat cities & districts.
+ * DYNAMIC: If driver changes route, turns, or advances, the route recalculates ahead automatically!
  */
 export function generateRoutePolyline(startPos, endPos) {
   const safeStart = (startPos && typeof startPos.lat === 'number' && !isNaN(startPos.lat) && typeof startPos.lng === 'number' && !isNaN(startPos.lng)) 
@@ -182,128 +238,61 @@ export function generateRoutePolyline(startPos, endPos) {
     ? endPos 
     : { lat: 22.3039, lng: 70.8022 };
 
-  const isBhavnagarStart = safeStart.lat < 22.0 && safeStart.lat > 21.5 && safeStart.lng < 72.4 && safeStart.lng > 71.9;
-  const isRajkotEnd = safeEnd.lat > 22.1 && safeEnd.lat < 22.5 && safeEnd.lng < 71.1 && safeEnd.lng > 70.6;
+  const totalDistToGoal = calculateDistanceKm(safeStart.lat, safeStart.lng, safeEnd.lat, safeEnd.lng);
+  if (totalDistToGoal <= 2.5) {
+    return [safeStart, safeEnd];
+  }
+
+  // Determine corridor from destination
+  let corridorKey = null;
+  if (safeEnd.lat > 22.75 && safeEnd.lng > 72.2 && safeEnd.lng < 72.85) {
+    corridorKey = 'ahmedabad';
+  } else if (safeEnd.lat > 22.0 && safeEnd.lat < 22.6 && safeEnd.lng < 71.2) {
+    corridorKey = 'rajkot';
+  } else if (safeEnd.lat > 22.0 && safeEnd.lat < 22.6 && safeEnd.lng > 72.8 && safeEnd.lng < 73.5) {
+    corridorKey = 'vadodara';
+  } else if (safeEnd.lng > 72.7 && safeEnd.lat < 21.5) {
+    corridorKey = 'surat';
+  } else if (safeEnd.lat > 22.0 && safeEnd.lat < 22.3 && safeEnd.lng > 71.4 && safeEnd.lng < 71.9) {
+    corridorKey = 'botad';
+  }
+
+  // If start is destination city and end is Bhavnagar (Reverse Trip)
   const isBhavnagarEnd = safeEnd.lat < 22.0 && safeEnd.lat > 21.5 && safeEnd.lng < 72.4 && safeEnd.lng > 71.9;
-  const isRajkotStart = safeStart.lat > 22.1 && safeStart.lat < 22.5 && safeStart.lng < 71.1 && safeStart.lng > 70.6;
-
-  // ROUTE 1: Bhavnagar <-> Rajkot (SH 25 / NH 51 via Sihor -> Babra -> Jasdan / Atkot -> Tramba)
-  if (isBhavnagarStart && isRajkotEnd) {
-    return [
-      safeStart,
-      { lat: 21.7450, lng: 72.0670 }, // Vartej
-      { lat: 21.7042, lng: 71.9616 }, // Sihor
-      { lat: 21.6883, lng: 71.8492 }, // Songadh
-      { lat: 21.8200, lng: 71.5500 }, // Dhola / Umrala Junction
-      { lat: 21.8465, lng: 71.3040 }, // Babra
-      { lat: 21.9800, lng: 71.1800 }, // Atkot / Jasdan
-      { lat: 22.1800, lng: 70.8900 }, // Tramba
-      safeEnd
-    ];
-  }
-  if (isRajkotStart && isBhavnagarEnd) {
-    return [
-      safeStart,
-      { lat: 22.1800, lng: 70.8900 },
-      { lat: 21.9800, lng: 71.1800 },
-      { lat: 21.8465, lng: 71.3040 },
-      { lat: 21.8200, lng: 71.5500 },
-      { lat: 21.6883, lng: 71.8492 },
-      { lat: 21.7042, lng: 71.9616 },
-      { lat: 21.7450, lng: 72.0670 },
-      safeEnd
-    ];
+  if (isBhavnagarEnd) {
+    if (safeStart.lat > 22.75) corridorKey = 'ahmedabad';
+    else if (safeStart.lat > 22.0 && safeStart.lng < 71.2) corridorKey = 'rajkot';
+    else if (safeStart.lng > 73.0) corridorKey = 'vadodara';
+    else if (safeStart.lat < 21.5 && safeStart.lng > 72.7) corridorKey = 'surat';
   }
 
-  // ROUTE 2: Bhavnagar <-> Ahmedabad (NH 751 Dholera Expressway)
-  const isAhmedabadEnd = safeEnd.lat > 22.8 && safeEnd.lat < 23.3 && safeEnd.lng > 72.3 && safeEnd.lng < 72.8;
-  const isAhmedabadStart = safeStart.lat > 22.8 && safeStart.lat < 23.3 && safeStart.lng > 72.3 && safeStart.lng < 72.8;
-  if (isBhavnagarStart && isAhmedabadEnd) {
-    return [
-      safeStart,
-      { lat: 21.8000, lng: 72.0900 }, // Nari
-      { lat: 22.2500, lng: 72.1800 }, // Dholera
-      { lat: 22.4000, lng: 72.1900 }, // Fedra
-      { lat: 22.7200, lng: 72.4400 }, // Dholka
-      { lat: 22.9800, lng: 72.5000 }, // Sarkhej
-      safeEnd
-    ];
-  }
-  if (isAhmedabadStart && isBhavnagarEnd) {
-    return [
-      safeStart,
-      { lat: 22.9800, lng: 72.5000 },
-      { lat: 22.7200, lng: 72.4400 },
-      { lat: 22.4000, lng: 72.1900 },
-      { lat: 22.2500, lng: 72.1800 },
-      { lat: 21.8000, lng: 72.0900 },
-      safeEnd
-    ];
+  if (corridorKey && HIGHWAY_CORRIDORS[corridorKey]) {
+    const rawWaypoints = HIGHWAY_CORRIDORS[corridorKey];
+    // If reverse trip to Bhavnagar, invert waypoint corridor
+    const corridor = isBhavnagarEnd ? [...rawWaypoints].reverse() : rawWaypoints;
+
+    // Filter waypoints strictly ahead of the driver towards safeEnd
+    const aheadWaypoints = corridor.filter(pt => {
+      const distFromStart = calculateDistanceKm(safeStart.lat, safeStart.lng, pt.lat, pt.lng);
+      const distToGoal = calculateDistanceKm(pt.lat, pt.lng, safeEnd.lat, safeEnd.lng);
+      // Waypoint must be closer to destination than driver's start, and not right under start
+      return distFromStart > 1.2 && distToGoal < (totalDistToGoal - 1.5);
+    });
+
+    if (aheadWaypoints.length > 0) {
+      return [safeStart, ...aheadWaypoints, safeEnd];
+    }
   }
 
-  // ROUTE 3: Bhavnagar <-> Vadodara (Dholera -> Vataman -> Tarapur -> Anand -> Vadodara)
-  const isVadodaraEnd = safeEnd.lng > 73.0 && safeEnd.lat > 22.0 && safeEnd.lat < 22.6;
-  const isVadodaraStart = safeStart.lng > 73.0 && safeStart.lat > 22.0 && safeStart.lat < 22.6;
-  if (isBhavnagarStart && isVadodaraEnd) {
-    return [
-      safeStart,
-      { lat: 22.2500, lng: 72.1800 }, // Dholera
-      { lat: 22.4300, lng: 72.2200 }, // Vataman Circle
-      { lat: 22.4900, lng: 72.7000 }, // Tarapur Cross Road
-      { lat: 22.5500, lng: 72.9500 }, // Anand Bypass
-      safeEnd
-    ];
-  }
-  if (isVadodaraStart && isBhavnagarEnd) {
-    return [
-      safeStart,
-      { lat: 22.5500, lng: 72.9500 },
-      { lat: 22.4900, lng: 72.7000 },
-      { lat: 22.4300, lng: 72.2200 },
-      { lat: 22.2500, lng: 72.1800 },
-      safeEnd
-    ];
-  }
-
-  // ROUTE 4: Bhavnagar <-> Surat (Dholera -> Vataman -> Tarapur -> Vasad -> Bharuch -> Surat)
-  const isSuratEnd = safeEnd.lng > 72.7 && safeEnd.lng < 73.0 && safeEnd.lat > 21.0 && safeEnd.lat < 21.4;
-  const isSuratStart = safeStart.lng > 72.7 && safeStart.lng < 73.0 && safeStart.lat > 21.0 && safeStart.lat < 21.4;
-  if (isBhavnagarStart && isSuratEnd) {
-    return [
-      safeStart,
-      { lat: 21.8000, lng: 72.0900 }, // Nari Chokdi
-      { lat: 22.2500, lng: 72.1800 }, // Dholera
-      { lat: 22.4300, lng: 72.2200 }, // Vataman Circle
-      { lat: 22.4900, lng: 72.7000 }, // Tarapur Cross Road
-      { lat: 22.3100, lng: 73.0500 }, // Vasad Bridge / NH 48
-      { lat: 21.7051, lng: 72.9959 }, // Bharuch Narmada Bridge
-      { lat: 21.6264, lng: 73.0034 }, // Ankleshwar Bypass
-      safeEnd
-    ];
-  }
-  if (isSuratStart && isBhavnagarEnd) {
-    return [
-      safeStart,
-      { lat: 21.6264, lng: 73.0034 },
-      { lat: 21.7051, lng: 72.9959 },
-      { lat: 22.3100, lng: 73.0500 },
-      { lat: 22.4900, lng: 72.7000 },
-      { lat: 22.4300, lng: 72.2200 },
-      { lat: 22.2500, lng: 72.1800 },
-      { lat: 21.8000, lng: 72.0900 },
-      safeEnd
-    ];
-  }
-
-  // Clean 5-point curved route interpolation
+  // Dynamic 5-point highway curvature interpolation for detours or unmapped routes
   const p1 = safeStart;
   const p5 = safeEnd;
   const latDiff = p5.lat - p1.lat;
   const lngDiff = p5.lng - p1.lng;
 
-  const p2 = { lat: p1.lat + latDiff * 0.25 + 0.002, lng: p1.lng + lngDiff * 0.25 - 0.001 };
-  const p3 = { lat: p1.lat + latDiff * 0.50 + 0.003, lng: p1.lng + lngDiff * 0.50 + 0.002 };
-  const p4 = { lat: p1.lat + latDiff * 0.75 + 0.001, lng: p1.lng + lngDiff * 0.75 - 0.001 };
+  const p2 = { lat: p1.lat + latDiff * 0.25 + 0.0015, lng: p1.lng + lngDiff * 0.25 - 0.001 };
+  const p3 = { lat: p1.lat + latDiff * 0.50 + 0.0025, lng: p1.lng + lngDiff * 0.50 + 0.0015 };
+  const p4 = { lat: p1.lat + latDiff * 0.75 + 0.001, lng: p1.lng + lngDiff * 0.75 - 0.0008 };
 
   return [p1, p2, p3, p4, p5];
 }

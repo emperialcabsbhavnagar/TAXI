@@ -427,7 +427,7 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
           {/* Leaflet Interactive Map */}
           <InteractiveMap
             center={activePickupPos || userCoords}
-            zoom={activeRide ? 11 : 15.5}
+            zoom={16}
             userLabel={activeRide ? (activeRide.pickup || "Pickup Point") : (isGpsActive ? "Your Live Spot" : "Pickup Spot")}
             destination={activeDestPos}
             activeDriverPos={activePickupPos}

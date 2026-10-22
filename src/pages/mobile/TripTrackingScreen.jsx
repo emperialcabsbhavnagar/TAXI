@@ -235,7 +235,7 @@ export default function TripTrackingScreen({ userCoords, pickupLoc, dropoffLoc, 
       <div className="full-homescreen-map-wrapper" style={{ height: '100%', width: '100%', position: 'absolute', top: 0, left: 0 }}>
         <InteractiveMap
           center={mapCenter}
-          zoom={13}
+          zoom={16}
           userLabel={actualPickup}
           destination={destPos}
           activeDriverPos={currentLivePos}
