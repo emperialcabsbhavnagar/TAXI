@@ -673,6 +673,37 @@ switch ($action) {
         } else {
             $id = $data['id'];
         }
+
+        // Idempotency guard: if this is a NEW inquiry ID but the same customer already has an
+        // identical pending booking created in the last 20 seconds, return that one instead of
+        // inserting a duplicate row (protects against double/triple submits from older app builds).
+        try {
+            $existsStmt = $pdo->prepare("SELECT 1 FROM inquiries WHERE id = :id LIMIT 1");
+            $existsStmt->execute([':id' => $id]);
+            $isNewInquiry = !$existsStmt->fetchColumn();
+            $dupPhone = trim((string)($data['customerPhone'] ?? ''));
+            if ($isNewInquiry && $dupPhone !== '') {
+                $dupStmt = $pdo->prepare("SELECT id FROM inquiries
+                    WHERE customerPhone = :phone AND pickup = :pickup AND dropoff = :dropoff
+                      AND vehicle = :vehicle AND tripType = :tripType AND LOWER(status) = 'pending'
+                      AND created_at >= (NOW() - INTERVAL 20 SECOND)
+                    ORDER BY created_at ASC LIMIT 1");
+                $dupStmt->execute([
+                    ':phone' => $dupPhone,
+                    ':pickup' => $data['pickup'] ?? '',
+                    ':dropoff' => $data['dropoff'] ?? '',
+                    ':vehicle' => $data['vehicle'] ?? 'Standard',
+                    ':tripType' => $data['tripType'] ?? 'One-Way'
+                ]);
+                $existingDupId = $dupStmt->fetchColumn();
+                if ($existingDupId) {
+                    echo json_encode(['success' => true, 'id' => $existingDupId, 'deduplicated' => true]);
+                    break;
+                }
+            }
+        } catch (Exception $e) {
+            // Never block a booking because the duplicate check failed
+        }
         $fare = is_numeric($data['fare'] ?? null) ? floatval($data['fare']) : 0.00;
         $origFare = is_numeric($data['originalFare'] ?? null) ? floatval($data['originalFare']) : $fare;
         $walletDisc = is_numeric($data['walletDiscountUsed'] ?? null) ? floatval($data['walletDiscountUsed']) : 0.00;
@@ -1840,42 +1871,179 @@ switch ($action) {
         break;
 
     case 'sendEmailOTP':
-        $otpEmail = trim($data['email'] ?? ($_GET['email'] ?? ''));
-        $otpCode = trim($data['code'] ?? ($_GET['code'] ?? ''));
-        if (empty($otpEmail) || !filter_var($otpEmail, FILTER_VALIDATE_EMAIL)) {
-            echo json_encode(['success' => false, 'error' => 'Valid email address required']);
+    case 'verifyEmailOTP':
+        // ── Secure server-side Email OTP ──────────────────────────────────────────
+        // The code is generated here, stored only as a bcrypt hash, and never returned
+        // to the client. Any client-supplied "code" is ignored.
+        $OTP_TTL = 300;            // code valid for 5 minutes
+        $OTP_MAX_ATTEMPTS = 5;     // wrong attempts before the code is invalidated
+        $OTP_RESEND_COOLDOWN = 30; // seconds between sends
+        $OTP_MAX_SENDS = 5;        // sends allowed per email per hour
+
+        $otpEmail = strtolower(trim((string)($data['email'] ?? ($_GET['email'] ?? ''))));
+        if ($otpEmail === '' || strlen($otpEmail) > 254 || !filter_var($otpEmail, FILTER_VALIDATE_EMAIL)) {
+            echo json_encode(['success' => false, 'errorCode' => 'invalid_email', 'error' => 'Please enter a valid email address.']);
             break;
         }
-        if (empty($otpCode)) {
-            $otpCode = str_pad(strval(random_int(100000, 999999)), 6, '0', STR_PAD_LEFT);
+
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS email_otps (
+                email VARCHAR(255) NOT NULL PRIMARY KEY,
+                code_hash VARCHAR(255) NOT NULL DEFAULT '',
+                expires_at INT NOT NULL DEFAULT 0,
+                attempts INT NOT NULL DEFAULT 0,
+                last_sent_at INT NOT NULL DEFAULT 0,
+                send_count INT NOT NULL DEFAULT 0,
+                window_start INT NOT NULL DEFAULT 0,
+                request_ip VARCHAR(64) DEFAULT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } catch (Exception $e) {
+            error_log('[EmailOTP] table init failed: ' . $e->getMessage());
+            echo json_encode(['success' => false, 'errorCode' => 'server_error', 'error' => 'Verification service is temporarily unavailable. Please try again shortly.']);
+            break;
         }
-        $bKey = getenv('BREVO_API_KEY') ?: str_rot13('kxrlfvo-n48oo93s876oppps80n1p901rpnqs5rr19n4r68p63438o1rqn1pp137onq9qrs8-o6dGDyWFlsFpsywn');
-        $ch = curl_init('https://api.brevo.com/v3/smtp/email');
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER => [
-                'api-key: ' . $bKey,
-                'Content-Type: application/json',
-                'Accept: application/json'
-            ],
-            CURLOPT_POSTFIELDS => json_encode([
-                'sender' => ['name' => 'EMPERIAL CABS', 'email' => 'emperialcabs@gmail.com'],
-                'to' => [['email' => $otpEmail]],
-                'subject' => "{$otpCode} is your EMPERIAL CABS verification code",
-                'textContent' => "Your EMPERIAL CABS verification code is: {$otpCode}. Valid for 5 minutes.",
-                'htmlContent' => "<div style=\"font-family:Arial,sans-serif;padding:24px;border:1px solid #e2e8f0;border-radius:16px;max-width:480px;background:#ffffff;margin:0 auto;\"><h2 style=\"color:#0f172a;margin-top:0;font-size:22px;\">EMPERIAL CABS</h2><p style=\"color:#475569;font-size:15px;\">Your 6-digit security verification code is:</p><div style=\"font-size:36px;font-weight:800;letter-spacing:6px;color:#10b981;background:#f0fdf4;border:1px solid #10b981;padding:18px;border-radius:12px;text-align:center;margin:20px 0;\">{$otpCode}</div><p style=\"color:#94a3b8;font-size:13px;\">This code will expire in 5 minutes. Do not share it with anyone.</p></div>"
-            ], JSON_UNESCAPED_SLASHES),
-            CURLOPT_TIMEOUT => 12
-        ]);
-        $bResp = curl_exec($ch);
-        $bCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        if ($bCode >= 200 && $bCode < 300) {
-            echo json_encode(['success' => true, 'via' => 'brevo_api', 'code' => $otpCode]);
+
+        $now = time();
+        $rowStmt = $pdo->prepare("SELECT * FROM email_otps WHERE email = :email LIMIT 1");
+        $rowStmt->execute([':email' => $otpEmail]);
+        $otpRow = $rowStmt->fetch();
+
+        if ($action === 'verifyEmailOTP') {
+            $inputCode = preg_replace('/\D/', '', (string)($data['code'] ?? ''));
+            if (strlen($inputCode) !== 6) {
+                echo json_encode(['success' => false, 'errorCode' => 'invalid_format', 'error' => 'Please enter the full 6-digit code.']);
+                break;
+            }
+            if (!$otpRow || $otpRow['code_hash'] === '') {
+                echo json_encode(['success' => false, 'errorCode' => 'no_active_code', 'error' => 'No active code for this email. Please request a new code.']);
+                break;
+            }
+            if ($now > intval($otpRow['expires_at'])) {
+                $pdo->prepare("UPDATE email_otps SET code_hash = '', attempts = 0 WHERE email = :email")->execute([':email' => $otpEmail]);
+                echo json_encode(['success' => false, 'errorCode' => 'expired', 'error' => 'This code has expired. Please request a new code.']);
+                break;
+            }
+            if (intval($otpRow['attempts']) >= $OTP_MAX_ATTEMPTS) {
+                $pdo->prepare("UPDATE email_otps SET code_hash = '' WHERE email = :email")->execute([':email' => $otpEmail]);
+                echo json_encode(['success' => false, 'errorCode' => 'too_many_attempts', 'error' => 'Too many incorrect attempts. Please request a new code.']);
+                break;
+            }
+            if (password_verify($inputCode, $otpRow['code_hash'])) {
+                // One-time use: clear the code but keep send counters for rate limiting
+                $pdo->prepare("UPDATE email_otps SET code_hash = '', attempts = 0, expires_at = 0 WHERE email = :email")->execute([':email' => $otpEmail]);
+                echo json_encode(['success' => true, 'email' => $otpEmail]);
+                break;
+            }
+            $newAttempts = intval($otpRow['attempts']) + 1;
+            $attemptsLeft = max(0, $OTP_MAX_ATTEMPTS - $newAttempts);
+            if ($attemptsLeft === 0) {
+                $pdo->prepare("UPDATE email_otps SET attempts = :a, code_hash = '' WHERE email = :email")->execute([':a' => $newAttempts, ':email' => $otpEmail]);
+                echo json_encode(['success' => false, 'errorCode' => 'too_many_attempts', 'attemptsLeft' => 0, 'error' => 'Too many incorrect attempts. Please request a new code.']);
+            } else {
+                $pdo->prepare("UPDATE email_otps SET attempts = :a WHERE email = :email")->execute([':a' => $newAttempts, ':email' => $otpEmail]);
+                echo json_encode(['success' => false, 'errorCode' => 'invalid_code', 'attemptsLeft' => $attemptsLeft, 'error' => "Incorrect code. {$attemptsLeft} attempt" . ($attemptsLeft === 1 ? '' : 's') . " left."]);
+            }
+            break;
+        }
+
+        // ── sendEmailOTP ──
+        if ($otpRow) {
+            $sinceLast = $now - intval($otpRow['last_sent_at']);
+            if ($sinceLast < $OTP_RESEND_COOLDOWN) {
+                $wait = $OTP_RESEND_COOLDOWN - $sinceLast;
+                echo json_encode(['success' => false, 'errorCode' => 'cooldown', 'retryAfter' => $wait, 'error' => "Please wait {$wait} seconds before requesting another code."]);
+                break;
+            }
+            $inWindow = ($now - intval($otpRow['window_start'])) < 3600;
+            if ($inWindow && intval($otpRow['send_count']) >= $OTP_MAX_SENDS) {
+                $wait = 3600 - ($now - intval($otpRow['window_start']));
+                $mins = max(1, (int)ceil($wait / 60));
+                echo json_encode(['success' => false, 'errorCode' => 'rate_limited', 'retryAfter' => $wait, 'error' => "Too many code requests. Please try again in {$mins} minute" . ($mins === 1 ? '' : 's') . "."]);
+                break;
+            }
+            $sendCount = $inWindow ? intval($otpRow['send_count']) + 1 : 1;
+            $windowStart = $inWindow ? intval($otpRow['window_start']) : $now;
         } else {
-            echo json_encode(['success' => false, 'error' => 'Delivery failed', 'brevo_code' => $bCode, 'response' => $bResp]);
+            $sendCount = 1;
+            $windowStart = $now;
         }
+
+        $otpCode = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $reqIp = substr((string)($_SERVER['HTTP_X_FORWARDED_FOR'] ?? ($_SERVER['REMOTE_ADDR'] ?? '')), 0, 64);
+
+        $pdo->prepare("INSERT INTO email_otps (email, code_hash, expires_at, attempts, last_sent_at, send_count, window_start, request_ip)
+                       VALUES (:email, :hash, :exp, 0, :now, :cnt, :ws, :ip)
+                       ON DUPLICATE KEY UPDATE code_hash = VALUES(code_hash), expires_at = VALUES(expires_at), attempts = 0,
+                         last_sent_at = VALUES(last_sent_at), send_count = VALUES(send_count), window_start = VALUES(window_start), request_ip = VALUES(request_ip)")
+            ->execute([
+                ':email' => $otpEmail,
+                ':hash' => password_hash($otpCode, PASSWORD_DEFAULT),
+                ':exp' => $now + $OTP_TTL,
+                ':now' => $now,
+                ':cnt' => $sendCount,
+                ':ws' => $windowStart,
+                ':ip' => $reqIp
+            ]);
+
+        $otpSubject = "{$otpCode} is your EMPERIAL CABS verification code";
+        $otpText = "Your EMPERIAL CABS verification code is: {$otpCode}. It is valid for 5 minutes. Never share this code with anyone.";
+        $otpHtml = "<div style=\"font-family:Arial,sans-serif;padding:24px;border:1px solid #e2e8f0;border-radius:16px;max-width:480px;background:#ffffff;margin:0 auto;\"><h2 style=\"color:#0f172a;margin-top:0;font-size:22px;\">EMPERIAL CABS</h2><p style=\"color:#475569;font-size:15px;\">Your 6-digit verification code is:</p><div style=\"font-size:36px;font-weight:800;letter-spacing:6px;color:#10b981;background:#f0fdf4;border:1px solid #10b981;padding:18px;border-radius:12px;text-align:center;margin:20px 0;\">{$otpCode}</div><p style=\"color:#94a3b8;font-size:13px;\">This code expires in 5 minutes. If you did not request it, you can ignore this email. Never share this code with anyone.</p></div>";
+
+        $delivered = false;
+        $deliveredVia = '';
+
+        // 1. Brevo transactional API (set BREVO_API_KEY in the server environment to override the fallback key)
+        $bKey = getenv('BREVO_API_KEY') ?: str_rot13('kxrlfvo-n48oo93s876oppps80n1p901rpnqs5rr19n4r68p63438o1rqn1pp137onq9qrs8-o6dGDyWFlsFpsywn');
+        if ($bKey) {
+            $ch = curl_init('https://api.brevo.com/v3/smtp/email');
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER => ['api-key: ' . $bKey, 'Content-Type: application/json', 'Accept: application/json'],
+                CURLOPT_POSTFIELDS => json_encode([
+                    'sender' => ['name' => 'EMPERIAL CABS', 'email' => 'emperialcabs@gmail.com'],
+                    'to' => [['email' => $otpEmail]],
+                    'subject' => $otpSubject,
+                    'textContent' => $otpText,
+                    'htmlContent' => $otpHtml
+                ], JSON_UNESCAPED_SLASHES),
+                CURLOPT_TIMEOUT => 12
+            ]);
+            $bResp = curl_exec($ch);
+            $bCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $bErr = curl_error($ch);
+            curl_close($ch);
+            if ($bCode >= 200 && $bCode < 300) {
+                $delivered = true;
+                $deliveredVia = 'brevo_api';
+            } else {
+                // Logged server-side only — provider details are never exposed to the client
+                error_log("[EmailOTP] Brevo failed (HTTP {$bCode}): " . substr((string)$bResp, 0, 300) . ' ' . $bErr);
+            }
+        }
+
+        // 2. Fallback: Hostinger PHP mail() using a domain sender (spoofing @gmail.com gets rejected by DMARC)
+        if (!$delivered) {
+            $mailHeaders = "MIME-Version: 1.0\r\n"
+                . "Content-type: text/html; charset=UTF-8\r\n"
+                . "From: EMPERIAL CABS <noreply@emperialcabs.com>\r\n"
+                . "Reply-To: emperialcabs@gmail.com\r\n";
+            if (@mail($otpEmail, $otpSubject, $otpHtml, $mailHeaders)) {
+                $delivered = true;
+                $deliveredVia = 'php_mail';
+            } else {
+                error_log('[EmailOTP] PHP mail() fallback failed for ' . $otpEmail);
+            }
+        }
+
+        if (!$delivered) {
+            // Invalidate the unsent code but keep rate-limit counters
+            $pdo->prepare("UPDATE email_otps SET code_hash = '', expires_at = 0 WHERE email = :email")->execute([':email' => $otpEmail]);
+            echo json_encode(['success' => false, 'errorCode' => 'delivery_failed', 'error' => 'We could not send the verification email right now. Please try again in a moment or continue with Google.']);
+            break;
+        }
+
+        echo json_encode(['success' => true, 'via' => $deliveredVia, 'expiresIn' => $OTP_TTL, 'resendIn' => $OTP_RESEND_COOLDOWN]);
         break;
 
     default:

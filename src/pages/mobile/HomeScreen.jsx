@@ -762,7 +762,7 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
               placeholder="Search street, locality or city..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ padding: '14px 16px', borderRadius: '14px', border: '1.5px solid #CBD5E1', outline: 'none', fontFamily: 'Space Grotesk', fontSize: '15px', fontWeight: '600' }}
+              style={{ padding: '14px 16px', borderRadius: '14px', border: '1.5px solid #CBD5E1', outline: 'none', fontFamily: 'Space Grotesk', fontSize: '16px', fontWeight: '600' }}
             />
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', maxHeight: '300px' }}>

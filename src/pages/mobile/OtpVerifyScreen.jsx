@@ -52,7 +52,8 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
   const [resending, setResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState('');
   const [error, setError] = useState('');
-  const [countdown, setCountdown] = useState(60);
+  const initialCooldown = Number(localStorage.getItem('cabsy_email_otp_resend_in') || 30);
+  const [countdown, setCountdown] = useState(initialCooldown > 0 ? initialCooldown : 30);
   const inputRefs = useRef([]);
 
   const codeLength = 6;
@@ -68,12 +69,17 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
 
     try {
       if (targetEmail) {
-        await sendEmailOTP(targetEmail);
+        const res = await sendEmailOTP(targetEmail);
+        if (res.success) {
+          setResendSuccess('A fresh 6-digit verification code has been sent to your email.');
+          setCountdown(res.resendIn || 30);
+          setCode(Array(codeLength).fill(''));
+          if (inputRefs.current[0]) inputRefs.current[0].focus();
+        } else {
+          setError(res.error || 'Failed to resend code. Please try again.');
+          if (res.retryAfter) setCountdown(res.retryAfter);
+        }
       }
-      setResendSuccess('A fresh 6-digit verification code has been sent to your email.');
-      setCountdown(60);
-      setCode(Array(codeLength).fill(''));
-      if (inputRefs.current[0]) inputRefs.current[0].focus();
     } catch (e) {
       console.warn('[Resend OTP Error]:', e);
       setError('Failed to resend code. Please try again.');
@@ -149,7 +155,7 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
     setError('');
 
     try {
-      const result = verifyEmailOTP(targetEmail, otp);
+      const result = await verifyEmailOTP(targetEmail, otp);
       if (result.success) {
         if (onNext) {
           onNext({

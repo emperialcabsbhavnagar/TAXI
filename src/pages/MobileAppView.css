@@ -44,6 +44,8 @@
   will-change: transform;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   transform: translateZ(0);
   -webkit-transform: translateZ(0);
   backface-visibility: hidden;

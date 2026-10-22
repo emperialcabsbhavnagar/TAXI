@@ -407,73 +407,94 @@ export const verifyPhoneOTP = async () => ({
 
 /**
  * Generate a 6-digit OTP for email verification.
- * Stores the code in sessionStorage with 5-minute expiry.
- * Returns { success, code } — code is returned so the UI can display it for testing.
+/**
+ * Secure Server-Side Email OTP Service
+ * Sends an email containing a 6-digit verification code generated, hashed, and managed by db.php.
+ * The code is never exposed to the client response.
  */
 export const sendEmailOTP = async (email) => {
   if (!email || !email.includes('@')) {
-    return { success: false, error: 'Invalid email address' };
+    return { success: false, error: 'Please enter a valid email address.' };
   }
   const cleanEmail = email.toLowerCase().trim();
-  const code = String(Math.floor(100000 + Math.random() * 900000));
-  const expiry = Date.now() + 5 * 60 * 1000; // 5 minutes
+  const endpoint = 'https://emperialcabs.com/api/db.php?action=sendEmailOTP';
 
   try {
-    sessionStorage.setItem('EMPERIAL CABS_email_otp', JSON.stringify({
-      email: cleanEmail,
-      code,
-      expiry
-    }));
-  } catch (e) {}
-
-  const payload = { email: cleanEmail, code };
-
-  // Single-delivery: try primary endpoint, fall back only if it fails (prevents duplicate OTP emails)
-  const endpoints = [
-    'https://emperialcabs.com/api/send-email-otp.php',
-    'https://emperialcabs.com/api/db.php?action=sendEmailOTP'
-  ];
-
-  for (const ep of endpoints) {
-    try {
-      const res = await fetch(ep, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, action: 'sendEmailOTP' })
-      });
-      const data = await res.json().catch(() => null);
-      if (data && data.success) {
-        console.log('[Email OTP] Delivered via', data.via || ep);
-        break;
-      }
-    } catch (e) {
-      console.warn('[Email OTP] Endpoint failed:', ep, e);
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ action: 'sendEmailOTP', data: { email: cleanEmail } })
+    });
+    const data = await res.json().catch(() => null);
+    if (data && data.success) {
+      return {
+        success: true,
+        email: cleanEmail,
+        resendIn: data.resendIn || 30,
+        expiresIn: data.expiresIn || 300
+      };
     }
+    return {
+      success: false,
+      error: data?.error || 'Unable to deliver verification code. Please check your email or try again shortly.',
+      retryAfter: data?.retryAfter
+    };
+  } catch (err) {
+    console.warn('[sendEmailOTP] Network error:', err);
+    return {
+      success: false,
+      error: 'Network connection issue. Please check your internet and try again.'
+    };
   }
-
-  return { success: true, code };
 };
 
 /**
- * Verify a 6-digit OTP code for email authentication.
- * Returns { success, error? }
+ * Verify a 6-digit OTP code against the server-side bcrypt hash in db.php.
+ * Returns { success, error?, attemptsLeft? }
  */
-export const verifyEmailOTP = (email, inputCode) => {
+export const verifyEmailOTP = async (email, inputCode) => {
+  const cleanEmail = String(email || '').toLowerCase().trim();
+  const cleanCode = String(inputCode || '').replace(/\D/g, '').trim();
+
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    return { success: false, error: 'Email address is missing or invalid.' };
+  }
+  if (cleanCode.length !== 6) {
+    return { success: false, error: 'Please enter the complete 6-digit code.' };
+  }
+
+  const endpoint = 'https://emperialcabs.com/api/db.php?action=verifyEmailOTP';
+
   try {
-    const raw = sessionStorage.getItem('EMPERIAL CABS_email_otp');
-    if (!raw) return { success: true };
-    const stored = JSON.parse(raw);
-    const cleanInput = String(inputCode).trim();
-    if (Date.now() > stored.expiry) {
-      sessionStorage.removeItem('EMPERIAL CABS_email_otp');
-      return { success: true };
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        action: 'verifyEmailOTP',
+        data: { email: cleanEmail, code: cleanCode }
+      })
+    });
+    const data = await res.json().catch(() => null);
+    if (data && data.success) {
+      return { success: true, email: cleanEmail };
     }
-    if (cleanInput === String(stored.code) || cleanInput.length === 6) {
-      sessionStorage.removeItem('EMPERIAL CABS_email_otp');
-      return { success: true };
-    }
-    return { success: false, error: 'Please enter a valid 6-digit verification code.' };
-  } catch (e) {
-    return { success: true };
+    return {
+      success: false,
+      error: data?.error || 'Invalid verification code. Please try again.',
+      attemptsLeft: data?.attemptsLeft,
+      errorCode: data?.errorCode
+    };
+  } catch (err) {
+    console.warn('[verifyEmailOTP] Network error:', err);
+    return {
+      success: false,
+      error: 'Unable to connect to verification server. Please try again.'
+    };
   }
 };

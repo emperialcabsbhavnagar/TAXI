@@ -41,6 +41,9 @@ export default function MobileAppView() {
   // Short Trip Login Promo Poster Modal State
   const [showShortTripPoster, setShowShortTripPoster] = useState(false);
 
+  // Guards against the same ride request being submitted more than once (double taps / gesture repeats)
+  const lastRideRequestRef = useRef({ key: '', at: 0 });
+
   // User Input & Booking States
   const [selectedGoogleAccount, setSelectedGoogleAccount] = useState(null);
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -1080,6 +1083,20 @@ export default function MobileAppView() {
 
   // Dispatch Admin Notification & Save to Central DB when Ride is Requested
   const handleRequestRide = (carObj) => {
+    // Drop identical submissions arriving within 10 seconds (prevents duplicate inquiries)
+    const requestKey = [
+      carObj?.pickup || pickupLoc,
+      carObj?.dropoff || dropoffLoc,
+      carObj?.name || '',
+      carObj?.totalFareNum || carObj?.fare || '',
+      tripType
+    ].join('|');
+    const nowTs = Date.now();
+    if (lastRideRequestRef.current.key === requestKey && nowTs - lastRideRequestRef.current.at < 10000) {
+      return;
+    }
+    lastRideRequestRef.current = { key: requestKey, at: nowTs };
+
     try {
       const savedInquiries = localStorage.getItem('cabsy_inquiries');
       const savedProfile = localStorage.getItem('cabsy_user_profile');
@@ -1175,8 +1192,7 @@ export default function MobileAppView() {
     // NOTE: Customer self-notification is intentionally suppressed here.
     // Customer will only receive notifications when Admin acts (e.g. driver assigned, trip started).
 
-    // 3. Save directly to Hostinger MySQL Database
-    saveInquiryToMySQL(newInquiry).catch(e => console.warn('MySQL inquiry save failed:', e));
+    // 3. Customer profile sync (inquiry itself is already synced to MySQL inside db.saveInquiry)
     saveCustomerToMySQL(userProf).catch(e => console.warn('MySQL customer save failed:', e));
     registerPushNotifications('customer', newInquiry.customerPhone, newInquiry.customerEmail).catch(() => {});
     syncNativeCustomerTrip(newInquiry.id, newInquiry.customerPhone, newInquiry.customerEmail).catch(() => {});

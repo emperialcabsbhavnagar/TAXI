@@ -239,6 +239,9 @@ export default function SeatScheduleScreen({
   const [isDragging, setIsDragging] = useState(false);
   const [isConfirmed, setIsConfirmed] = useState(false);
   const sliderRef = React.useRef(null);
+  // Synchronous lock: React state updates are async, so multiple touchmove / click events
+  // fired in the same gesture could each schedule a booking. A ref blocks all but the first.
+  const submitLockRef = React.useRef(false);
   const handleWidth = 56;
 
   const userProfile = React.useMemo(() => {
@@ -261,6 +264,8 @@ export default function SeatScheduleScreen({
   const netFare = Math.max(0, baseFare - discountAmount);
 
   const handleConfirmBooking = () => {
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
     const isRound = isCustomMode || tripType === 'round-trip';
     const payload = {
       ...activeCarObj,
@@ -288,7 +293,7 @@ export default function SeatScheduleScreen({
   };
 
   const triggerSwipeConfirm = () => {
-    if (isConfirmed) return;
+    if (isConfirmed || submitLockRef.current) return;
     if (sliderRef.current) {
       const maxDrag = sliderRef.current.getBoundingClientRect().width - handleWidth;
       setDragX(maxDrag);
@@ -310,7 +315,7 @@ export default function SeatScheduleScreen({
   };
 
   const onMoveDrag = (clientX) => {
-    if (!isDragging || isConfirmed || !sliderRef.current) return;
+    if (!isDragging || isConfirmed || submitLockRef.current || !sliderRef.current) return;
     const rect = sliderRef.current.getBoundingClientRect();
     const maxDrag = rect.width - handleWidth;
     const newX = Math.max(0, Math.min(clientX - rect.left - handleWidth / 2, maxDrag));
@@ -535,7 +540,7 @@ export default function SeatScheduleScreen({
                     padding: '10px 12px',
                     outline: 'none',
                     fontFamily: 'Space Grotesk, sans-serif',
-                    fontSize: '14px',
+                    fontSize: '16px',
                     fontWeight: '700',
                     color: '#0F172A',
                     boxSizing: 'border-box'
@@ -564,7 +569,7 @@ export default function SeatScheduleScreen({
                     padding: '10px 12px',
                     outline: 'none',
                     fontFamily: 'Space Grotesk, sans-serif',
-                    fontSize: '14px',
+                    fontSize: '16px',
                     fontWeight: '700',
                     color: '#0F172A',
                     boxSizing: 'border-box'

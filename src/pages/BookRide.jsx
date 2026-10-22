@@ -570,8 +570,8 @@ export default function BookRide() {
         date: pickupDate
       };
 
+      // db.saveInquiry also syncs the inquiry to MySQL — do not save it a second time
       db.saveInquiry(newInquiry);
-      saveInquiryToMySQL(newInquiry).catch(e => console.warn('MySQL book ride save failed:', e));
 
       notifyAdmin({
         type: 'short_trip',
@@ -637,8 +637,8 @@ export default function BookRide() {
       date: `${pickupDate} ${pickupTime}` + (isCustomMode && noOfDays > 1 ? ` (${noOfDays} Days)` : '')
     };
 
+    // db.saveInquiry also syncs the inquiry to MySQL — do not save it a second time
     db.saveInquiry(newInquiry);
-    saveInquiryToMySQL(newInquiry).catch(e => console.warn('MySQL book ride save failed:', e));
 
     const adminFareText = isCustomMode 
       ? `₹${currentVehicle.rate}/km as per ${currentVehicle.name}` 

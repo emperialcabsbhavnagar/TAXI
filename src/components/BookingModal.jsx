@@ -182,15 +182,15 @@ export default function BookingModal({ isOpen, onClose, initialData }) {
       driver: 'Unassigned',
       date: new Date().toLocaleString('en-IN')
     };
-    db.saveInquiry(newInq);
-    saveInquiryToMySQL(newInq).catch(e => console.warn('MySQL booking modal save failed:', e));
+    // db.saveInquiry assigns the inquiry ID and syncs it to MySQL — save exactly once
+    const savedInq = db.saveInquiry(newInq);
 
     // Send Phone/Desktop Push Notification & Bell Notif to Admin
     notifyAdmin({
       type: 'inquiry',
       title: 'New Ride Inquiry Received',
-      body: `New booking for ${newInq.customerName}: ${newInq.pickup} -> ${newInq.dropoff} (₹${parseFloat(estimatedFare).toFixed(2)})`,
-      extraData: { inquiryId: newInq.id }
+      body: `New booking for ${savedInq.customerName}: ${savedInq.pickup} -> ${savedInq.dropoff} (₹${parseFloat(estimatedFare).toFixed(2)})`,
+      extraData: { inquiryId: savedInq.id }
     });
 
     setSubmitted(true);

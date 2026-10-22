@@ -995,7 +995,7 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
                     type="text"
                     value={editForm.pickup || editForm.pickupLoc || ''}
                     onChange={(e) => setEditForm(prev => ({ ...prev, pickup: e.target.value, pickupLoc: e.target.value }))}
-                    style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1.5px solid #CBD5E1', fontFamily: 'Space Grotesk', fontWeight: '700', boxSizing: 'border-box' }}
+                    style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1.5px solid #CBD5E1', fontFamily: 'Space Grotesk', fontSize: '16px', fontWeight: '700', boxSizing: 'border-box' }}
                   />
                 </div>
 
@@ -1005,7 +1005,7 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
                     type="text"
                     value={editForm.dropoff || editForm.dropoffLoc || ''}
                     onChange={(e) => setEditForm(prev => ({ ...prev, dropoff: e.target.value, dropoffLoc: e.target.value }))}
-                    style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1.5px solid #CBD5E1', fontFamily: 'Space Grotesk', fontWeight: '700', boxSizing: 'border-box' }}
+                    style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1.5px solid #CBD5E1', fontFamily: 'Space Grotesk', fontSize: '16px', fontWeight: '700', boxSizing: 'border-box' }}
                   />
                 </div>
 
@@ -1016,7 +1016,7 @@ export default function RidesTabScreen({ activeTab, setActiveTab, onBookNewRide 
                     <select
                       value={editForm.scheduledDate || 'Today, 10 Aug 2026'}
                       onChange={(e) => setEditForm(prev => ({ ...prev, scheduledDate: e.target.value }))}
-                      style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1.5px solid #CBD5E1', fontFamily: 'Space Grotesk', fontWeight: '700', background: '#FFFFFF', color: '#0F172A', boxSizing: 'border-box' }}
+                      style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1.5px solid #CBD5E1', fontFamily: 'Space Grotesk', fontSize: '16px', fontWeight: '700', background: '#FFFFFF', color: '#0F172A', boxSizing: 'border-box' }}
                     >
                       {["Today, 10 Aug 2026", "Tomorrow, 11 Aug 2026", "Wed, 12 Aug 2026", "Thu, 13 Aug 2026", "Fri, 14 Aug 2026", "Sat, 15 Aug 2026"].map(d => (
                         <option key={d} value={d}>{d}</option>

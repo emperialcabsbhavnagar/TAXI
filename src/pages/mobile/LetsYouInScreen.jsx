@@ -77,9 +77,10 @@ export default function LetsYouInScreen({
         if (setAuthMethod) setAuthMethod('email');
         if (setAuthEmail) setAuthEmail(cleanEmail);
         localStorage.setItem('cabsy_user_email_otp_target', cleanEmail);
+        localStorage.setItem('cabsy_email_otp_resend_in', String(result.resendIn || 30));
         if (onNext) onNext();
       } else {
-        setAuthError(result.error || 'Failed to send verification code to email.');
+        setAuthError(result.error || 'Failed to send verification code. Please try again.');
       }
     } catch (e) {
       console.warn('Email OTP error:', e);
@@ -162,7 +163,7 @@ export default function LetsYouInScreen({
                 outline: 'none',
                 width: '100%',
                 fontFamily: 'Space Grotesk, sans-serif',
-                fontSize: '15px',
+                fontSize: '16px',
                 fontWeight: '600',
                 color: '#0F172A'
               }}

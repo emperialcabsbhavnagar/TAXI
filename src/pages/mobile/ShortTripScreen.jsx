@@ -1136,7 +1136,7 @@ export default function ShortTripScreen({ activeTab, setActiveTab }) {
                     border: 'none',
                     background: 'transparent',
                     outline: 'none',
-                    fontSize: '14px',
+                    fontSize: '16px',
                     fontWeight: 700,
                     color: '#0F172A'
                   }}

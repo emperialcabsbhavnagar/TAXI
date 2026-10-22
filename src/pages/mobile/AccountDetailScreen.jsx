@@ -322,7 +322,7 @@ export default function AccountDetailScreen({ onBack, onSave, isCreateMode = fal
               placeholder="e.g. Ramesh Patel"
               value={profile.name}
               onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-              style={{ width: '100%', boxSizing: 'border-box', padding: '15px 18px', borderRadius: '16px', border: '1.5px solid #CBD5E1', fontSize: '15px', fontFamily: 'Space Grotesk, sans-serif', outline: 'none', background: '#FFFFFF', color: '#0F172A', transition: 'border-color 0.2s' }}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '15px 18px', borderRadius: '16px', border: '1.5px solid #CBD5E1', fontSize: '16px', fontFamily: 'Space Grotesk, sans-serif', outline: 'none', background: '#FFFFFF', color: '#0F172A', transition: 'border-color 0.2s' }}
             />
           </div>
 
@@ -343,7 +343,7 @@ export default function AccountDetailScreen({ onBack, onSave, isCreateMode = fal
               placeholder="Enter 10-digit mobile number"
               value={profile.phone}
               onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-              style={{ width: '100%', boxSizing: 'border-box', padding: '15px 18px', borderRadius: '16px', border: '1.5px solid #CBD5E1', fontSize: '15px', fontFamily: 'Space Grotesk, sans-serif', outline: 'none', background: isPhoneVerified ? '#F8FAFC' : '#FFFFFF', color: '#0F172A' }}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '15px 18px', borderRadius: '16px', border: '1.5px solid #CBD5E1', fontSize: '16px', fontFamily: 'Space Grotesk, sans-serif', outline: 'none', background: isPhoneVerified ? '#F8FAFC' : '#FFFFFF', color: '#0F172A' }}
             />
           </div>
 
@@ -363,7 +363,7 @@ export default function AccountDetailScreen({ onBack, onSave, isCreateMode = fal
               placeholder="e.g. name@example.com"
               value={profile.email}
               onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-              style={{ width: '100%', boxSizing: 'border-box', padding: '15px 18px', borderRadius: '16px', border: '1.5px solid #CBD5E1', fontSize: '15px', fontFamily: 'Space Grotesk, sans-serif', outline: 'none', background: isEmailVerified ? '#F8FAFC' : '#FFFFFF', color: '#0F172A' }}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '15px 18px', borderRadius: '16px', border: '1.5px solid #CBD5E1', fontSize: '16px', fontFamily: 'Space Grotesk, sans-serif', outline: 'none', background: isEmailVerified ? '#F8FAFC' : '#FFFFFF', color: '#0F172A' }}
             />
           </div>
 
@@ -375,7 +375,7 @@ export default function AccountDetailScreen({ onBack, onSave, isCreateMode = fal
                 placeholder="e.g. 28"
                 value={profile.age}
                 onChange={(e) => setProfile({ ...profile, age: e.target.value })}
-                style={{ width: '100%', boxSizing: 'border-box', padding: '15px 18px', borderRadius: '16px', border: '1.5px solid #CBD5E1', fontSize: '15px', fontFamily: 'Space Grotesk, sans-serif', outline: 'none', background: '#FFFFFF', color: '#0F172A' }}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '15px 18px', borderRadius: '16px', border: '1.5px solid #CBD5E1', fontSize: '16px', fontFamily: 'Space Grotesk, sans-serif', outline: 'none', background: '#FFFFFF', color: '#0F172A' }}
               />
             </div>
             <div>
@@ -385,7 +385,7 @@ export default function AccountDetailScreen({ onBack, onSave, isCreateMode = fal
                 placeholder="e.g. Business"
                 value={profile.profession}
                 onChange={(e) => setProfile({ ...profile, profession: e.target.value })}
-                style={{ width: '100%', boxSizing: 'border-box', padding: '15px 18px', borderRadius: '16px', border: '1.5px solid #CBD5E1', fontSize: '15px', fontFamily: 'Space Grotesk, sans-serif', outline: 'none', background: '#FFFFFF', color: '#0F172A' }}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '15px 18px', borderRadius: '16px', border: '1.5px solid #CBD5E1', fontSize: '16px', fontFamily: 'Space Grotesk, sans-serif', outline: 'none', background: '#FFFFFF', color: '#0F172A' }}
               />
             </div>
           </div>
@@ -397,7 +397,7 @@ export default function AccountDetailScreen({ onBack, onSave, isCreateMode = fal
               placeholder="e.g. Bhavnagar, Gujarat"
               value={profile.area}
               onChange={(e) => setProfile({ ...profile, area: e.target.value })}
-              style={{ width: '100%', boxSizing: 'border-box', padding: '15px 18px', borderRadius: '16px', border: '1.5px solid #CBD5E1', fontSize: '15px', fontFamily: 'Space Grotesk, sans-serif', outline: 'none', background: '#FFFFFF', color: '#0F172A' }}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '15px 18px', borderRadius: '16px', border: '1.5px solid #CBD5E1', fontSize: '16px', fontFamily: 'Space Grotesk, sans-serif', outline: 'none', background: '#FFFFFF', color: '#0F172A' }}
             />
           </div>
 

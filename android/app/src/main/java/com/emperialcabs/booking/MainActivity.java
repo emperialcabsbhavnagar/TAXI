@@ -8,6 +8,8 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -84,5 +86,35 @@ public class MainActivity extends BridgeActivity {
 
         // Immediately start background notification receiver loop
         TripNotificationReceiver.scheduleNextCheck(this, 3);
+
+        // Lock WebView textZoom and disable viewport scaling on all device models
+        lockWebViewScaling();
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        lockWebViewScaling();
+    }
+
+    private void lockWebViewScaling() {
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            WebView webView = getBridge().getWebView();
+            webView.post(() -> {
+                try {
+                    WebSettings settings = webView.getSettings();
+                    if (settings != null) {
+                        // Prevent Android system font scale (e.g. 115%-140% on Samsung/Xiaomi/Vivo/Oppo)
+                        // from blowing up web typography and breaking responsive layouts
+                        settings.setTextZoom(100);
+                        settings.setSupportZoom(false);
+                        settings.setBuiltInZoomControls(false);
+                        settings.setDisplayZoomControls(false);
+                        settings.setUseWideViewPort(true);
+                        settings.setLoadWithOverviewMode(true);
+                    }
+                } catch (Exception ignored) {}
+            });
+        }
     }
 }

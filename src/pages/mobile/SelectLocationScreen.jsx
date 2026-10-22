@@ -1062,7 +1062,7 @@ export default function SelectLocationScreen({
                             borderRadius: '12px',
                             border: '1.5px solid #CBD5E1',
                             fontFamily: 'Space Grotesk, sans-serif',
-                            fontSize: '13px',
+                            fontSize: '16px',
                             fontWeight: '600',
                             color: '#0F172A',
                             boxSizing: 'border-box'
