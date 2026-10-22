@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import InteractiveMap from '../../components/InteractiveMap';
 import BottomNavBar from '../../components/BottomNavBar';
-import { getCoordsForPlace, generateRoutePolyline, calculateDistanceKm } from '../../utils/locationCoords';
+import { getCoordsForPlace, generateRoutePolyline, calculateDistanceKm, estimateEtaMins } from '../../utils/locationCoords';
 import { loadAllInquiriesFromMySQL, updateInquiryStatusInMySQL } from '../../services/mysqlService';
 import { sendSystemPushNotification } from '../../services/notificationEngine';
 import { Geolocation } from '@capacitor/geolocation';
@@ -147,7 +147,7 @@ export default function TripTrackingScreen({ userCoords, pickupLoc, dropoffLoc, 
   const realDistKmNum = calculateDistanceKm(currentLivePos.lat, currentLivePos.lng, destPos.lat, destPos.lng);
   const displayDistKm = realDistKmNum > 0 ? realDistKmNum.toFixed(1) : "0.0";
   
-  const totalMinsLeft = Math.max(1, Math.round(realDistKmNum * 1.5));
+  const totalMinsLeft = Math.max(1, estimateEtaMins(realDistKmNum));
   const hoursLeft = Math.floor(totalMinsLeft / 60);
   const minsLeft = totalMinsLeft % 60;
   const etaTimeStr = hoursLeft > 0 ? `${hoursLeft}h ${minsLeft}m` : `${minsLeft}m`;

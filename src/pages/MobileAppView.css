@@ -1038,4 +1038,28 @@
   stroke: #F4C542 !important;
 }
 
+/* Leaflet Map Anti-Seam & Seamless Alignment Styles */
+.leaflet-container {
+  width: 100% !important;
+  height: 100% !important;
+  background: #F1F5F9 !important;
+}
+
+.leaflet-tile {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  outline: 1px solid transparent !important;
+  image-rendering: -webkit-optimize-contrast;
+}
+
+.leaflet-tile-container {
+  will-change: transform;
+}
+
+.custom-leaflet-going-car-pin {
+  pointer-events: auto;
+}
+
+
 

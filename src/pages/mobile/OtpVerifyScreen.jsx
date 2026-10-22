@@ -175,20 +175,51 @@ export default function OtpVerifyScreen({ phoneNumber, otpCode, setOtpCode, onNe
   };
 
   return (
-    <div className="real-mobile-app">
-      <div className="white-header-nav" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+    <div className="real-mobile-app" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      <div 
+        className="white-header-nav" 
+        style={{ 
+          position: 'sticky', 
+          top: 0, 
+          zIndex: 100, 
+          flexShrink: 0, 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          padding: '12px 16px', 
+          paddingTop: 'calc(var(--android-status-bar-height, 0px) + 12px)', 
+          background: '#FFFFFF', 
+          borderBottom: '1px solid #E2E8F0',
+          minHeight: '56px'
+        }}
+      >
         <button 
           className="header-back-arrow" 
           onClick={onBack} 
-          style={{ background: '#F1F5F9', border: 'none', borderRadius: '12px', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#0F172A' }}
+          style={{ 
+            position: 'absolute', 
+            left: '16px', 
+            top: 'calc(var(--android-status-bar-height, 0px) + 10px)', 
+            background: '#F1F5F9', 
+            border: 'none', 
+            borderRadius: '12px', 
+            width: '40px', 
+            height: '40px', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            cursor: 'pointer', 
+            color: '#0F172A',
+            zIndex: 10
+          }}
           aria-label="Go Back"
         >
-          <ArrowLeft size={18} />
+          <ArrowLeft size={20} />
         </button>
-        <h2 className="white-header-title">Email Verification</h2>
+        <h2 className="white-header-title" style={{ margin: 0, fontSize: '18px', fontWeight: '800' }}>Email Verification</h2>
       </div>
 
-      <div className="verify-screen-body" style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
+      <div className="verify-screen-body" style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, overflowY: 'auto' }}>
         <div style={{ textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '20px', width: '100%' }}>
           
           {/* OTP Verification Graphic Container */}
