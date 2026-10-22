@@ -427,8 +427,8 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
           {/* Leaflet Interactive Map */}
           <InteractiveMap
             center={activePickupPos || userCoords}
-            zoom={activeRide ? 11 : 15}
-            userLabel={activeRide ? (activeRide.pickup || "Pickup Point") : (isGpsActive ? "Your Live Spot" : "Pickup Spot (GPS Off)")}
+            zoom={activeRide ? 11 : 15.5}
+            userLabel={activeRide ? (activeRide.pickup || "Pickup Point") : (isGpsActive ? "Your Live Spot" : "Pickup Spot")}
             destination={activeDestPos}
             activeDriverPos={activePickupPos}
             routePolyline={activePolyline}
@@ -553,6 +553,7 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
             {/* ACTIVE RIDE LIVE CARD ON HOMESCREEN (Light Theme, No Buttons) */}
             {activeRide && (
               <div 
+                onClick={() => onOpenTracking ? onOpenTracking() : (setActiveTab && setActiveTab('tracking'))}
                 style={{
                   background: '#FFFFFF',
                   borderRadius: '20px',
@@ -563,7 +564,8 @@ export default function HomeScreen({ activeTab, setActiveTab, onStartBooking, on
                   border: '1.5px solid #E2E8F0',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'space-between'
+                  justifyContent: 'space-between',
+                  cursor: 'pointer'
                 }}
               >
                 <div>

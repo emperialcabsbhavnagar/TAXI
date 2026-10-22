@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import InteractiveMap from '../../components/InteractiveMap';
 import BottomNavBar from '../../components/BottomNavBar';
-import { getCoordsForPlace, generateRoutePolyline, calculateDistanceKm, estimateEtaMins } from '../../utils/locationCoords';
+import { getCoordsForPlace, generateRoutePolyline, getCachedRoutePolyline, calculateDistanceKm, estimateEtaMins } from '../../utils/locationCoords';
 import { loadAllInquiriesFromMySQL, updateInquiryStatusInMySQL } from '../../services/mysqlService';
 import { sendSystemPushNotification } from '../../services/notificationEngine';
 import { Geolocation } from '@capacitor/geolocation';
@@ -141,7 +141,14 @@ export default function TripTrackingScreen({ userCoords, pickupLoc, dropoffLoc, 
   const pickupPos = currentLivePos;
   const destPos = getCoordsForPlace(actualDropoff, userCoords);
 
-  const routePolyline = generateRoutePolyline(currentLivePos, destPos) || [];
+  const routePolyline = useMemo(() => {
+    return getCachedRoutePolyline(currentLivePos, destPos);
+  }, [
+    currentLivePos?.lat ? currentLivePos.lat.toFixed(3) : '',
+    currentLivePos?.lng ? currentLivePos.lng.toFixed(3) : '',
+    destPos?.lat ? destPos.lat.toFixed(3) : '',
+    destPos?.lng ? destPos.lng.toFixed(3) : ''
+  ]);
 
   // Real-time Live Distance & ETA calculation to Destination
   const realDistKmNum = calculateDistanceKm(currentLivePos.lat, currentLivePos.lng, destPos.lat, destPos.lng);
@@ -222,7 +229,7 @@ export default function TripTrackingScreen({ userCoords, pickupLoc, dropoffLoc, 
   }, [realDistKmNum, activeRide]);
 
   return (
-    <div className="real-mobile-app" style={{ background: '#0F172A', position: 'relative', width: '100%', height: '100vh', minHeight: '100vh', overflow: 'hidden' }}>
+    <div className="real-mobile-app" style={{ background: '#F8FAFC', position: 'relative', width: '100%', height: '100vh', minHeight: '100vh', overflow: 'hidden' }}>
       
       {/* 1. MAIN MAP VIEWPORT */}
       <div className="full-homescreen-map-wrapper" style={{ height: '100%', width: '100%', position: 'absolute', top: 0, left: 0 }}>
@@ -236,59 +243,37 @@ export default function TripTrackingScreen({ userCoords, pickupLoc, dropoffLoc, 
         />
       </div>
 
-      {/* 2. FLOATING RE-CENTRE BUTTON */}
-      <div style={{ position: 'absolute', left: '16px', bottom: '160px', zIndex: 999 }}>
-        <button 
-          onClick={() => setMapCenter(currentLivePos)}
-          style={{
-            background: '#1E293B',
-            color: '#FFFFFF',
-            border: '1px solid #334155',
-            padding: '10px 18px',
-            borderRadius: '24px',
-            fontWeight: '800',
-            fontSize: '13px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
-            cursor: 'pointer'
-          }}
-        >
-          ▲ Re-centre Live
-        </button>
-      </div>
-
-      {/* 3. BOTTOM NAVIGATION STATUS CARD */}
+      {/* 3. BOTTOM NAVIGATION STATUS CARD (Clean White Theme) */}
       <div style={{
         position: 'absolute',
         bottom: '64px',
         left: 0,
         right: 0,
         zIndex: 999,
-        background: '#121827',
+        background: '#FFFFFF',
         borderTopLeftRadius: '24px',
         borderTopRightRadius: '24px',
-        padding: '14px 20px',
-        boxShadow: '0 -10px 30px rgba(0,0,0,0.5)',
-        color: '#FFFFFF'
+        padding: '16px 20px',
+        boxShadow: '0 -10px 30px rgba(0, 0, 0, 0.08)',
+        borderTop: '1.5px solid #E2E8F0',
+        color: '#0F172A'
       }}>
-        <div style={{ width: '40px', height: '4px', background: '#334155', borderRadius: '4px', margin: '0 auto 10px auto' }}></div>
+        <div style={{ width: '40px', height: '4px', background: '#CBD5E1', borderRadius: '4px', margin: '0 auto 12px auto' }}></div>
 
         {/* Assigned Driver & Car Plate Banner */}
         {activeRide && (
-          <div style={{ background: '#1E293B', padding: '10px 14px', borderRadius: '14px', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #334155' }}>
+          <div style={{ background: '#F8FAFC', padding: '10px 14px', borderRadius: '14px', marginBottom: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1.5px solid #E2E8F0' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#34D399', color: '#0F172A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', flexShrink: 0 }}>
+              <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#FEF08A', color: '#0F172A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', fontSize: '18px', flexShrink: 0, border: '1px solid #FDE047' }}>
                 🚕
               </div>
               <div>
-                <div style={{ fontSize: '13px', fontWeight: '800', color: '#FFFFFF' }}>{activeRide.driver || 'Chauffeur Assigned'}</div>
-                <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600' }}>{activeRide.vehicle || activeRide.carName || activeRide.selectedCar || 'SWIFT'}</div>
+                <div style={{ fontSize: '14px', fontWeight: '800', color: '#0F172A', fontFamily: 'Space Grotesk, sans-serif' }}>{activeRide.driver || 'Chauffeur Assigned'}</div>
+                <div style={{ fontSize: '12px', color: '#64748B', fontWeight: '600' }}>{activeRide.vehicle || activeRide.carName || activeRide.selectedCar || 'SWIFT'}</div>
               </div>
             </div>
             {(activeRide.plate || activeRide.vehiclePlate || activeRide.carPlate) && (
-              <div style={{ background: '#FFFFFF', color: '#0F172A', padding: '4px 10px', borderRadius: '8px', fontWeight: '900', fontSize: '12px', fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '0.8px', border: '1.5px solid #CBD5E1', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+              <div style={{ background: '#FFFFFF', color: '#0F172A', padding: '5px 12px', borderRadius: '10px', fontWeight: '900', fontSize: '12px', fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '0.8px', border: '1.5px solid #CBD5E1', display: 'inline-flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 6px rgba(0,0,0,0.04)' }}>
                 🚗 {activeRide.plate || activeRide.vehiclePlate || activeRide.carPlate}
               </div>
             )}
@@ -297,39 +282,40 @@ export default function TripTrackingScreen({ userCoords, pickupLoc, dropoffLoc, 
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ fontSize: '26px', fontWeight: '900', color: '#22C55E', fontFamily: 'Space Grotesk, sans-serif', lineHeight: 1 }}>
+            <div style={{ fontSize: '28px', fontWeight: '900', color: '#16A34A', fontFamily: 'Space Grotesk, sans-serif', lineHeight: 1 }}>
               {etaTimeStr}
             </div>
-            <div style={{ color: '#94A3B8', fontSize: '13px', fontWeight: '700', marginTop: '4px', fontFamily: 'Space Grotesk, sans-serif' }}>
+            <div style={{ color: '#64748B', fontSize: '13px', fontWeight: '700', marginTop: '4px', fontFamily: 'Space Grotesk, sans-serif' }}>
               {displayDistKm} km • {arrivalTimeFormatted}
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button 
               onClick={() => setMapCenter(currentLivePos)}
               style={{
                 width: '44px',
                 height: '44px',
                 borderRadius: '50%',
-                background: '#1E293B',
-                border: '1px solid #334155',
+                background: '#F8FAFC',
+                border: '1.5px solid #E2E8F0',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
               }}
               title="Recentre Map"
             >
-              <RotateCcw size={20} color="#FFFFFF" />
+              <RotateCcw size={18} color="#0F172A" />
             </button>
 
             {realDistKmNum <= 0.3 ? (
               <button 
                 onClick={handleAutoCompleteRide}
                 style={{
-                  background: '#22C55E',
-                  color: '#0F172A',
+                  background: '#16A34A',
+                  color: '#FFFFFF',
                   border: 'none',
                   padding: '10px 18px',
                   borderRadius: '24px',
@@ -339,7 +325,7 @@ export default function TripTrackingScreen({ userCoords, pickupLoc, dropoffLoc, 
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
-                  boxShadow: '0 4px 16px rgba(34, 197, 94, 0.4)'
+                  boxShadow: '0 4px 16px rgba(22, 163, 74, 0.3)'
                 }}
               >
                 <CheckCircle2 size={16} /> Arrived (Complete)
@@ -348,14 +334,15 @@ export default function TripTrackingScreen({ userCoords, pickupLoc, dropoffLoc, 
               <button 
                 onClick={onExit || onCompleteRide}
                 style={{
-                  background: '#334155',
-                  color: '#FFFFFF',
-                  border: 'none',
+                  background: '#F1F5F9',
+                  color: '#0F172A',
+                  border: '1.5px solid #CBD5E1',
                   padding: '10px 20px',
                   borderRadius: '24px',
                   fontWeight: '800',
                   fontSize: '14px',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
                 }}
               >
                 Exit

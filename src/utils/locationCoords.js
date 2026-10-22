@@ -308,26 +308,63 @@ export function generateRoutePolyline(startPos, endPos) {
   return [p1, p2, p3, p4, p5];
 }
 
+const ROUTE_CACHE = new Map();
+
+/**
+ * Returns a rock-solid, permanently memoized highway polyline that NEVER flickers or jumps.
+ */
+export function getCachedRoutePolyline(startPos, endPos) {
+  if (!startPos || !endPos) return [];
+  const sLat = typeof startPos.lat === 'number' && !isNaN(startPos.lat) ? startPos.lat : 21.7645;
+  const sLng = typeof startPos.lng === 'number' && !isNaN(startPos.lng) ? startPos.lng : 72.1519;
+  const eLat = typeof endPos.lat === 'number' && !isNaN(endPos.lat) ? endPos.lat : 22.3039;
+  const eLng = typeof endPos.lng === 'number' && !isNaN(endPos.lng) ? endPos.lng : 70.8022;
+
+  // Key rounded to 3 decimal places (~110m) to absorb micro GPS jitter without breaking cache
+  const cacheKey = `${sLat.toFixed(3)},${sLng.toFixed(3)}->${eLat.toFixed(3)},${eLng.toFixed(3)}`;
+  if (ROUTE_CACHE.has(cacheKey)) {
+    return ROUTE_CACHE.get(cacheKey);
+  }
+
+  const polyline = generateRoutePolyline({ lat: sLat, lng: sLng }, { lat: eLat, lng: eLng });
+  ROUTE_CACHE.set(cacheKey, polyline);
+  return polyline;
+}
+
 /**
  * Fetches real road coordinates from OSRM driving router with instantaneous fallback
  */
 export async function fetchRoadPolyline(startPos, endPos) {
-  if (!startPos || !endPos) return generateRoutePolyline(startPos, endPos);
+  if (!startPos || !endPos) return getCachedRoutePolyline(startPos, endPos);
   
+  const sLat = typeof startPos.lat === 'number' ? startPos.lat : 21.7645;
+  const sLng = typeof startPos.lng === 'number' ? startPos.lng : 72.1519;
+  const eLat = typeof endPos.lat === 'number' ? endPos.lat : 22.3039;
+  const eLng = typeof endPos.lng === 'number' ? endPos.lng : 70.8022;
+  const cacheKey = `osrm_${sLat.toFixed(3)},${sLng.toFixed(3)}->${eLat.toFixed(3)},${eLng.toFixed(3)}`;
+  if (ROUTE_CACHE.has(cacheKey)) {
+    return ROUTE_CACHE.get(cacheKey);
+  }
+
   try {
-    const url = `https://router.project-osrm.org/route/v1/driving/${startPos.lng},${startPos.lat};${endPos.lng},${endPos.lat}?overview=full&geometries=geojson`;
-    const response = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    const url = `https://router.project-osrm.org/route/v1/driving/${sLng},${sLat};${eLng},${eLat}?overview=full&geometries=geojson`;
+    const response = await fetch(url, { signal: AbortSignal.timeout(3500) });
     const data = await response.json();
 
     if (data && data.routes && data.routes[0] && data.routes[0].geometry && data.routes[0].geometry.coordinates) {
       const coords = data.routes[0].geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
-      if (coords.length > 1) return coords;
+      if (coords.length > 1) {
+        ROUTE_CACHE.set(cacheKey, coords);
+        return coords;
+      }
     }
   } catch (e) {
     // Graceful offline / timeout fallback
   }
 
-  return generateRoutePolyline(startPos, endPos);
+  const fallback = getCachedRoutePolyline(startPos, endPos);
+  ROUTE_CACHE.set(cacheKey, fallback);
+  return fallback;
 }
 
 /**
