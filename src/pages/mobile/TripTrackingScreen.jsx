@@ -7,7 +7,7 @@ import { sendSystemPushNotification } from '../../services/notificationEngine';
 import { Geolocation } from '@capacitor/geolocation';
 import { RotateCcw, CheckCircle2 } from 'lucide-react';
 
-export default function TripTrackingScreen({ userCoords, pickupLoc, dropoffLoc, activeTab, setActiveTab, onNavigateTab, onCompleteRide }) {
+export default function TripTrackingScreen({ userCoords, pickupLoc, dropoffLoc, activeTab, setActiveTab, onNavigateTab, onCompleteRide, onExit }) {
   const [activeRide, setActiveRide] = useState(null);
   const [liveGpsCoords, setLiveGpsCoords] = useState(null);
   const hasCompletedRef = useRef(false);
@@ -346,7 +346,7 @@ export default function TripTrackingScreen({ userCoords, pickupLoc, dropoffLoc, 
               </button>
             ) : (
               <button 
-                onClick={onCompleteRide}
+                onClick={onExit || onCompleteRide}
                 style={{
                   background: '#334155',
                   color: '#FFFFFF',

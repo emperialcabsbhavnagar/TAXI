@@ -158,12 +158,9 @@ export default function MobileAppView() {
               return isMatch && activeStatuses.some(s => statusStr.toLowerCase() === s.toLowerCase());
             });
 
-            if (activeRide && isSessionValid()) {
-              setAppStage((currentStage) => {
-                const unauthStages = ['PRELOADER', 'SPLASH', 'ONBOARDING', 'LETS_YOU_IN', 'OTP_VERIFY', 'CREATE_PROFILE'];
-                if (unauthStages.includes(currentStage)) return currentStage;
-                return 'TRACKING';
-              });
+            if (!activeRide) {
+              // If active ride ended, leave tracking mode back to home
+              setAppStage((currentStage) => currentStage === 'TRACKING' ? 'APP_HOME' : currentStage);
             }
           }
         }
@@ -1597,6 +1594,7 @@ export default function MobileAppView() {
             setActiveTab(tab);
             setAppStage('APP_HOME');
           }}
+          onExit={() => setAppStage('APP_HOME')}
           onCompleteRide={() => setAppStage('RECEIPT')}
         />
       );

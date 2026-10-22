@@ -8667,8 +8667,13 @@ export default function AdminPortal() {
         <div className="admin-modal-overlay" onClick={() => setReceiptModal({ open: false, inquiry: null })}>
           <div className="admin-modal-box card" style={{ maxWidth: '600px', padding: '24px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header-flex" style={{ borderBottom: '1px solid #E2E8F0', paddingBottom: '16px', marginBottom: '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ background: '#10B981', color: '#FFF', width: '38px', height: '38px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>🚕</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <img 
+                  src="/EMPERAL_CABS_Website_Logo_Sharp.svg" 
+                  alt="EMPERIAL CABS" 
+                  style={{ height: '36px', width: 'auto', maxHeight: '36px', objectFit: 'contain', display: 'block' }} 
+                  onError={(e) => { e.currentTarget.src = '/logo.png'; }}
+                />
                 <div>
                   <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800' }}>EMPERIAL CABS - Detailed Trip Receipt</h3>
                   <small style={{ color: '#64748B' }}>Booking Ref: <strong>{receiptModal.inquiry.id}</strong> • {receiptModal.inquiry.date || 'Today'}</small>
@@ -8760,29 +8765,17 @@ export default function AdminPortal() {
               </div>
             </div>
 
-            {/* Reward Info (Only if rewardAmount > 0) & Commission Split */}
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: (receiptModal.inquiry.rewardIssued && Number(receiptModal.inquiry.rewardAmount) > 0) ? '1fr 1fr' : '1fr', 
-              gap: '12px', 
-              marginBottom: '24px' 
-            }}>
-              {receiptModal.inquiry.rewardIssued && Number(receiptModal.inquiry.rewardAmount) > 0 ? (
+            {/* Reward Info (Only if rewardAmount > 0) */}
+            {receiptModal.inquiry.rewardIssued && Number(receiptModal.inquiry.rewardAmount) > 0 ? (
+              <div style={{ marginBottom: '24px' }}>
                 <div style={{ background: '#EEF2FF', padding: '12px', borderRadius: '12px', border: '1px solid #C7D2FE' }}>
                   <small style={{ color: '#4338CA', fontWeight: '800', fontSize: '11px', display: 'block' }}>🎁 Customer Wallet Reward</small>
                   <div style={{ fontSize: '13px', fontWeight: '800', color: '#3730A3', marginTop: '2px' }}>
                     ✓ ₹{receiptModal.inquiry.rewardAmount} Credited to Customer
                   </div>
                 </div>
-              ) : null}
-
-              <div style={{ background: '#F5F3FF', padding: '12px', borderRadius: '12px', border: '1px solid #DDD6FE' }}>
-                <small style={{ color: '#6D28D9', fontWeight: '800', fontSize: '11px', display: 'block' }}>Commission Split</small>
-                <div style={{ fontSize: '12px', color: '#5B21B6', marginTop: '2px', fontWeight: '700' }}>
-                  Driver ({driverShare}%): ₹{(Number(receiptModal.inquiry.fare) * (driverShare / 100)).toFixed(2)} &nbsp;•&nbsp; Company ({companyShare}%): ₹{(Number(receiptModal.inquiry.fare) * (companyShare / 100)).toFixed(2)}
-                </div>
               </div>
-            </div>
+            ) : null}
 
             <div className="modal-actions-flex" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center' }}>
               <button 
